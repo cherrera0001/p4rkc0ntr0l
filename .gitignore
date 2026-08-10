@@ -1,0 +1,56 @@
+# dependencias
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/versions
+
+# testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# producción
+/build
+/dist
+
+# variables de entorno — NUNCA versionar secretos (spec.md §7)
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# Drizzle: las migraciones y sus snapshots SÍ se versionan — drizzle-kit los
+# necesita para calcular el diff del próximo cambio de esquema.
+
+# TypeScript
+*.tsbuildinfo
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# editores / SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+.vercel
+.env*
+# `vercel link` agregó `.env*` al final, lo que anulaba la excepción de arriba y
+# dejaba la plantilla fuera del repo. Se reinstaura: la plantilla SÍ se versiona,
+# los valores nunca.
+!.env.example

@@ -1,0 +1,213 @@
+/**
+ * Verificación de AC-OP-1 (spec.md §5, §9).
+ *
+ * "Con el navegador en modo sin conexión, un ingreso se registra y persiste en
+ * IndexedDB; al reconectar, sync_estado pasa a sincronizada."
+ *
+ * Se maneja el navegador por CDP sobre Edge con puppeteer-core, el mismo
+ * mecanismo de scripts/verificar-pwa.mjs. No usa Lighthouse.
+ *
+ * La patente es un FIXTURE evidente (spec.md §11). Se borra de la base antes y
+ * después de la prueba: no queda dato de prueba conviviendo con los reales.
+ *
+ * Uso:  node scripts/verificar-op1.mjs [url]
+ * Requiere el servidor levantado y DATABASE_URL en el entorno.
+ */
+
+import { existsSync } from "node:fs";
+import postgres from "postgres";
+import puppeteer from "puppeteer-core";
+
+const URL_BASE = process.argv[2] ?? "http://localhost:3000";
+const PATENTE_FIXTURE = "FIXT00";
+
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.error("FAIL · falta DATABASE_URL.");
+  process.exit(1);
+}
+
+const NAVEGADORES = [
+  process.env.CHROME_PATH,
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+].filter(Boolean);
+
+const navegador = NAVEGADORES.find((p) => existsSync(p));
+if (!navegador) {
+  console.error("FAIL · no se encontró Edge. Definí CHROME_PATH.");
+  process.exit(1);
+}
+
+const resultados = [];
+function comprobar(nombre, ok, detalle) {
+  resultados.push({ nombre, ok });
+  console.log(`${ok ? "PASS" : "FAIL"} · ${nombre}${detalle ? ` · ${detalle}` : ""}`);
+}
+
+const sql = postgres(url, { max: 1 });
+const contarEnServidor = async () => {
+  const [{ n }] = await sql`
+    SELECT count(*)::int AS n FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}
+  `;
+  return n;
+};
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let browser;
+try {
+  await sql`DELETE FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}`;
+
+  browser = await puppeteer.launch({
+    executablePath: navegador,
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  });
+
+  const page = await browser.newPage();
+
+  // Auth mínima de dos roles (M3): la pantalla del operador exige sesión.
+  await page.goto(`${URL_BASE}/login`, { waitUntil: "networkidle2" });
+  await page.type('[data-testid="email"]', "operador@fixture.invalid");
+  await page.type('[data-testid="clave"]', process.env.CLAVE_ACCESO ?? "");
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle2" }),
+    page.click('[data-testid="entrar"]'),
+  ]);
+  comprobar(
+    "el operador inicia sesión y llega a su pantalla",
+    await page.$('[data-testid="nuevo-ingreso"]') !== null,
+    new URL(page.url()).pathname,
+  );
+
+  // Estado limpio: sin esto, una corrida anterior contaminaría el conteo.
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase("estacionamiento");
+      req.onsuccess = req.onerror = req.onblocked = () => resolve(undefined);
+    });
+  });
+  await page.reload({ waitUntil: "networkidle2" });
+  await page.waitForSelector('[data-testid="nuevo-ingreso"]');
+
+  // --- Sin conexión --------------------------------------------------------
+  await page.setOfflineMode(true);
+  await esperar(300);
+
+  const estadoOffline = await page.$eval('[data-testid="estado-conexion"]', (el) =>
+    el.textContent.trim(),
+  );
+  comprobar("la app detecta que está sin conexión", estadoOffline === "sin conexión", estadoOffline);
+
+  await page.click('[data-testid="nuevo-ingreso"]');
+  await page.waitForSelector('[data-testid="campo-patente"]');
+  await page.type('[data-testid="campo-patente"]', PATENTE_FIXTURE, { delay: 20 });
+  await page.click('[data-testid="confirmar-ingreso"]');
+  await page.waitForSelector('[data-testid="lista-activas"] li', { timeout: 5000 });
+
+  const leerIndexedDB = () =>
+    page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const req = indexedDB.open("estacionamiento", 1);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const bd = req.result;
+            const tx = bd.transaction("sesiones", "readonly");
+            const todo = tx.objectStore("sesiones").getAll();
+            todo.onsuccess = () => {
+              bd.close();
+              resolve(todo.result);
+            };
+            todo.onerror = () => reject(todo.error);
+          };
+        }),
+    );
+
+  const enIdbOffline = await leerIndexedDB();
+  comprobar(
+    "el ingreso persiste en IndexedDB sin red",
+    enIdbOffline.length === 1 && enIdbOffline[0].patente === PATENTE_FIXTURE,
+    `${enIdbOffline.length} registro(s)`,
+  );
+
+  comprobar(
+    "queda marcado como local (no sincronizado)",
+    enIdbOffline[0]?.syncEstado === "local",
+    enIdbOffline[0]?.syncEstado,
+  );
+
+  comprobar(
+    "los timestamps de tecleo se registraron",
+    Boolean(enIdbOffline[0]?.tecleoInicioAt) && Boolean(enIdbOffline[0]?.tecleoFinAt),
+    `tecleo = ${
+      new Date(enIdbOffline[0]?.tecleoFinAt).getTime() -
+      new Date(enIdbOffline[0]?.tecleoInicioAt).getTime()
+    } ms`,
+  );
+
+  comprobar("la UI muestra el vehículo aunque no haya red", true);
+
+  const enServidorOffline = await contarEnServidor();
+  comprobar(
+    "todavía no llegó al servidor",
+    enServidorOffline === 0,
+    `${enServidorOffline} fila(s)`,
+  );
+
+  // --- Vuelve la red -------------------------------------------------------
+  await page.setOfflineMode(false);
+
+  let sincronizada = false;
+  for (let intento = 0; intento < 20 && !sincronizada; intento++) {
+    await esperar(500);
+    const actual = await leerIndexedDB();
+    sincronizada = actual[0]?.syncEstado === "sincronizada";
+  }
+  comprobar("al reconectar, sync_estado pasa a sincronizada", sincronizada);
+
+  const enServidorFinal = await contarEnServidor();
+  comprobar(
+    "la sesión llegó a la base",
+    enServidorFinal === 1,
+    `${enServidorFinal} fila(s)`,
+  );
+
+  const [fila] = await sql`
+    SELECT patente, estado, sync_estado, tecleo_inicio_at, tecleo_fin_at
+    FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}
+  `;
+  comprobar(
+    "en la base queda activa, sincronizada y con tecleo completo",
+    fila?.estado === "activa" &&
+      fila?.sync_estado === "sincronizada" &&
+      fila?.tecleo_inicio_at !== null &&
+      fila?.tecleo_fin_at !== null,
+    `${fila?.estado}/${fila?.sync_estado}`,
+  );
+
+  // Reintento idempotente: al recargar, la app vuelve a intentar sincronizar la
+  // cola. Como el id lo generó el cliente, el servidor debe descartar el
+  // duplicado en vez de crear una sesión nueva.
+  await page.reload({ waitUntil: "networkidle2" });
+  await esperar(1500);
+  const trasRecarga = await contarEnServidor();
+  comprobar(
+    "sincronizar de nuevo no duplica la sesión",
+    trasRecarga === 1,
+    `${trasRecarga} fila(s)`,
+  );
+} finally {
+  if (browser) await browser.close();
+  await sql`DELETE FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}`;
+  await sql.end();
+}
+
+const fallidos = resultados.filter((r) => !r.ok);
+console.log(`\n${resultados.length - fallidos.length}/${resultados.length} comprobaciones PASS`);
+if (fallidos.length) {
+  console.log("FALLARON: " + fallidos.map((f) => f.nombre).join(", "));
+  process.exit(1);
+}
+console.log("AC-OP-1: PASS");

@@ -1,0 +1,332 @@
+{
+  "id": "360896ad-c3ae-4134-80a4-00a4abafa111",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.estacionamiento": {
+      "name": "estacionamiento",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capacidad_total": {
+          "name": "capacidad_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zona_horaria": {
+          "name": "zona_horaria",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sesion_vehiculo": {
+      "name": "sesion_vehiculo",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "estacionamiento_id": {
+          "name": "estacionamiento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operador_id": {
+          "name": "operador_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patente": {
+          "name": "patente",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entrada_at": {
+          "name": "entrada_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "salida_at": {
+          "name": "salida_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "monto_calculado": {
+          "name": "monto_calculado",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tecleo_inicio_at": {
+          "name": "tecleo_inicio_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tecleo_fin_at": {
+          "name": "tecleo_fin_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_sesion",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'activa'"
+        },
+        "sync_estado": {
+          "name": "sync_estado",
+          "type": "estado_sync",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'local'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sesion_vehiculo_estacionamiento_id_estacionamiento_id_fk": {
+          "name": "sesion_vehiculo_estacionamiento_id_estacionamiento_id_fk",
+          "tableFrom": "sesion_vehiculo",
+          "tableTo": "estacionamiento",
+          "columnsFrom": [
+            "estacionamiento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "sesion_vehiculo_operador_id_usuario_id_fk": {
+          "name": "sesion_vehiculo_operador_id_usuario_id_fk",
+          "tableFrom": "sesion_vehiculo",
+          "tableTo": "usuario",
+          "columnsFrom": [
+            "operador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tarifa": {
+      "name": "tarifa",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "estacionamiento_id": {
+          "name": "estacionamiento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valor_hora": {
+          "name": "valor_hora",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fraccion_minutos": {
+          "name": "fraccion_minutos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monto_minimo": {
+          "name": "monto_minimo",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vigente_desde": {
+          "name": "vigente_desde",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tarifa_estacionamiento_id_estacionamiento_id_fk": {
+          "name": "tarifa_estacionamiento_id_estacionamiento_id_fk",
+          "tableFrom": "tarifa",
+          "tableTo": "estacionamiento",
+          "columnsFrom": [
+            "estacionamiento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.usuario": {
+      "name": "usuario",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rol": {
+          "name": "rol",
+          "type": "rol_usuario",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estacionamiento_id": {
+          "name": "estacionamiento_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "usuario_estacionamiento_id_estacionamiento_id_fk": {
+          "name": "usuario_estacionamiento_id_estacionamiento_id_fk",
+          "tableFrom": "usuario",
+          "tableTo": "estacionamiento",
+          "columnsFrom": [
+            "estacionamiento_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "usuario_email_unique": {
+          "name": "usuario_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.estado_sesion": {
+      "name": "estado_sesion",
+      "schema": "public",
+      "values": [
+        "activa",
+        "cerrada"
+      ]
+    },
+    "public.estado_sync": {
+      "name": "estado_sync",
+      "schema": "public",
+      "values": [
+        "local",
+        "sincronizada"
+      ]
+    },
+    "public.rol_usuario": {
+      "name": "rol_usuario",
+      "schema": "public",
+      "values": [
+        "operador",
+        "dueño"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

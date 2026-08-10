@@ -1,0 +1,165 @@
+@AGENTS.md
+
+# CLAUDE.md — reglas operativas del repo
+
+`spec.md` es la fuente de verdad. Este archivo es su versión ejecutable: lo que
+hay que leer antes de tocar código y lo que hace que un cambio se rechace.
+
+**Ante cualquier conflicto entre este archivo y `spec.md`, manda `spec.md`.**
+
+`AGENTS.md` (importado arriba) lo escribe y lo regenera Next.js; contiene reglas
+de la versión de Next instalada. No lo borres: `next dev` lo vuelve a crear.
+
+---
+
+## 1. Gate de alcance (ADR-001) — bloqueante
+
+Estos módulos **no se construyen** en la v1. Un cambio que los introduzca se
+rechaza, sin excepción, hasta que exista un ADR que enmiende o reemplace ADR-001:
+
+| Prohibido | Incluye |
+|-----------|---------|
+| Pago / pasarela | Stripe, MercadoPago, Webpay, Transbank, Flow, Khipu, cualquier SDK de cobro; entidades `Pago` / `Transaccion` |
+| LPR / cámara | OCR de patentes, captura de imagen, `getUserMedia` para lectura de placas |
+| Reservas | Cupos reservados, agenda, entidad `Reserva` |
+| Multisitio | Multitenancy, selector de sucursal, entidad `Sucursal` |
+| Barreras físicas | Control de barrera, integraciones con hardware de acceso |
+
+**El cobro es manual, en efectivo, fuera del sistema.** La app solo muestra el
+monto a cobrar.
+
+Si una tarea parece exigir algo de esta tabla: detenerse, decirlo, y pedir el ADR.
+No implementar "una versión chica" ni dejar el hook preparado "por si acaso".
+
+### Verificación del gate (AC-SCOPE-1/2/3)
+
+```
+# AC-SCOPE-1 — sin SDK de pasarela en el manifiesto
+grep -iE "stripe|mercadopago|webpay|transbank|flow" package.json     # → sin resultados
+
+# AC-SCOPE-2 — sin entidades prohibidas en el esquema
+grep -riE "pago|transaccion|sucursal|reserva" src/db/                 # → sin entidades
+
+# AC-SCOPE-3 — sin módulo LPR/cámara
+# inspección de estructura del repo
+```
+
+En PowerShell, el equivalente de `grep -iE` es
+`Select-String -Pattern "stripe|mercadopago|webpay|transbank|flow" -Path package.json`.
+
+---
+
+## 2. WIP = 1
+
+Un hito a la vez. No se abre el siguiente hasta que los criterios de aceptación
+del actual estén **verificados con su comando**, no razonados.
+
+| Hito | Entregable | Cierra con |
+|------|-----------|-----------|
+| M0 | Repo + `CLAUDE.md` + `.gitignore`. Sin código de app. | estructura lista |
+| M1 | PWA (manifiesto + SW), Neon + Drizzle, esquema §4 | AC-DATA-1, AC-SCOPE-1/2, AC-BUILD-1, AC-PWA-1 |
+| M2 | Rebanada del operador offline + instrumentación de tecleo | AC-OP-1, AC-OP-2, AC-MEAS-1 |
+| M3 | Panel del dueño (ocupación, ingresos, descuadre) | AC-MEAS-2 |
+| M4 | Deploy en Vercel + Railway DB (ADR-003) | URL en vivo + registro e2e |
+| M5 | Endurecimiento según `docs/revision-seguridad-2026-08-09.md` | A-3, M-4, C-1, A-1, M-1, M-2 verificados + regresión en verde |
+
+**M5 — orden de corrección** (refleja riesgo real, no severidad nominal; no se reordena):
+
+1. **A-3** — la barrera de datos reales no protege el dispositivo. Contención de
+   una exposición ya viva, no endurecimiento normal.
+2. **M-4** — purga de las copias locales en IndexedDB.
+3. **C-1** — freno de fuerza bruta en el login.
+4. **A-1** — vencimiento y revocación de sesión verificados en el servidor.
+5. **M-1 + M-2** — derivar el estacionamiento del usuario autenticado en todas
+   las rutas.
+
+Tras **cada** corrección se corre la regresión completa. Si una corrección rompe
+un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
+
+**Estado actual: v1 piloto COMPLETA. M0–M4 cerrados.**
+**URL viva: https://estacionamiento-three.vercel.app**
+
+El sistema solo acepta patentes de prueba: `OPERACION_REAL_HABILITADA=false`.
+Encenderlo exige resolver antes `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}`.
+
+El estado autoritativo vive en `LEDGER.md` (append-only). Si esta tabla y el
+ledger discrepan, manda el ledger.
+
+---
+
+## 3. Placeholders — no inventar valores
+
+Los `{{placeholder}}` de `spec.md` §12 son decisiones humanas pendientes.
+No rellenarlos con supuestos, ni con valores "razonables", ni con ejemplos que
+parezcan reales. Si un valor falta: detenerse y pedirlo.
+
+Sin resolver hoy: `{{PRECIO_SUSCRIPCION_UF}}`, `{{UMBRAL_H1_SEGUNDOS}}`,
+`{{LINEA_BASE_CUADERNO_SEGUNDOS}}`, `{{UMBRAL_H2_DUEÑOS}}`, `{{PLAZO_PILOTO}}`,
+`{{PLAZO_RETENCION_PATENTE}}`, `{{BASE_LICITUD}}`, `{{EQUIPO_REVISOR}}`.
+
+Tampoco inventar datos de prueba que parezcan reales (patentes, nombres de
+estacionamientos, montos de operación). Los fixtures deben verse como fixtures.
+
+---
+
+## 4. Datos personales (Ley 21.719)
+
+La **patente es dato personal**. Vigencia plena de la ley: **1 de diciembre de 2026**.
+
+- Minimización: solo los campos de `spec.md` §4. No agregar campos "por si sirven".
+- Validación de entrada en **toda** frontera donde entre una patente.
+- Consultas parametrizadas siempre (Drizzle); nunca SQL concatenado.
+- Sin secretos en el repo: todo por variable de entorno. `.env*` está en `.gitignore`.
+- `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}` deben resolverse **antes**
+  de operar con datos reales.
+
+---
+
+## 5. Arquitectura (ADR-002)
+
+Next.js (App Router) como PWA · Route Handlers como API · Vercel · **Postgres en
+Railway vía TCP proxy público** (ADR-003, enmienda a ADR-002) · Drizzle con
+driver `postgres` (postgres-js) · auth mínima con dos roles (`operador`,
+`dueño`).
+
+**Offline-first no es opcional.** El flujo del operador (`spec.md` §5) debe
+funcionar sin red: service worker + IndexedDB + sincronización al reconectar.
+Un cambio que rompa el registro sin conexión es un cambio que rompe H1.
+
+### Versión de Next.js
+
+Instalada: **Next.js 16.3.0** con React 19.2.8. Es posterior al conocimiento
+base del modelo y **tiene cambios de API**. Antes de escribir código de app,
+consultar los docs incluidos en `node_modules/next/dist/docs/`. No escribir
+Next.js de memoria.
+
+---
+
+## 6. Antes de dar un hito por cerrado
+
+1. Ejecutar los comandos de verificación de `spec.md` §9 que le corresponden.
+2. Reportar la salida real. Si algo falla o no se pudo correr, decirlo — no
+   describirlo como verificado.
+3. Registrar PASS/FAIL con evidencia en `LEDGER.md` (append-only).
+4. Actualizar el estado en §2 de este archivo y escribir en `LEARNINGS.md`.
+
+---
+
+## 7. Entorno de desarrollo
+
+Windows + PowerShell. Los comandos de `spec.md` §9 están escritos en sintaxis
+POSIX; traducirlos a PowerShell al ejecutarlos (ver §1).
+
+Node 24.19.0, npm 11.17.0 y Git 2.55.0.3 están instalados, pero el proceso de
+Claude Code conserva un PATH anterior a la instalación. **Todo comando que use
+node/npm/npx/git debe ir prefijado con:**
+
+```powershell
+$env:PATH = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path','User')
+```
+
+Al reiniciar Claude Code este prefijo deja de ser necesario.
+
+El repo está bajo OneDrive. Advertencia registrada en `LEDGER.md`; por decisión
+explícita **no se mueve**.

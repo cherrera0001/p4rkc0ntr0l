@@ -1,0 +1,43 @@
+{
+  "name": "estacionamiento",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "sembrar": "node scripts/sembrar.mjs",
+    "verificar:esquema": "node scripts/verificar-esquema.mjs",
+    "verificar:pwa": "node scripts/verificar-pwa.mjs",
+    "verificar:a3": "node scripts/verificar-a3.mjs",
+    "verificar:m4": "node scripts/verificar-m4.mjs",
+    "verificar:op1": "node scripts/verificar-op1.mjs",
+    "verificar:salida": "node scripts/verificar-salida.mjs",
+    "verificar:meas1": "node scripts/verificar-meas1.mjs",
+    "verificar:meas2": "node scripts/verificar-meas2.mjs",
+    "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "next": "16.3.0",
+    "postgres": "^3.4.9",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "puppeteer-core": "^25.5.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
