@@ -14,57 +14,73 @@ Medido, no supuesto: `verificar-endurecimiento` da **30/30 contra la URL viva**
 | | |
 |---|---|
 | **Último hito cerrado** | M5 — Endurecimiento (código y deploy) |
-| **Hito en curso** | M6 — capa de presentación (SPEC-004 entregado) |
-| **Bloqueo activo** | **INT-12 vetado por el auditor.** Ciclo 2 de 3. |
-| **Próximo paso** | Recibir la corrección del implementador, reauditar, redesplegar |
+| **Hito en curso** | M6 — capa de presentación |
+| **Commit en producción** | `1288861` · endurecimiento + INT-12 + presentación |
+| **Bloqueo activo** | INT-12 — corregido y verificado en producción, **falta el PASA del auditor** |
+| **Próximo paso** | Veredicto del auditor sobre el ciclo 2; después, las 3 pantallas que faltan |
 
-## INT-12 — VETADO (2026-08-13)
+## INT-12 — ciclo 2 · corregido y medido en producción
 
-Los 30/30 contra producción son reales, pero **el verificador de INT-12 no mide
-la propiedad que INT-12 exige.** El auditor reprodujo el bypass en un sandbox:
+El auditor vetó el ciclo 1: `resolverVersionApp` retornaba en el primer
+candidato, y el primero era el commit, así que **dos deploys del mismo SHA daban
+la misma versión** → mismo caché → `activate` no purgaba → sobrevivía el shell
+viejo. Lo reprodujo en un sandbox con tres builds.
 
-`resolverVersionApp` retorna en el primer candidato, y el primero es el commit.
-**Dos deploys del mismo SHA producen la misma versión** → mismo caché → el
-`activate` del worker no purga nada → sobrevive el shell viejo. Es INT-12 textual,
-con mejor cara: se pasó de "versión vacía" a "versión válida pero constante".
+El ciclo 2 **compone** en vez de elegir: la unicidad sale del identificador del
+deploy (o del hash de su URL, o del instante del build) y el commit queda solo
+como traza legible. **La trazabilidad no participa de la unicidad.**
 
-Alcanzable hoy: el remoto ya está configurado, así que `VERCEL_GIT_COMMIT_SHA`
-deja de venir vacío y pasa a ser **la** fuente. Un *Redeploy* del mismo commit
-—lo normal tras rotar un secreto o cambiar una variable— publica un artefacto
-distinto con versión idéntica.
+Verificado contra la URL viva con el escenario exacto del veto — dos deploys
+seguidos del mismo commit, árbol limpio:
 
-Qué se pidió corregir:
+```
+a3a3b6b -> deploy 1: a3a3b6b-eHiyYFJWGq9B
+a3a3b6b -> deploy 2: a3a3b6b-adnw9t9YTCMj
+PASS · artefacto 406k2a → m4nwa1 · versión distinta   12/12 · INT-12: PASS
+```
 
-1. Componer la versión en vez de retornar en el primer candidato: única **por
-   deploy** y a la vez trazable.
-2. La comparación con la versión anterior deja de ser opcional (hoy sin
-   `--anterior` imprime NOTA y sale 0).
-3. `verificar-int12.mjs` entra a `package.json`. Un verificador que nadie corre
-   no es una red.
-4. Prueba del caso mismo-SHA / deployment id distinto. Hoy no existe: el test de
-   "dos deploys distintos" solo varía el SHA y asume la conclusión.
-5. Secundario: `next.config.ts` se evalúa más de una vez por build con
-   `Date.now()` distinto.
+Con el código anterior los dos habrían dado `a3a3b6b12345`.
+
+El verificador también cambió, porque era donde el ciclo 1 mentía: compara la
+huella del **artefacto servido** contra una línea base persistida por origen, y
+sin línea base **falla** con *"no pude comprobarlo, que no es lo mismo que esté
+bien"* — antes imprimía una NOTA y salía 0. Está en `package.json` como
+`verificar:int12`.
+
+**No se declara cerrado hasta el PASA del auditor.** El implementador no cierra
+su propio trabajo.
 
 ## M6 — capa de presentación · SPEC-004 entregado
 
 Tokens tomados de `_ds/…/colors_and_type.css` del proyecto de Claude Design vía
 `DesignSync`. Ningún valor inventado.
 
-| AC | Estado | Comando |
-|---|---|---|
-| AC-UI-1 · cero literales hex en `.tsx` | **PASS** | `Select-String "#[0-9A-Fa-f]{6}"` sobre `src\**\*.tsx` |
-| AC-UI-2 · escala tipográfica por token | **PASS** | `Select-String "font-size:\s*\d"` sobre `.tsx` |
-| AC-UI-3 · cero recursos de terceros | **PASS** | `Select-String "fonts.googleapis\|unpkg\|cdn."` sobre `src\`,`public\` |
-| AC-UI-4 · la CSP sigue en verde | **PASS** | `verificar:endurecimiento` → 30/30 |
+**Todo SPEC-004 se verifica con un comando: `npm run verificar:ui [url]` → 18/18,
+local y contra producción.**
+
+Ese verificador nació de un defecto que los cuatro AC originales no veían: **todo
+`globals.css` estaba sin `@layer`**, y una declaración sin capa le gana a
+cualquier capa. Tailwind pone sus utilidades en `@layer utilities`, así que
+`p { font-size: … }` derrotaba a `text-xs` en todos los `<p>` del producto y
+`.cifra` derrotaba a `text-2xl`. **La mitad de las decisiones tipográficas de M6
+no se aplicaba, con AC-UI-1/2/3/4 en verde** — tres miran el fuente y el cuarto
+mira la CSP.
+
+Por eso `verificar-ui.mjs` mide el **estilo computado por el navegador**. Control
+negativo real, mismo dominio, diez minutos de diferencia:
+
+```
+producción con el defecto   9/18   text-xs → 16px · .cifra.text-2xl → 44px
+producción corregida       18/18   text-xs → 12px · .cifra.text-2xl → 24px
+```
 
 Pantallas con el sistema aplicado: `login`, operador, panel del dueño, descuadre,
 cerrar sesión. Falta el resto de las 6 construibles: `1e` (tarifas), `1g`
 (reportes), `1l` (ingreso a pantalla completa).
 
-**Defecto que M6 corrigió y explicaba lo que se veía:** `globals.css` era la
-plantilla por defecto de Next, con `font-family: Arial`. La app cargaba Geist por
-`next/font/google` y lo descartaba en la línea siguiente.
+**El otro defecto que M6 corrigió y explicaba lo que se veía:** `globals.css` era
+la plantilla por defecto de Next, con `font-family: Arial`. La app cargaba Geist
+por `next/font/google` y lo descartaba en la línea siguiente.
 
 ## Estado de hitos
 
@@ -128,12 +144,20 @@ npm run verificar:pwa  [url]          # AC-PWA-1
 npm run verificar:esquema             # AC-DATA-1 (ahora con veredicto propio)
 npm run verificar:invariantes         # INT-15/16/17 (solo lectura)
 npm run verificar:endurecimiento [url]# INT-2/4/8/11/12/14/15, A-1, C-1, B-2
+npm run verificar:int12 [url]         # INT-12: artefacto ≠ ⇒ versión ≠
+npm run verificar:ui [url]            # SPEC-004 por estilo computado
 npm run verificar:verificadores       # guard sobre los propios verificadores
 npm run limpiar:fixtures
 ```
 
 Requieren `DATABASE_URL`, `CLAVE_ACCESO` y `SESSION_SECRET`. Sin `[url]` corren
-contra `localhost:3000`.
+contra `localhost:3000`. **Todos los scripts que tocan la base ya traen
+`--env-file=.env`**: no traerlo hacía que `npm run sembrar` no leyera una sola de
+las variables que su propia documentación anuncia.
+
+`verificar:int12` necesita **dos corridas separadas por un deploy**: la primera
+registra la línea base del origen y **falla** diciendo que no pudo comprobarlo;
+la segunda verifica que un artefacto distinto trajo una versión distinta.
 
 ~~Antes de correr los verificadores de navegador: `npm run limpiar:fixtures`.~~
 **Mecanizado el 2026-08-12:** los cinco verificadores de navegador llaman
