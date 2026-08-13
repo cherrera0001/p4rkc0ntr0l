@@ -25,29 +25,41 @@
  * una red, y de hecho no atrapó que la versión salía del SHA del commit —dos
  * deploys del mismo commit, misma versión, `activate` sin nada que purgar—.
  *
- * Para no depender de que alguien recuerde el valor anterior, el script calcula
- * una **huella del artefacto servido**: la lista ordenada de assets
- * `/_next/static/**` que referencia el documento. Si esa huella cambia, el
- * cliente que se ejecuta es otro y la versión TIENE que haber cambiado. La
- * huella y la versión se guardan por origen en `scripts/estado/`, así que la
- * comparación se hace sola en la corrida siguiente.
+ * **Segunda corrección, tras el segundo veto del auditor.** La versión anterior
+ * de este script calculaba la huella del artefacto sobre la **lista de nombres**
+ * de los assets, y guardaba un booleano `transicionVerificada`. Las dos cosas
+ * estaban mal, y de la misma manera:
  *
- * Las cuatro combinaciones, y por qué cada veredicto:
+ *   - Los chunks de Turbopack son direccionables por contenido y la versión
+ *     viaja inlineada en uno de ellos: **la lista de nombres cambiaba porque
+ *     cambiaba la versión.** El check era circular — no podía distinguir "el
+ *     mismo deploy mirado dos veces" de "dos deploys con la versión constante",
+ *     que es INT-12 exacto.
+ *   - El veredicto se leía de un booleano guardado en un JSON gitignoreado.
+ *     Editarlo a mano —sin deploy, sin rebuild, sin un cambio de código— daba
+ *     PASS. Un gate que se falsifica con una palabra no es un gate.
  *
- *   artefacto ≠ , versión ≠   → PASS. Deploy nuevo, caché nuevo, `activate` purga.
- *   artefacto ≠ , versión =   → FAIL. **El bypass**: código nuevo, nombre viejo.
- *   artefacto = , versión ≠   → PASS. Redeploy del mismo código; la invariante
- *                               es de una dirección sola.
- *   artefacto = , versión =   → PASS solo si alguna vez se observó la transición
- *                               para este origen. Si no, no se probó nada.
+ * El acoplamiento entre huella y versión resultó **imposible de eliminar**: el
+ * minificador de Turbopack no es determinista, así que ni siquiera el contenido
+ * de los chunks es estable entre dos builds del mismo fuente (ver
+ * `huellaDelArtefacto`). Lo que se corrigió, entonces, no es el insumo sino el
+ * **veredicto**, que ahora se deriva en cada corrida del historial de
+ * observaciones `{artefacto, version}` y no depende de ninguna bandera:
  *
- * La primera corrida contra un origen no tiene con qué comparar: registra la
- * línea base y **falla**, porque "no pude comprobarlo" no es "está bien".
+ *   misma versión, artefactos distintos  → FAIL. **El bypass**: código nuevo con
+ *       nombre de caché viejo. Esta dirección es válida con acoplamiento o sin
+ *       él, porque acá la versión NO cambió y el artefacto sí.
+ *   versiones distintas en dos deploys   → PASS. Dos deploys, dos cachés.
+ *   una sola observación                 → FAIL. No se pudo concluir, que no es
+ *       lo mismo que esté bien.
  *
- * **La línea base no se reescribe cuando la comprobación falla.** Guardarla en
- * el FAIL dejaba al deploy roto como referencia, y la corrida siguiente —o un
- * reintento de CI— comparaba B contra B y daba PASS: el verificador borraba la
- * falla que existe para detectar.
+ * Mirar el mismo deploy dos veces no aporta nada y no puede otorgar un PASS:
+ * agrega una observación repetida y el veredicto sigue siendo "no concluí".
+ *
+ * Las observaciones se acumulan y **nunca se borran**: la evidencia de una
+ * violación no puede evaporarse con un reintento. Un historial ilegible no se
+ * pisa, se reporta — pisarlo destruía la evidencia ganada, y ya pasó una vez
+ * por un BOM.
  *
  * Sin base y sin sesión: el worker se registra desde el layout raíz, así que
  * alcanza con cargar la URL aunque redirija al login. Sirve igual contra local
@@ -76,18 +88,92 @@ const ANTERIOR = argumentos.find((a) => a.startsWith("--anterior="))?.split("=")
 const DIR_ESTADO = join(dirname(fileURLToPath(import.meta.url)), "estado");
 const ARCHIVO_ESTADO = join(DIR_ESTADO, "int12-artefactos.json");
 
-/** Historial por origen: qué versión servía qué artefacto. */
+/**
+ * Historial por origen. Devuelve `{ estado }` o `{ error }`.
+ *
+ * **Ausente y corrupto no son lo mismo, y confundirlos ya costó caro.** La
+ * versión anterior se tragaba cualquier error de parseo y devolvía `{}`, que
+ * aguas abajo era indistinguible de "primera corrida": el archivo entero se
+ * reescribía y las líneas base de los otros orígenes desaparecían. Se reprodujo
+ * con un BOM que metió PowerShell 5.1 — en un proyecto cuya historia entera de
+ * INT-12 son BOMs y vacío-vs-ausente.
+ *
+ * Un archivo ilegible es un FAIL ruidoso, nunca un borrón silencioso.
+ */
 function leerEstado() {
+  if (!existsSync(ARCHIVO_ESTADO)) return { estado: {} };
   try {
-    return JSON.parse(readFileSync(ARCHIVO_ESTADO, "utf8"));
-  } catch {
-    return {};
+    // El BOM se saca a mano: `JSON.parse` no lo tolera y es exactamente la
+    // forma en que este archivo se corrompió.
+    const crudo = readFileSync(ARCHIVO_ESTADO, "utf8").replace(/^﻿/, "");
+    const estado = JSON.parse(crudo);
+    if (estado === null || typeof estado !== "object" || Array.isArray(estado)) {
+      return { error: "el estado no es un objeto" };
+    }
+    return { estado };
+  } catch (e) {
+    return { error: String(e?.message ?? e) };
   }
 }
 
+/** Escribe SOLO el origen medido, sin tocar los demás. */
 function guardarEstado(estado) {
   mkdirSync(DIR_ESTADO, { recursive: true });
   writeFileSync(ARCHIVO_ESTADO, `${JSON.stringify(estado, null, 2)}\n`, "utf8");
+}
+
+/**
+ * Huella del ARTEFACTO servido: los nombres de los assets más el texto visible
+ * del documento.
+ *
+ * **Lo que se intentó primero y no se pudo, porque importa para entender el
+ * diseño.** El auditor señaló —con razón— que una huella basada en los nombres
+ * está acoplada a la versión: los chunks de Turbopack son direccionables por
+ * contenido y la versión viaja inlineada en uno de ellos, así que los nombres
+ * cambian *porque* cambia la versión.
+ *
+ * Se intentó una huella independiente de la versión, hasheando el CONTENIDO de
+ * los assets con la versión enmascarada. **No es posible: el minificador de
+ * Turbopack no es determinista.** Dos builds del mismo fuente, medidos acá,
+ * difieren en el renombrado de variables:
+ *
+ *     B: ...D=j[1][e],w=C.slots;(void 0===D||null===w)...let H=D[0],k=w[e]...
+ *     C: ...D=j[1][e],k=C.slots;(void 0===D||null===k)...let w=D[0],H=k[e]...
+ *
+ * Así que el acoplamiento no se elimina; lo que se hace es **que no importe**,
+ * cambiando el veredicto en vez del insumo (ver más abajo). La dirección que
+ * detecta el bypass —misma versión con artefactos distintos— es válida con o sin
+ * acoplamiento, porque ahí la versión NO cambió y el artefacto sí.
+ *
+ * Se agrega el texto visible del documento porque `/login` y `/` son
+ * componentes de SERVIDOR: comprobado, cambiar su texto no movía ningún chunk
+ * estático, y el verificador no habría visto ese deploy. Se toma solo el texto
+ * —sin scripts ni etiquetas— porque el HTML crudo trae el nonce de la CSP, que
+ * cambia en cada petición, y tokens por build como `turbopack-1m14ias-r6ul9`.
+ */
+async function huellaDelArtefacto(base, rutas) {
+  if (rutas.length === 0) return { error: "el documento no referencia assets del build" };
+
+  const soloTexto = (html) =>
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const primera = await fetch(new URL("/login", base));
+  if (!primera.ok) return { error: `/login respondió HTTP ${primera.status}` };
+  const uno = soloTexto(await primera.text());
+
+  // Determinismo comprobado, no supuesto: dos peticiones al MISMO deploy tienen
+  // que dar lo mismo, o la huella sería ruido entre corridas.
+  const dos = soloTexto(await (await fetch(new URL("/login", base))).text());
+  if (uno !== dos) {
+    return { error: "el texto del documento no es determinista entre peticiones" };
+  }
+
+  return { huella: huellaCorta([...rutas].sort().join("|") + "|" + uno) };
 }
 
 const NAVEGADORES = [
@@ -279,70 +365,94 @@ try {
     return [...urls].sort();
   });
 
-  const huella = assets.length > 0 ? huellaCorta(assets.join("|")) : null;
+  const { huella, error: errorHuella } = await huellaDelArtefacto(URL_BASE, assets);
   comprobar(
     "se pudo identificar el artefacto servido",
-    huella !== null,
-    huella ? `${assets.length} assets · huella=${huella}` : "el documento no referencia assets del build",
+    Boolean(huella),
+    huella ? `${assets.length} assets · artefacto=${huella}` : (errorHuella ?? "no se pudo identificar"),
   );
 
-  const estado = leerEstado();
-  const previo = estado[URL_BASE];
+  const { estado, error: errorEstado } = leerEstado();
 
-  // `transicionVerificada` recuerda si alguna vez se OBSERVÓ, para este origen,
-  // que un artefacto nuevo trajo una versión nueva. Sin eso, "artefacto igual y
-  // versión igual" no prueba nada: es el mismo deploy mirado dos veces, y podría
-  // ser un deploy roto que nunca comparamos con otro.
+  // Un estado ilegible no se pisa: se reporta. Pisarlo destruía la evidencia
+  // ganada, que es justo lo contrario de para lo que existe el archivo.
+  comprobar(
+    "el historial de este verificador es legible",
+    !errorEstado,
+    errorEstado ? `${ARCHIVO_ESTADO}: ${errorEstado} · no se sobrescribe: revisalo o borralo a mano` : "",
+  );
+
+  /**
+   * El veredicto se DERIVA del historial, no se lee de una bandera.
+   *
+   * La versión anterior guardaba `transicionVerificada: true/false`, y ese
+   * booleano era toda la red: editarlo a mano en un JSON —gitignoreado, sin
+   * deploy, sin rebuild, sin un cambio de código— daba 12/12 PASS. Un gate que
+   * se falsifica con una palabra no es un gate.
+   *
+   * Ahora se guardan OBSERVACIONES `{artefacto, version}` y cada corrida
+   * recalcula el veredicto sobre el conjunto:
+   *
+   *   - **VIOLACIÓN**: dos observaciones con artefacto distinto y la MISMA
+   *     versión. Es INT-12 textual: el navegador no ve un script distinto, no
+   *     instala worker nuevo, `activate` no corre, el shell viejo sobrevive.
+   *     Esta dirección es válida aunque la huella esté acoplada a la versión,
+   *     porque acá la versión es justamente la que NO cambió.
+   *   - **PRUEBA**: dos deploys distintos con versiones distintas.
+   *   - Sin ninguna de las dos: no se puede concluir, y eso es FAIL.
+   *
+   * Mirar el mismo deploy dos veces produce una observación repetida, que no
+   * agrega artefactos ni versiones: no puede otorgar un PASS.
+   */
+  const previas = Array.isArray(estado[URL_BASE]?.observaciones)
+    ? estado[URL_BASE].observaciones.filter(
+        (o) => o && typeof o.artefacto === "string" && typeof o.version === "string",
+      )
+    : [];
+
+  const actual = { artefacto: huella, version, visto: new Date().toISOString() };
+  const todas = huella && version ? [...previas, actual] : previas;
+
+  const violacion = todas.find((a) =>
+    todas.some((b) => a.artefacto !== b.artefacto && a.version === b.version),
+  );
+
+  const versiones = new Set(todas.map((o) => o.version));
+  const artefactos = new Set(todas.map((o) => o.artefacto));
+
   let ok;
   let detalle;
 
-  if (!previo) {
+  if (violacion) {
+    ok = false;
+    const otra = todas.find((b) => b.artefacto !== violacion.artefacto && b.version === violacion.version);
+    detalle =
+      `MISMA VERSIÓN CON OTRO ARTEFACTO: ${violacion.version} sirvió ${violacion.artefacto} ` +
+      `y también ${otra.artefacto}. El worker no se reinstala y activate no purga.`;
+  } else if (versiones.size >= 2 && artefactos.size >= 2) {
+    ok = true;
+    const lista = [...versiones];
+    detalle =
+      `${artefactos.size} artefactos distintos con ${versiones.size} versiones distintas, ninguna repetida: ` +
+      `${lista[lista.length - 2]} → ${lista[lista.length - 1]}. Cada deploy renombra el caché.`;
+  } else {
     ok = false;
     detalle =
-      `sin línea base para ${URL_BASE}: se registró esta observación (artefacto=${huella} versión=${version}). ` +
-      "Volvé a correrlo después del próximo deploy; no pude comprobarlo, que no es lo mismo que esté bien.";
-  } else if (previo.huella !== huella) {
-    // El bypass: artefacto nuevo con la misma versión. Es INT-12 exacto -el
-    // navegador no ve un script distinto, no instala worker nuevo, `activate`
-    // no corre y el shell viejo sobrevive.
-    ok = previo.version !== version;
-    detalle =
-      `artefacto ${previo.huella} → ${huella} · versión ${previo.version} → ${version}` +
-      (ok ? "" : " · MISMA VERSIÓN CON OTRO CÓDIGO: activate no purga");
-  } else if (previo.version !== version) {
-    // Mismo artefacto y versión nueva: es un *Redeploy* del mismo código, o un
-    // rebuild local. La invariante es de una sola dirección -si el artefacto
-    // cambió, la versión cambió-, no de las dos: una versión nueva sobre código
-    // idéntico solo hace que el worker se reinstale y vuelva a cachear, que es
-    // inofensivo. Marcarlo FAIL sería el verificador gritando por un deploy
-    // sano, y un verificador que grita de más se termina ignorando.
-    ok = true;
-    detalle = `mismo artefacto (${huella}) con versión nueva ${previo.version} → ${version}: redeploy del mismo código`;
-  } else {
-    ok = previo.transicionVerificada === true;
-    detalle = ok
-      ? `mismo artefacto (${huella}) y misma versión (${version}): es el mismo deploy, y su transición ya se verificó`
-      : `mismo artefacto (${huella}) y misma versión (${version}), pero para este origen nunca se observó un ` +
-        "cambio de artefacto con cambio de versión. Corré esto después del próximo deploy.";
+      `${todas.length} observación/es para ${URL_BASE} (${artefactos.size} artefacto/s, ${versiones.size} versión/es): ` +
+      "hace falta ver este origen en dos deploys distintos. Volvé a correrlo después del próximo deploy; " +
+      "no pude comprobarlo, que no es lo mismo que esté bien.";
   }
 
-  comprobar("si el artefacto cambió, la versión cambió", ok, detalle);
+  comprobar("dos deploys nunca comparten versión (INT-12)", ok, detalle);
 
-  // **La línea base se persiste solo si la comprobación pasó.** Guardarla
-  // también en el FAIL era un agujero: el deploy roto quedaba como referencia y
-  // la corrida siguiente -o un reintento de CI- comparaba B contra B y daba
-  // PASS. El verificador borraba la falla que existe para detectar.
-  if (huella && version && (ok || !previo)) {
+  // Se acumulan observaciones. **Nunca se borra una que ya está**: la evidencia
+  // de una violación no puede evaporarse con un reintento. Solo se toca el
+  // origen medido, y solo si el historial se pudo leer.
+  if (huella && version && !errorEstado) {
+    const yaEsta = previas.some((o) => o.artefacto === huella && o.version === version);
     estado[URL_BASE] = {
-      huella,
-      version,
-      visto: new Date().toISOString(),
       assets: assets.length,
-      // Se marca verificada si esta corrida observó la transición (artefacto
-      // nuevo con versión nueva), o si ya venía verificada. Un redeploy del
-      // mismo código no la otorga: no probó nada sobre la purga.
-      transicionVerificada:
-        ok && Boolean(previo) && (previo.huella !== huella || previo.transicionVerificada === true),
+      observaciones: yaEsta ? previas : [...previas, actual].slice(-20),
     };
     guardarEstado(estado);
   }
