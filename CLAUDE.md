@@ -97,10 +97,12 @@ un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 y la capa de presentación.** Medido contra la URL viva:
 `verificar:endurecimiento` da **30/30** (por la mañana daba 10/29).
 
-**Un hallazgo sigue abierto: INT-12, vetado por el auditor.** El verificador da
-6/6 pero no mide la propiedad que INT-12 exige: dos deploys del mismo commit
-producen la misma versión de caché, así que `activate` no purga y sobrevive el
-shell viejo. Ciclo 2 de 3 con el implementador. Detalle en `STATE.md`.
+**INT-12 quedó en FAIL con el BoundedLoop agotado (3 vetos).** La corrección del
+módulo es sana y la propiedad se observó en producción —dos deploys del mismo
+commit, versiones distintas—, pero el **gate** `verificar-int12.mjs` no es
+confiable: su historial se puede inventar y borrar. INT-12 **no se declara
+verificado**. El hito está detenido a la espera de una decisión humana. Detalle y
+salida propuesta en `STATE.md`.
 
 Único hallazgo del informe integral sin cerrar: **INT-7** (mecanismo de retención
 de patente), bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.

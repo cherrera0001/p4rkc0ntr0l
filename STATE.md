@@ -16,10 +16,57 @@ Medido, no supuesto: `verificar-endurecimiento` da **30/30 contra la URL viva**
 | **Último hito cerrado** | M5 — Endurecimiento (código y deploy) |
 | **Hito en curso** | M6 — capa de presentación |
 | **Commit en producción** | `1288861` · endurecimiento + INT-12 + presentación |
-| **Bloqueo activo** | INT-12 — corregido y verificado en producción, **falta el PASA del auditor** |
-| **Próximo paso** | Veredicto del auditor sobre el ciclo 2; después, las 3 pantallas que faltan |
+| **Bloqueo activo** | **INT-12 — FAIL registrado. BoundedLoop agotado (3 vetos).** |
+| **Próximo paso** | Decisión humana: rediseñar el gate de INT-12, o seguir con producto |
 
-## INT-12 — ciclo 2 · corregido y medido en producción
+## INT-12 — **FAIL** (2026-08-13) · el hito se detiene
+
+Tres ciclos, tres vetos, ninguno trivial. La regla del concilio manda registrar
+FAIL y detener. **Pero conviene ser preciso sobre qué falla:**
+
+| | |
+|---|---|
+| La corrección en `src/lib/version-app.ts` | **sana** — el auditor la aprobó en los ciclos 2 y 3 |
+| La propiedad en producción | **observada directamente**, sin depender del verificador |
+| El gate `verificar-int12.mjs` | **FAIL** — no es una red confiable |
+| INT-12 como hallazgo | **NO cerrado** |
+
+La evidencia de producción no depende del archivo de estado: dos deploys del
+mismo commit con el árbol limpio dieron versiones distintas, leídas de la URL con
+la que el navegador registró el worker.
+
+```
+f77e331 -> dpl_3ZWvRFRhycVvN6wYo1sVm5pNFAKk -> sw.js?v=f77e331-o1sVm5pNFAKk
+f77e331 -> dpl_BXaBdNxDgSFiivcbWzcRtmYaY2KP -> sw.js?v=f77e331-WzcRtmYaY2KP
+```
+
+Lo que no se sostiene es el mecanismo que debería seguir comprobándolo solo:
+
+1. **El historial se puede inventar.** Dos objetos JSON a mano dan 13/13 PASS,
+   afirmando *"cada deploy renombra el caché"* sobre versiones que nunca
+   existieron. Pasar de un booleano a dos objetos no cambió la raíz de
+   confianza.
+2. **La invariante "nunca se borran" ya se violó, y la violé yo**: los controles
+   negativos exigen historial vacío, así que borré el archivo. Está
+   gitignoreado, no deja rastro, y "borrado" es indistinguible de "primera
+   corrida".
+3. **El PASS no distingue un deploy de un rebuild ocioso**: sin variables de
+   Vercel la versión sale del instante del build, así que dos `npm run build`
+   sin cambiar nada dan PASS.
+
+**Salida concreta que dejó el auditor** (no implementada): guardar en cada
+observación la **URL inmutable del deployment** —`https://<id>.vercel.app`, que
+Vercel mantiene viva— y **re-derivar** `{artefacto, versión}` de ella en cada
+corrida en vez de creerle al archivo. Una entrada forjada no re-deriva; un
+historial borrado se reconstruye. Más: dejar de gitignorear el archivo, y
+asertar que la página y los `fetch` vinieron del mismo deployment.
+
+**Corrección de un reporte anterior:** este archivo decía `int12 13/13` en local.
+Hoy el comando devuelve **12/13, exit=1**. El 13/13 fue real cuando se midió y se
+citó como estado actual después de borrar el historial. El de producción sí se
+sostiene y se reprodujo.
+
+## INT-12 — cómo llegó hasta acá
 
 El auditor vetó el ciclo 1: `resolverVersionApp` retornaba en el primer
 candidato, y el primero era el commit, así que **dos deploys del mismo SHA daban

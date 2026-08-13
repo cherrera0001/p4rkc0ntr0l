@@ -652,3 +652,73 @@ El costo también hay que decirlo: tres ciclos, dos subagentes colgados, y varia
 mediciones corrompidas por rebuilds concurrentes. La disciplina que faltó de mi
 lado fue de entorno, no de razonamiento: **un árbol de build es un recurso
 exclusivo**, y medir mientras otro proceso construye no es medir.
+
+---
+
+## El BoundedLoop se agotó, y lo que enseña (2026-08-13)
+
+INT-12 terminó en **FAIL** tras tres ciclos. Las tres lecciones son mejores que
+un cierre.
+
+### 1. Un veredicto derivado no vale más que su insumo
+
+El ciclo 2 falló porque el veredicto se leía de un booleano editable. El ciclo 3
+lo reemplazó por un veredicto **derivado** de observaciones. El auditor forjó dos
+observaciones a mano y obtuvo 13/13 PASS, con el verificador afirmando *"cada
+deploy renombra el caché"* sobre versiones que ningún build produjo.
+
+La lección que yo creía haber aprendido —*"un resultado se recalcula, no se
+recuerda"*— era **media lección**. La otra mitad: **recalcular sobre datos
+confiados no es verificar, es volver a creer con más pasos.** Pasar de un
+booleano a dos objetos coherentes no cambió la raíz de confianza; cambió la
+cantidad de tipeo.
+
+La regla completa: un gate necesita que sus insumos sean **re-derivables desde
+la cosa medida**, no recordados sobre ella. La salida que el auditor propuso lo
+ilustra: guardar la URL inmutable del deployment y volver a medirla en cada
+corrida. Una entrada forjada no re-deriva.
+
+### 2. Escribí una invariante y la violé yo, en la misma sesión
+
+El script promete tres veces que *"las observaciones nunca se borran"* y que
+*"la evidencia de una violación no puede evaporarse"*. Yo borré el archivo con
+`Remove-Item` varias veces esa misma tarde — porque **mis propios controles
+negativos exigen un historial vacío para poder correrse**.
+
+Eso no es descuido: es un defecto de diseño que el uso destapó. Un almacén
+append-only cuyo procedimiento de prueba requiere borrarlo no es append-only. Y
+como está gitignoreado, borrarlo no deja rastro en ningún diff.
+
+Regla: **si para probar el mecanismo hay que violar su invariante, la invariante
+está mal planteada o falta un modo de prueba que no la viole.**
+
+### 3. Reporté un número verde que el comando ya no devolvía
+
+Dije `int12 13/13` en local. Era cierto cuando lo medí. Después borré el
+historial para los controles negativos y seguí citando la medición vieja como
+estado actual. Hoy el comando devuelve `12/13, exit=1`.
+
+Es exactamente el defecto que este proyecto viene persiguiendo desde el
+2026-08-12 —el verificador que reportaba 10 FAIL donde había 19— aplicado a mí:
+**una medición es válida para el estado en que se tomó, y el estado cambió entre
+la medición y el reporte.**
+
+Regla operativa: **antes de reportar un número, volvé a correr el comando.** No
+alcanza con que haya sido verde; tiene que ser verde ahora. Y si entre medio se
+tocó el estado del que depende, la medición vieja no vale nada.
+
+### 4. Cuándo detenerse
+
+La regla del BoundedLoop existe para esto y funcionó. Tres ciclos, tres
+hallazgos reales, y una señal clara: el problema dejó de estar en el hallazgo y
+pasó a estar en la herramienta que lo mide.
+
+Vale distinguir dos cosas que es cómodo confundir:
+
+- **La corrección está bien y observada en producción.** Dos deploys del mismo
+  commit dieron versiones distintas, leído del navegador.
+- **El gate no es confiable**, así que INT-12 no se puede declarar *verificado*.
+
+Registrar eso separado —"la propiedad se cumple, pero no tengo con qué seguir
+comprobándolo"— es más honesto que cerrar el hallazgo por la evidencia puntual, y
+más útil que declararlo roto.

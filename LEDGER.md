@@ -2486,3 +2486,121 @@ Gate ADR-001 limpio. `OPERACION_REAL_HABILITADA=false`. Fixtures en 0.
 
 **INT-12 no se declara cerrado: falta el PASA del auditor.** Es el tercer ciclo
 del BoundedLoop, y las dos veces anteriores el veto encontró algo real.
+
+---
+
+### 2026-08-13 · INT-12 · **FAIL** · BoundedLoop agotado (3 ciclos sin PASA)
+
+Tercer veto del auditor. La regla del concilio es explícita: *"BoundedLoop: 3
+ciclos implementador↔auditor. Al 3.º sin PASA → registrá FAIL y detené el
+hito."* Se registra el FAIL.
+
+#### Qué falla, con precisión — porque no es todo
+
+**La corrección del módulo NO es lo que falla.** El auditor la dio por sana en
+los ciclos 2 y 3, y la evidencia de producción es directa y no depende del
+verificador: dos deploys del mismo commit, con el árbol limpio, produjeron
+versiones distintas, leídas de la URL con la que el navegador registró el worker:
+
+```
+f77e331 -> dpl_3ZWvRFRhycVvN6wYo1sVm5pNFAKk -> sw.js?v=f77e331-o1sVm5pNFAKk
+f77e331 -> dpl_BXaBdNxDgSFiivcbWzcRtmYaY2KP -> sw.js?v=f77e331-WzcRtmYaY2KP
+```
+
+**Lo que falla es el GATE**: `scripts/verificar-int12.mjs` no es una red
+confiable, y por lo tanto **INT-12 no se puede declarar verificado**, aunque la
+propiedad se haya observado.
+
+#### Los tres agujeros, reproducidos por el auditor
+
+1. **El historial se puede inventar.** Dos objetos JSON escritos a mano —sin
+   build, sin deploy, sin tocar código— dan **13/13 PASS**, y el verificador
+   afirma *"cada deploy renombra el caché"* citando una versión que ningún build
+   produjo:
+
+   ```
+   {"artefacto":"inventado1","version":"jamas-existio-1"}
+   {"artefacto":"inventado2","version":"jamas-existio-2"}
+   -> PASS · 3 artefactos distintos con 3 versiones distintas · 13/13
+   ```
+
+   Pasar de un booleano a dos objetos coherentes **no cambió la raíz de
+   confianza**: cambió la cantidad de tipeo. El veredicto ya no se *lee* de una
+   bandera, pero se *deriva* de datos igual de inventables.
+
+2. **La invariante "las observaciones nunca se borran" ya se violó — y la violé
+   yo.** El auditor lo probó por `CreationTime`: el directorio existe desde la
+   noche anterior y el archivo se creó a las 12:37:06 p.m., justo en la primera
+   observación de producción. `writeFileSync` no reinicia `CreationTime`: el
+   archivo no existía un segundo antes. Lo borré con `Remove-Item` para poder
+   correr los controles negativos, que **exigen** un historial vacío.
+
+   Es la misma confusión ausente-vs-vacío de `env.ts` y de INT-12 ciclo 1, un
+   nivel más arriba: **"borrado tras una violación" y "primera corrida" son
+   indistinguibles**, y el borrado no deja rastro porque el archivo está
+   gitignoreado.
+
+3. **El PASS no distingue un deploy de un rebuild ocioso.** Sin variables de
+   Vercel la versión sale de `build-<instante>`, así que **dos `npm run build` de
+   un árbol intacto** dan versión nueva → lista de assets nueva → artefacto nuevo
+   → PASS. Y como el minificador no es determinista, "dos artefactos distintos"
+   tampoco implica "el código cambió".
+
+Más dos hallazgos menores pero reales: la huella cubre **solo `/login`**, así que
+un deploy que toque únicamente componentes de servidor autenticados (`/dueno`,
+`pantalla-operador`, route handlers) es invisible; y `slice(-20)` puede desalojar
+la mitad de un par en conflicto y convertir un FAIL en PASS.
+
+#### Corrección de un error del ledger — se registra, no se edita
+
+En la entrada anterior se reportó `int12 13/13` como estado **local**. Es falso
+hoy: el comando devuelve
+
+```
+npm run verificar:int12
+FAIL · dos deploys nunca comparten versión (INT-12) · 2 observación/es para
+       http://localhost:3000 (1 artefacto/s, 1 versión/es)
+12/13 comprobaciones PASS   exit=1
+```
+
+El 13/13 local fue real cuando se midió, y se reportó como estado actual después
+de haber borrado el historial para los controles negativos. **Un número verde que
+el comando no devuelve es exactamente lo que `CLAUDE.md` §6 prohíbe**, y el
+mecanismo que lo produjo —medir, cambiar el estado, y seguir citando la medición
+vieja— es el mismo que este hallazgo persigue. El de producción sí se sostiene y
+se reprodujo: 13/13, exit=0.
+
+#### Lo que el auditor concedió
+
+El argumento de diseño del ciclo 3 —*"la dirección que detecta el bypass es
+válida con acoplamiento o sin él, porque ahí la versión es justamente la que no
+cambió"*— **se sostiene**. No es racionalización. El problema no es el
+acoplamiento: es que el historial del que se deriva el veredicto es un insumo
+**confiado**, borrable e inventable.
+
+Y desmintió el "imposible" con una salida concreta: guardar en cada observación
+la **URL inmutable del deployment** (`https://<deployment-id>.vercel.app`, que
+Vercel mantiene viva) y **re-derivar** `{artefacto, version}` de ella en cada
+corrida, en vez de creerle al archivo. Una entrada forjada no re-deriva; un
+historial borrado se reconstruye. Sumado a dejar de gitignorear el archivo —para
+que borrarlo o editarlo aparezca en un diff— y a asertar que la página y los
+`fetch` de la huella vinieron del mismo deployment.
+
+#### Estado que queda registrado
+
+| | |
+|---|---|
+| Corrección de INT-12 en el módulo | **implementada**, sana según el auditor, observada en producción |
+| Gate automático de INT-12 | **FAIL** — no es confiable |
+| INT-12 como hallazgo | **NO cerrado.** BoundedLoop agotado |
+| Hito | **detenido** por la regla del concilio |
+
+Lo demás sigue en verde y se reprodujo en esta misma corrida:
+
+```
+PRODUCCIÓN (f77e331)   endurecimiento 30/30 · ui 18/18 · int12 13/13
+LOCAL                  122 pruebas · tsc · lint · pwa 13/13 · op1 11/11
+                       a3 11/11 · m4 29/29 · salida 11/11 · meas2 10/10
+                       invariantes 8/8 · esquema 4/4 · verificadores 25/25
+                       int12 12/13  <- el FAIL de este registro
+```
