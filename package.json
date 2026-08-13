@@ -24,6 +24,8 @@
     "verificar:invariantes": "node --env-file=.env scripts/verificar-invariantes.mjs",
     "verificar:endurecimiento": "node --env-file=.env scripts/verificar-endurecimiento.mjs",
     "verificar:ac": "node scripts/verificar-ac.mjs",
+    "verificar:alcance": "node scripts/verificar-alcance.mjs",
+    "verificar:alcance:prueba": "node scripts/verificar-alcance.prueba.mjs",
     "verificar:citas": "node scripts/verificar-citas.mjs",
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"

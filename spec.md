@@ -90,7 +90,7 @@ factura, deploy inmediato.**
 | Base de datos | **Postgres en Railway, vía TCP proxy público** (ADR-003, enmienda a ADR-002). Decisión original: Neon vía Marketplace de Vercel. Se cambió porque ya existía una instancia provisionada en Railway. Costo asumido: se rompe "un proveedor, una factura". |
 | ORM | Drizzle (esquema tipado + migraciones). Driver: `postgres` (postgres-js) sobre TCP. |
 | Auth | Mínima, dos roles: `operador` y `dueño`. Sin proveedor de pago. |
-| Offline | **Offline-first (no opcional):** service worker + IndexedDB local + sincronización al reconectar. |
+| Offline | **Offline-first (no opcional):** service worker + IndexedDB local + sincronización al reconectar. Cubre el **ingreso**, que es lo que mide H1; la **salida requiere conexión** (§5). |
 
 **Por qué offline-first:** el operador registra de pie, con conectividad
 intermitente. Si la app se cae sin señal, muere la adopción (H1). El registro
@@ -182,6 +182,19 @@ de IndexedDB.*
    (valor_hora, fraccion_minutos, monto_minimo); `estado = cerrada`.
 3. La app muestra el monto para que el operador **cobre en efectivo** (fuera del sistema).
 
+> **La salida requiere conexión; el ingreso no.** El `monto_calculado` se computa
+> en el servidor con la tarifa vigente, porque un cliente que estuvo sin red
+> puede tener una tarifa vieja — y mostrar un monto equivocado al cobrar en
+> efectivo es peor que pedir señal un momento.
+>
+> Sin conexión el vehículo **queda `activa` y la salida no se registra**. No hay
+> reintento automático: el operador vuelve a tocar *Salida* al reconectar, y el
+> monto no cambia porque el cierre es idempotente.
+>
+> Esta asimetría existe desde M2 y vivía solo en `LEDGER.md`. Se escribe acá
+> porque una restricción de producto que no está en la spec es una restricción
+> que el próximo lector no encuentra.
+
 **AC-OP-2 (cálculo correcto).** Dada una tarifa y una duración conocidas, el
 `monto_calculado` coincide con el valor esperado, incluido el `monto_minimo` y
 el redondeo por `fraccion_minutos`. *Verificación: prueba unitaria del cálculo.*
@@ -234,10 +247,19 @@ que los agregados del panel corresponden.*
 ## 8. Requisitos no funcionales
 
 - **PWA instalable:** manifiesto válido + service worker; instalable en móvil.
-- **Offline-first:** el flujo del operador (§5) funciona sin conexión.
+- **Offline-first:** el **ingreso** del operador (§5) funciona sin conexión. La
+  **salida** requiere red y no se reintenta sola — ver la nota de §5.
 - **Un solo estacionamiento** en la v1 (sin multitenancy).
 - **Simplicidad de operación:** deploy por `git push`; sin infraestructura que
-  administrar más allá de Vercel + Neon.
+  administrar más allá de Vercel + la base gestionada.
+
+> **Corrección de proveedor (2026-08-13).** Esta sección y §10 decían "Neon".
+> ADR-003 movió la base a **Postgres en Railway** el 2026-08-09 y estas dos
+> menciones quedaron sin actualizar. §3 ya lo reflejaba.
+>
+> **Deuda declarada, no criterio cumplido:** el deploy corre hoy por **CLI de
+> Vercel**, no por `git push`. El repositorio remoto existe
+> (`cherrera0001/p4rkc0ntr0l`) pero no está conectado al proyecto de Vercel.
 
 ---
 
@@ -245,16 +267,22 @@ que los agregados del panel corresponden.*
 
 | ID | Criterio | Verificación |
 |----|----------|--------------|
-| AC-SCOPE-1 | El manifiesto no incluye SDK ni cliente de pasarela de pago. | `grep -iE "stripe\|mercadopago\|webpay\|transbank\|flow" package.json` → sin resultados |
-| AC-SCOPE-2 | El esquema no define `Pago`/`Transaccion`/`Sucursal`/`Reserva`. | `grep -riE "pago\|transaccion\|sucursal\|reserva" src/db/` → sin entidades |
-| AC-SCOPE-3 | No existe módulo de integración LPR/cámara. | inspección de estructura del repo |
-| AC-DATA-1 | El modelo de datos coincide con §4 (entidades y campos). | revisión del esquema Drizzle |
-| AC-OP-1 | Ingreso offline persiste y sincroniza. | prueba manual offline + IndexedDB |
-| AC-OP-2 | Cálculo de precio correcto (mínimo + fracción). | prueba unitaria |
-| AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | consulta agregada = 0 nulos |
-| AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | prueba end-to-end |
-| AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `node scripts/verificar-pwa.mjs` → todas las comprobaciones PASS |
+| AC-SCOPE-1 | **El conductor no paga dentro del sistema.** El cobro del estacionamiento sigue siendo en efectivo, fuera de la app. Ninguna pasarela vive fuera de la frontera declarada de suscripción, y el flujo del estacionamiento no la importa. | `npm run verificar:alcance` → todas las comprobaciones PASS |
+| AC-SCOPE-2 | El esquema no define `Pago`/`Transaccion`/`Sucursal`/`Reserva`. | `npm run verificar:alcance` → todas las comprobaciones PASS |
+| AC-SCOPE-3 | No existe módulo de integración LPR/cámara. | `npm run verificar:alcance` → todas las comprobaciones PASS |
+| AC-DATA-1 | El modelo de datos coincide con §4 (entidades y campos). | `npm run verificar:esquema` → todas las comprobaciones PASS |
+| AC-DATA-2 | Las invariantes del modelo §4 se hacen cumplir **en la base**, declaradas en la migración y no solo en la aplicación: un vehículo no está dos veces adentro del mismo estacionamiento; `salida_at ≥ entrada_at`; `tecleo_fin_at ≥ tecleo_inicio_at`; `monto_calculado ≥ 0`; `capacidad_total > 0`; `valor_hora ≥ 0`; `fraccion_minutos > 0`; `monto_minimo ≥ 0`. | `npm run verificar:invariantes` → todas las comprobaciones PASS |
+| AC-OP-1 | Ingreso offline persiste y sincroniza. | `npm run verificar:op1` → todas las comprobaciones PASS |
+| AC-OP-2 | Cálculo de precio correcto (mínimo + fracción). | `npm test` → 0 fallos |
+| AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS |
+| AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS |
+| AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS |
 | AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores |
+
+> **Cada criterio cita el COMANDO, no un número.** Los conteos derivan y crecen
+> con cada comprobación que se agrega; un AC que dijera "13/13" quedaría falso al
+> día siguiente. `npm run verificar:ac` comprueba que ningún criterio apunte a un
+> script inexistente o a una herramienta ausente.
 
 > **Enmienda de AC-PWA-1 (2026-08-09).** La redacción original verificaba con
 > *"auditoría PWA (Lighthouse)"*. Lighthouse **eliminó la categoría PWA**: la
@@ -269,6 +297,43 @@ que los agregados del panel corresponden.*
 > herramienta externa caduca cuando la herramienta cambia. Describir la
 > propiedad; sugerir la herramienta.
 
+> **Enmienda de AC-SCOPE-1 (2026-08-13).** ADR-004 se aceptó en su alternativa 2:
+> se habilita el cobro de **suscripción** (dueño → C4A) y **multisitio sigue
+> excluido**. El criterio anterior era un `grep` de marcas de pasarela sobre
+> `package.json`, y no distinguía los dos cobros: en cuanto entrara una pasarela
+> de suscripción empezaría a dar positivo **por diseño**.
+>
+> Se reescribió describiendo **la propiedad**: *el conductor no paga dentro del
+> sistema*. La verificación pasó de una expresión regular en esta tabla a
+> `npm run verificar:alcance`, que escanea **por exclusión** —toda la superficie
+> del producto, exceptuando la frontera declarada `src/lib/suscripcion/`— en vez
+> de enumerar archivos.
+>
+> Dos razones, las dos medidas y no supuestas:
+>
+> 1. **La regex en una celda de tabla era inejecutable.** El pipe va escapado
+>    (`\|`) para no romper la tabla, y copiado tal cual a PowerShell `\|` es un
+>    pipe **literal**: el patrón nunca matchea. Comprobado:
+>    `Select-String "next\|react"` → 0 líneas; `"next|react"` → 9. Un criterio
+>    que reporta PASS incondicionalmente es peor que no tener criterio.
+> 2. **Enumerar archivos deja agujeros por construcción.** Una ruta nueva
+>    —`src/app/api/cobro/route.ts`— evade cualquier lista blanca.
+>
+> El gate se prueba **con el fallo plantado** (`npm run verificar:alcance:prueba`,
+> 8/8): ruta nueva que le cobra al conductor, dependencia sin frontera, pasarela
+> dentro de su frontera (que debe **pasar**), importación cruzada, entidad
+> prohibida, captura de imagen, y dos falsos positivos que no deben disparar.
+> Esa prueba encontró un defecto real del gate antes de escribirlo acá.
+>
+> **Un gate que solo se probó contra un repo limpio no se probó.**
+
+> **Enmienda de la columna de verificación (2026-08-13).** Seis de los diez
+> criterios citaban prosa —*"prueba unitaria"*, *"revisión del esquema Drizzle"*,
+> *"prueba end-to-end"*, *"inspección de estructura del repo"*— mientras existían
+> verificadores ejecutables que ya los cubrían y que `LEDGER.md` ya citaba como
+> su evidencia. Se reapuntaron al comando que los verifica. **No se agregó ningún
+> requisito**: cada criterio dice lo mismo que decía, y ahora se puede correr.
+
 ---
 
 ## 10. Secuencia de construcción (hitos, WIP = 1)
@@ -277,12 +342,12 @@ Cada hito cierra con sus criterios de aceptación verificados antes de abrir el 
 
 - **M0 — Bootstrap.** Repo Next.js + `CLAUDE.md` con el gate de alcance +
   `.gitignore`. Sin código de app. → cierra con estructura lista.
-- **M1 — Esquema + scaffold.** PWA (manifiesto + service worker), Neon + Drizzle,
+- **M1 — Esquema + scaffold.** PWA (manifiesto + service worker), Postgres + Drizzle,
   esquema de §4. → cierra con AC-DATA-1, AC-SCOPE-1/2, AC-BUILD-1, AC-PWA-1.
 - **M2 — Rebanada del operador (offline).** Flujo completo de §5 con
   instrumentación de tecleo (§6). → cierra con AC-OP-1, AC-OP-2, AC-MEAS-1.
 - **M3 — Panel del dueño.** Visibilidad y descuadre (§6). → cierra con AC-MEAS-2.
-- **M4 — Deploy.** Conexión a Vercel + integración Neon del Marketplace +
+- **M4 — Deploy.** Conexión a Vercel + Postgres en Railway (ADR-003) +
   variables de entorno. → cierra con URL en vivo y un registro de prueba
   end-to-end.
 

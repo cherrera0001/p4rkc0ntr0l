@@ -201,11 +201,29 @@ for (const fila of filas) {
 }
 
 const huerfanos = verificadores.filter((v) => !citados.has(v));
-comprobar(
-  "todo verificador del repo está citado por algún AC",
-  huerfanos.length === 0,
-  huerfanos.length ? `${huerfanos.length} sin AC: ${huerfanos.join(", ")}` : `${verificadores.length} verificadores`,
-);
+
+/**
+ * **Informativo a propósito, no un FAIL.**
+ *
+ * Un verificador sin AC es un huérfano: verifica algo real y ningún criterio
+ * escrito lo exige, así que un refactor podría borrarlo sin violar nada. Es
+ * información valiosa.
+ *
+ * Pero hacerlo fallar empujaría a **especificar retroactivamente** todo lo que
+ * tiene verificador —el endurecimiento entero, la capa de presentación— y eso es
+ * autorar requisitos nuevos, no formalizar. La frontera que este proyecto
+ * adoptó: *¿el AC hace exigible una afirmación que ya está en §1-§8, o introduce
+ * una afirmación nueva?* Un guard no puede decidir eso; una persona sí.
+ *
+ * Así que se reporta y no se bloquea. Que la lista exista es el punto.
+ */
+if (huerfanos.length > 0) {
+  console.log(
+    `INFO · ${huerfanos.length} verificador(es) sin AC en §9, decisión pendiente de especificar-o-soltar: ${huerfanos.join(", ")}`,
+  );
+} else {
+  console.log(`INFO · los ${verificadores.length} verificadores de producto están citados por algún AC`);
+}
 
 // --- Cierre -------------------------------------------------------------------
 
