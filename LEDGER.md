@@ -2295,3 +2295,82 @@ chunks estáticos como `text/plain` con 500, el service worker no registraba y
 advertencia del PASO 0 —el repo vive en OneDrive— agravada por rebuilds
 concurrentes de los subagentes. **Procedimiento**: matar todo proceso `next`,
 borrar `.next`, rebuildear, y recién entonces medir.
+
+---
+
+### 2026-08-13 · SPEC-004 y INT-12 verificados CONTRA PRODUCCIÓN
+
+#### El control negativo que hacía falta
+
+Antes de desplegar el arreglo de capas, producción seguía sirviendo el CSS
+defectuoso. Eso dio el control negativo gratis, y es lo que hace que
+`verificar-ui.mjs` valga: **el mismo verificador, el mismo dominio, diez minutos
+de diferencia.**
+
+```
+ANTES del deploy (CSS sin @layer)          DESPUÉS del deploy
+9/18 comprobaciones PASS   exit=1          18/18 comprobaciones PASS   exit=0
+
+FAIL · text-xs = 12px          -> 16px     PASS · text-xs = 12px          -> 12px
+FAIL · .cifra.text-2xl = 24px  -> 44px     PASS · .cifra.text-2xl = 24px  -> 24px
+FAIL · las tres capas existen  -> components=-1
+FAIL · .eyebrow/.patente/.cifra/.tabular en @layer components -> capa=utilities
+FAIL · :focus-visible no impone border-radius
+```
+
+Medido con el estilo **computado por el navegador**, no leyendo el fuente. Es la
+única forma en que este defecto era visible: los cuatro AC de SPEC-004 daban
+PASS mientras el navegador aplicaba otra cosa.
+
+#### INT-12 · el bypass del auditor, cerrado y medido EN PRODUCCIÓN
+
+El auditor había vetado el ciclo 1 reproduciendo en sandbox que **dos deploys del
+mismo commit daban la misma versión**. La comprobación real es esa misma, hecha
+contra la URL viva: dos deploys seguidos, árbol limpio, sin un solo cambio de
+código.
+
+```
+git rev-parse --short HEAD -> a3a3b6b        (árbol: limpio)
+
+deploy 1  dpl_AFWrbLr8YR453yFceHiyYFJWGq9B -> versión a3a3b6b-eHiyYFJWGq9B
+deploy 2  dpl_4jVqJsyibZe5SxKpadnw9t9YTCMj -> versión a3a3b6b-adnw9t9YTCMj
+
+npm run verificar:int12 -- https://estacionamiento-three.vercel.app
+PASS · si el artefacto cambió, la versión cambió
+     · artefacto 406k2a → m4nwa1 · versión a3a3b6b-eHiyYFJWGq9B → a3a3b6b-adnw9t9YTCMj
+12/12 comprobaciones PASS   INT-12: PASS   exit=0
+```
+
+Con el código del ciclo 1 los dos deploys habrían dado `a3a3b6b12345`: mismo
+nombre de caché, `activate` sin nada que purgar, shell viejo vivo para siempre.
+
+La composición se lee sola en el resultado: `a3a3b6b` es el commit —trazabilidad,
+mirando un caché se sabe qué código lo escribió— y `adnw9t9YTCMj` es la cola del
+identificador del deploy —unicidad—. **La trazabilidad no participa de la
+unicidad y no puede volver a apropiársela**, que era exactamente el defecto.
+
+Dato que cierra una incógnita declarada del implementador: en un deploy por CLI
+`VERCEL_GIT_COMMIT_SHA` **sí** existe —`a3a3b6b` es el HEAD real— y
+`VERCEL_DEPLOYMENT_ID` también. O sea que el escenario del veto no era hipotético:
+con el código anterior, la versión habría salido del SHA y habría sido constante.
+
+Primera corrida contra producción: FAIL por falta de línea base, con el mensaje
+*"no pude comprobarlo, que no es lo mismo que esté bien"*. Es el comportamiento
+pedido tras el veto — antes esa situación imprimía una NOTA y salía 0.
+
+#### Endurecimiento, sin regresión
+
+```
+npm run verificar:endurecimiento -- https://estacionamiento-three.vercel.app
+30/30 comprobaciones PASS   ENDURECIMIENTO: PASS   exit=0
+```
+
+La capa de presentación no rompió la CSP con nonce (AC-UI-4), que era el riesgo
+concreto: un `style` inline es la forma más natural de escribir CSS en React y es
+justo lo que una CSP con nonce prohíbe.
+
+#### Estado de producción
+
+`https://estacionamiento-three.vercel.app` sirve el commit `a3a3b6b`:
+endurecimiento completo, INT-12 corregido y la capa de presentación aplicada.
+`OPERACION_REAL_HABILITADA=false`.
