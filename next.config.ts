@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-import { resolverVersionApp, sanearVersion } from "./src/lib/version-app.ts";
+import { resolverVersionApp, sanearVersion, VAR_MEMO_VERSION } from "./src/lib/version-app.ts";
 
 /**
  * Identidad del build, para versionar los cachés del service worker
@@ -13,6 +13,15 @@ import { resolverVersionApp, sanearVersion } from "./src/lib/version-app.ts";
  * es lo que se prueba sin levantar nada.
  */
 const VERSION_APP = resolverVersionApp(process.env);
+
+/**
+ * Este archivo se evalúa varias veces por build, y con el reloj como último
+ * recurso cada evaluación resolvía una versión distinta (se midió: 566 ms de
+ * diferencia entre el manifiesto de servidor y el chunk del cliente del mismo
+ * build). Memorizarla acá hace que las evaluaciones siguientes —y los procesos
+ * hijos del build, que heredan el entorno— resuelvan la misma.
+ */
+process.env[VAR_MEMO_VERSION] = VERSION_APP;
 
 /**
  * Segunda barrera, y la que no puede pasar inadvertida: un build que no logra

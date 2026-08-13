@@ -20,7 +20,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
-import { limpiarFixtures } from "./lib/fixtures.mjs";
+import { EMAIL_DUENO, EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -83,7 +83,7 @@ try {
 
   // ---- El operador registra N sesiones -----------------------------------
   const operador = await browser.newPage();
-  await entrar(operador, "operador@fixture.invalid");
+  await entrar(operador, EMAIL_OPERADOR);
   comprobar(
     "el operador entra a su pantalla",
     (await operador.$('[data-testid="nuevo-ingreso"]')) !== null,
@@ -188,7 +188,7 @@ try {
 
   // ---- El dueño mira su panel --------------------------------------------
   const duena = await browser.newPage();
-  await entrar(duena, "duena@fixture.invalid");
+  await entrar(duena, EMAIL_DUENO);
   comprobar(
     "la dueña entra a su panel",
     new URL(duena.url()).pathname === "/dueno",

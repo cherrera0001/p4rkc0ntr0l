@@ -489,3 +489,88 @@ Escribir el criterio de "cambia entre dos estados" **antes** que el fix, y con l
 comparación obligatoria desde el principio. El flag `--anterior` opcional nació
 como comodidad para la primera corrida y se quedó como agujero. Toda comodidad
 que apaga una comprobación termina siendo la comprobación apagada.
+
+---
+
+## La revisión de código, y el patrón que atraviesa el día (2026-08-13)
+
+Trece hallazgos independientes. Leídos juntos, nueve de ellos son **la misma
+familia**: *el mecanismo existe, se ve correcto, y no está conectado a nada.*
+
+| Hallazgo | Qué prometía | Qué hacía |
+|---|---|---|
+| CSS sin capa | tipografía por token | las utilidades de Tailwind no ganaban nunca |
+| `sembrar` sin `--env-file` | fixtures configurables por `.env` | no leía una sola variable |
+| `??` contra variables vacías | default razonable | sembraba nombre vacío y zona horaria inválida |
+| `entero()` sustituyendo | tolerancia a errores | la configuración escrita nunca se aplicaba |
+| emails a medio extraer | identidades configurables | cinco verificadores buscando la identidad vieja |
+| `--anterior` opcional | detectar el cambio de versión | `exit 0` sin comprobar nada |
+| comentario sobre las dos copias | comparación garantizada | ningún script la hacía |
+
+Ninguno de los siete rompía una prueba. Todos daban verde.
+
+### La regla
+
+**Un mecanismo desconectado es peor que un mecanismo ausente**, porque el
+ausente se nota y el desconectado tranquiliza. Y se desconectan casi siempre en
+el mismo lugar: **la frontera entre lo que se escribió y lo que se ejecuta** —
+el `package.json` que invoca el script, la capa donde cae la regla CSS, el flag
+que decide si la comprobación corre.
+
+El corolario práctico: **probar por la puerta de entrada real.** Todo esto
+pasaba verde con `node scripts/…` directo y fallaba por `npm run …`, que es como
+se corre de verdad. La regresión ahora se corre por los scripts de npm por eso, no
+por prolijidad.
+
+### El caso del CSS, que merece nombre propio
+
+Una declaración sin `@layer` le gana a cualquier capa, sin importar la
+especificidad. Tailwind pone sus utilidades en `@layer utilities`. Resultado: un
+`p { font-size: … }` suelto en `globals.css` derrotaba a `text-xs` **en todos los
+`<p>` del producto**, y `.cifra` derrotaba a los ajustes en el sitio de uso.
+
+La mitad de las decisiones tipográficas de M6 no se aplicaba, y los cuatro
+criterios de SPEC-004 daban PASS: AC-UI-1/2/3 miran el **fuente** y AC-UI-4 mira
+la **CSP**. Ninguno miraba lo que el navegador realmente calcula.
+
+Lección: **un criterio sobre el fuente no verifica el resultado.** Para CSS, la
+propiedad hay que comprobarla en el artefacto compilado o en el estilo computado
+del navegador. Verifiqué el orden de capas en la hoja que sirve el servidor —
+`base` 5849 < `components` 10667 < `utilities` 11316— y no en el archivo que
+escribí.
+
+### El mismo `??` por tercera vez en dos días
+
+INT-12 costó dos ciclos de concilio porque `""` no es nullish. `sembrar.mjs`
+tenía el defecto idéntico contra variables que `.env.example` distribuye. Y
+`env.ts` ya tenía la solución escrita desde M4 (`leerEnv`).
+
+**Tener el helper no alcanza: hay que usarlo.** La próxima vez que aparezca
+`process.env.X ??`, es un defecto hasta que se demuestre lo contrario.
+
+Cambio de criterio que se deriva: un valor de configuración **ausente** toma el
+default; un valor **presente pero inválido** falla. Sustituirlo en silencio hace
+que la configuración escrita no se aplique y que las pruebas sigan pasando con
+los valores viejos — que es exactamente cómo `FIXTURE_VALOR_HORA=100O` habría
+seguido dando su `$1500` esperado.
+
+### Media extracción es peor que ninguna
+
+Los emails de fixture se hicieron configurables en dos de siete lugares. La
+versión anterior —hardcodeada en todos— fallaba igual en todas partes, que es
+diagnosticable. La versión a medias fallaba **solo en algunos**, que no lo es.
+
+Regla: una extracción de constante se termina o no se empieza. Y se cierra con
+un chequeo que impida la regresión, no con disciplina.
+
+### Sobre el entorno, que costó dos diagnósticos falsos
+
+Dos veces hoy un FAIL fue del `.next` corrupto y no del código: el servidor
+servía los chunks como `text/plain` con 500 y el service worker no registraba.
+El repo vive en OneDrive —advertencia del PASO 0— y los subagentes rebuildeaban
+en paralelo.
+
+Procedimiento, no intuición: **matar todo proceso `next`, borrar `.next`,
+rebuildear, y recién entonces medir.** Y antes de creerle a un FAIL de navegador,
+correrlo aislado: la contención entre instancias de Edge ya produjo tres falsos
+positivos distintos en el proyecto.

@@ -29,13 +29,13 @@
 import { existsSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { leerJson } from "./lib/respuesta.mjs";
-import { limpiarFixtures } from "./lib/fixtures.mjs";
+import { EMAIL_DUENO, EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 import { sanearVersion } from "../src/lib/version-app.ts";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO;
-const EMAIL_OPERADOR = process.env.EMAIL_OPERADOR ?? "operador@fixture.invalid";
-const EMAIL_DUENO = process.env.EMAIL_DUENO ?? "duena@fixture.invalid";
+// Las identidades salen de `lib/fixtures.mjs`, una sola vez para todos los
+// verificadores. Antes cada uno tenía la suya y la extracción quedó a medias.
 
 if (!CLAVE) {
   console.error("FAIL · falta CLAVE_ACCESO. Probá: node --env-file=.env " + import.meta.filename);

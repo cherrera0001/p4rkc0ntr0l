@@ -2163,3 +2163,135 @@ EMAIL_OPERADOR=operador@estacionamientocentro.cl ...  -> FAIL · no termina en .
 cumplimiento de A-3, no un ajuste: una barrera que se afloja con una variable de
 entorno no es una barrera. Queda en `src/lib/fixtures.ts` y anotada en `.env`
 como referencia de solo lectura.
+
+---
+
+### 2026-08-13 · Revisión de código independiente · 13 hallazgos · 9 cerrados por mí
+
+Revisión adversarial de solo lectura sobre `5328b0c` más el árbol de trabajo.
+Trece hallazgos: 2 altos, 8 medios, 3 bajos. Los cinco de INT-12 fueron al
+implementador; los nueve restantes se corrigieron acá.
+
+#### Los dos altos eran el mismo defecto, y anulaban M6 entero
+
+**Todo el CSS de `globals.css` estaba SIN capa.** Una declaración sin `@layer` le
+gana a cualquier capa, sin importar la especificidad, y Tailwind pone todas sus
+utilidades en `@layer utilities`. Consecuencia medida:
+
+- `p { font-size: var(--fs-body); … }` **derrotaba a `text-xs` en todos los
+  `<p>` del producto**. El aviso del piloto, la nota de lista parcial, la
+  duración de cada vehículo, el mensaje de descuadre y la nota al pie del panel
+  se veían a 16px teniendo clases de 12–14px.
+- `.cifra` derrotaba a los ajustes deliberados en el sitio de uso:
+  `class="cifra tabular text-2xl"` en el monto de una salida rendereaba a 44px
+  dentro de una fila de lista, reventando el layout.
+
+Es decir: **la mitad de las decisiones tipográficas de M6 no se estaban
+aplicando**, y ningún AC lo veía porque AC-UI-1/2/3 miran el fuente y AC-UI-4
+mira la CSP.
+
+Corregido: defaults de elemento en `@layer base`, utilidades del sistema en
+`@layer components`. Verificado **en el CSS compilado que sirve el servidor**, no
+en el fuente:
+
+```
+@layer properties  en 3713
+@layer theme       en 4528
+@layer base        en 5849     <- p{font-size:var(--fs-body)} idx=10252
+@layer components  en 10667    <- .cifra                      idx=11101
+@layer utilities   en 11316    <- .text-2xl                   idx=15052
+```
+
+Con ese orden, `text-xs` gana sobre `p` y `text-2xl` gana sobre `.cifra`, que es
+exactamente lo que las pantallas asumían.
+
+**Tercer síntoma de la misma raíz:** `:focus-visible` traía `border-radius`, así
+que al enfocar con teclado el campo de patente sus esquinas saltaban de
+`rounded-2xl` a 0.375rem. Quitado — el contorno ya sigue la forma del elemento.
+
+#### `npm run sembrar` no leía nada de lo que documentaba
+
+`package.json` lo invocaba **sin `--env-file=.env`**. La documentación nueva de
+`sembrar.mjs` y `.env.example` afirmaba que los fixtures salen de `.env`, y por
+la puerta de entrada documentada no se leía ninguna: sembraba los defaults
+hardcodeados y ni siquiera veía `DATABASE_URL`, saliendo con
+`FAIL · falta DATABASE_URL`. **Todo el cambio de configuración era inerte.**
+
+Se agregó `--env-file=.env` ahí y en los siete verificadores que tocan la base y
+tampoco lo tenían. Con la limpieza de fixtures mecanizada el 2026-08-12, esos
+scripts necesitan `DATABASE_URL` desde la primera línea.
+
+#### El mismo `??` que INT-12 costó dos ciclos, otra vez
+
+`sembrar.mjs` usaba `??` contra variables que `.env.example` distribuye. Con
+`FIXTURE_NOMBRE_ESTACIONAMIENTO=` se sembraba un estacionamiento **sin nombre**,
+y de paso se rompía la idempotencia: la búsqueda `eq(nombre, "")` ya no encuentra
+la fila anterior. Con `FIXTURE_ZONA_HORARIA=` quedaba una zona IANA inválida que
+se propaga al corte del día del panel del dueño.
+
+Corregido con la misma regla de `leerEnv()`: **presente pero vacío es ausente**.
+
+Y un cambio de criterio, no solo de código: `entero()` devolvía el default ante
+cualquier valor inválido. `FIXTURE_VALOR_HORA=100O` (con letra O) sembraba 1000 y
+`verificar-salida.mjs` seguía dando su `$1500` esperado — la configuración escrita
+nunca se aplicaba y **nada lo decía**. Ahora falla. Se acepta `0` donde tiene
+sentido (`monto_minimo` cero es una tarifa legítima) y se valida la zona horaria
+contra `Intl.DateTimeFormat`.
+
+```
+npm run sembrar                              -> PASS · semilla de fixtures lista
+FIXTURE_NOMBRE_ESTACIONAMIENTO=  (vacía)     -> usa el default, no siembra vacío
+FIXTURE_VALOR_HORA=100O                      -> FAIL · no es un entero >= 1   exit=1
+FIXTURE_ZONA_HORARIA=America/Nolandia        -> FAIL · no es una zona IANA válida
+```
+
+#### Media extracción es peor que ninguna
+
+Los emails de fixture se hicieron configurables **solo** en `sembrar.mjs` y
+`verificar-endurecimiento.mjs`. Los otros cinco verificadores seguían con
+`operador@fixture.invalid` escrito a mano. Definir `EMAIL_OPERADOR` sembraba una
+identidad y hacía fallar el login de cinco verificadores de regresión.
+
+La versión anterior fallaba igual en todos lados, que es más honesto; esta
+fallaba solo en algunos, que es más difícil de diagnosticar. Las identidades
+pasaron a `scripts/lib/fixtures.mjs`, un solo lugar, y el chequeo queda:
+
+```
+Get-ChildItem -Recurse scripts -Include *.mjs |
+  Select-String "fixture\.invalid" | Where-Object { $_.Path -notlike "*lib\fixtures.mjs" }
+-> sin resultados
+```
+
+#### Bajos
+
+- `scripts/estado/` (línea base del verificador de INT-12) no estaba en
+  `.gitignore`. Es estado local de la máquina y del origen medido: commiteado
+  produce FAIL confusos en un clon nuevo. Agregado y comprobado con
+  `git check-ignore`.
+
+#### Regresión completa tras las nueve correcciones
+
+```
+npm test                     122 pruebas, 30 suites, 0 fallos
+npx tsc --noEmit exit=0  ·  npm run lint exit=0  ·  npm run build exit=0
+
+verificar:endurecimiento 30/30   verificar:pwa        13/13
+verificar:op1            11/11   verificar:a3         11/11
+verificar:m4             29/29   verificar:salida     11/11
+verificar:meas1          PASS    verificar:meas2      10/10
+verificar:invariantes     8/8    verificar:esquema     4/4
+verificar:verificadores  23/23   verificar:int12      12/12
+```
+
+Todos corridos **por su script de npm**, que es como se van a correr de verdad —
+correrlos con `node` directo era justamente lo que ocultaba el defecto del
+`--env-file`.
+
+#### Nota de entorno, registrada porque costó tiempo
+
+Dos corridas dieron FAIL falsos por un `.next` corrupto: el servidor servía los
+chunks estáticos como `text/plain` con 500, el service worker no registraba y
+`verificar-int12` reportaba `sin worker`. No era el código. La causa es la
+advertencia del PASO 0 —el repo vive en OneDrive— agravada por rebuilds
+concurrentes de los subagentes. **Procedimiento**: matar todo proceso `next`,
+borrar `.next`, rebuildear, y recién entonces medir.

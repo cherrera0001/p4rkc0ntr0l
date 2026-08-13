@@ -54,3 +54,8 @@ Thumbs.db
 # dejaba la plantilla fuera del repo. Se reinstaura: la plantilla SÍ se versiona,
 # los valores nunca.
 !.env.example
+
+# Estado local de los verificadores (linea base de artefacto/version de INT-12).
+# Es especifico de la maquina y del origen medido: una linea base commiteada
+# produce FAIL confusos en un clon nuevo.
+scripts/estado/

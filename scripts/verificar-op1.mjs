@@ -17,7 +17,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
-import { limpiarFixtures } from "./lib/fixtures.mjs";
+import { EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const PATENTE_FIXTURE = "FIXT00";
@@ -74,7 +74,7 @@ try {
 
   // Auth mínima de dos roles (M3): la pantalla del operador exige sesión.
   await page.goto(`${URL_BASE}/login`, { waitUntil: "networkidle2" });
-  await page.type('[data-testid="email"]', "operador@fixture.invalid");
+  await page.type('[data-testid="email"]', EMAIL_OPERADOR);
   await page.type('[data-testid="clave"]', process.env.CLAVE_ACCESO ?? "");
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle2" }),

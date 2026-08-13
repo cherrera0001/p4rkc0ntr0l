@@ -41,8 +41,9 @@
 /**
  * Saneo de la versión. Espejo de `sanearVersion` en `src/lib/version-app.ts`:
  * este archivo se sirve estático y no puede importar del bundle, así que las
- * cinco líneas se repiten. El verificador comprueba que las dos copias
- * coincidan en lo observable.
+ * cinco líneas se repiten. `scripts/verificar-int12.mjs` extrae esta función,
+ * la corre contra la del módulo sobre un corpus de entradas y falla si las dos
+ * copias divergen. Si tocás una, tocá la otra: el verificador lo nota.
  *
  * Existe por la regresión de INT-12: el build de producción inlineó la versión
  * vacía, el cliente registró `/sw.js?v=` y acá el `||` la reemplazó por el

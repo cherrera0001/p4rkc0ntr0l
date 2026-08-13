@@ -32,7 +32,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
-import { limpiarFixtures } from "./lib/fixtures.mjs";
+import { EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -97,7 +97,7 @@ try {
 
   const entrar = async () => {
     await page.goto(`${URL_BASE}/login`, { waitUntil: "networkidle2" });
-    await page.type('[data-testid="email"]', "operador@fixture.invalid");
+    await page.type('[data-testid="email"]', EMAIL_OPERADOR);
     await page.type('[data-testid="clave"]', CLAVE);
     await Promise.all([
       page.waitForNavigation({ waitUntil: "networkidle2" }),

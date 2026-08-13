@@ -20,6 +20,26 @@
 import postgres from "postgres";
 
 /**
+ * Identidades de fixture, en un solo lugar.
+ *
+ * Estaban hardcodeadas en cada verificador. Al hacerlas configurables por `.env`
+ * quedó una extracción a medias: `sembrar.mjs` sembraba la identidad nueva y
+ * cinco verificadores seguían intentando entrar con la vieja. Media extracción
+ * es peor que ninguna — la de antes fallaba igual en todos lados; esta fallaba
+ * solo en algunos, que es más difícil de diagnosticar.
+ *
+ * Una variable presente pero vacía es una variable ausente, igual que en
+ * `leerEnv()` de `src/lib/env.ts`.
+ */
+const leer = (nombre, pordefecto) => {
+  const v = process.env[nombre];
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : pordefecto;
+};
+
+export const EMAIL_OPERADOR = leer("EMAIL_OPERADOR", "operador@fixture.invalid");
+export const EMAIL_DUENO = leer("EMAIL_DUENO", "duena@fixture.invalid");
+
+/**
  * Borra las sesiones de prueba antes de empezar. Acotado al prefijo `FIXT`:
  * nunca toca datos de operación.
  *

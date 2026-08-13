@@ -165,111 +165,132 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Defaults semánticos
+   Defaults semánticos — EN `@layer base`, y el motivo importa
+   ───────────────────────────────────────────────────────────────────────────
+   Una declaración SIN capa le gana a cualquier `@layer`, sin importar la
+   especificidad. Tailwind pone todas sus utilidades en `@layer utilities`, así
+   que un `p { font-size: … }` suelto acá arriba **derrota a `text-xs` en todos
+   los `<p>` del producto**. La primera versión de este archivo tenía justo ese
+   defecto: los avisos y las notas al pie se veían a 16px teniendo `text-xs`.
+
+   El orden de Tailwind v4 es `theme` → `base` → `components` → `utilities`.
+   Los defaults van en `base` (los pisa cualquier utilidad) y las utilidades del
+   sistema en `components` (las pisa cualquier utilidad de Tailwind, que es lo
+   que permite `class="cifra text-2xl"`).
    ═══════════════════════════════════════════════════════════════════════════ */
 
-html,
-body {
-  background: var(--canvas);
-  color: var(--ink-soft);
-  font-family: var(--font-sans);
-  font-feature-settings: "ss01", "ss03", "cv11";
-  font-optical-sizing: auto;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  letter-spacing: -0.005em;
-}
+@layer base {
+  html,
+  body {
+    background: var(--canvas);
+    color: var(--ink-soft);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "ss03", "cv11";
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.005em;
+  }
 
-h1,
-h2,
-h3 {
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-feature-settings: "ss01", "ss03", "cv11";
-  text-wrap: balance;
-}
+  h1,
+  h2,
+  h3 {
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-feature-settings: "ss01", "ss03", "cv11";
+    text-wrap: balance;
+  }
 
-h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); letter-spacing: var(--tr-h1); font-weight: var(--fw-h1); }
-h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); letter-spacing: var(--tr-h2); font-weight: var(--fw-h2); }
-h3 { font-size: var(--fs-h3); line-height: var(--lh-h3); letter-spacing: var(--tr-h3); font-weight: var(--fw-h3); }
+  h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); letter-spacing: var(--tr-h1); font-weight: var(--fw-h1); }
+  h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); letter-spacing: var(--tr-h2); font-weight: var(--fw-h2); }
+  h3 { font-size: var(--fs-h3); line-height: var(--lh-h3); letter-spacing: var(--tr-h3); font-weight: var(--fw-h3); }
 
-p {
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  letter-spacing: var(--tr-body);
-  text-wrap: pretty;
-  max-width: var(--measure-prose);
-}
+  p {
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    letter-spacing: var(--tr-body);
+    text-wrap: pretty;
+    max-width: var(--measure-prose);
+  }
 
-::selection {
-  background: rgba(37, 99, 235, 0.16);
-  color: var(--ink);
-}
+  ::selection {
+    background: rgba(37, 99, 235, 0.16);
+    color: var(--ink);
+  }
 
-/* Visible siempre: el operador puede estar navegando con teclado físico en un
-   equipo compartido, y una app sin foco visible es inoperable sin mouse. */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
+  /* Visible siempre: el operador puede estar navegando con teclado físico en un
+     equipo compartido, y una app sin foco visible es inoperable sin mouse.
+
+     Sin `border-radius`: ponerlo acá le cambiaba las esquinas al elemento
+     enfocado —el campo de patente pasaba de `rounded-2xl` a 0.375rem al recibir
+     el foco—. El contorno ya sigue la forma del elemento por sí solo. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Utilidades del sistema
+   Utilidades del sistema — en `components`, para que una utilidad de Tailwind
+   las pueda ajustar en el sitio de uso (`class="cifra text-2xl"`).
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  letter-spacing: var(--tr-caption);
-  text-transform: uppercase;
-  font-weight: 600;
-  color: var(--muted);
+@layer components {
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--fs-caption);
+    line-height: var(--lh-caption);
+    letter-spacing: var(--tr-caption);
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .eyebrow::before {
+    content: "";
+    display: block;
+    height: 1px;
+    width: 1.5rem;
+    background: var(--line-strong);
+  }
+
+  /* Patentes e IDs: se leen carácter a carácter, y `O`/`0` tienen que
+     distinguirse. Es legibilidad operativa, no estética. */
+  .patente {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* La cifra grande que se lee a distancia de brazo. */
+  .cifra {
+    font-size: var(--fs-cifra);
+    line-height: var(--lh-cifra);
+    letter-spacing: var(--tr-cifra);
+    font-weight: var(--fw-cifra);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Números que cambian en vivo (temporizadores, montos): ancho fijo para que la
+     fila no se mueva a cada segundo. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-.eyebrow::before {
-  content: "";
-  display: block;
-  height: 1px;
-  width: 1.5rem;
-  background: var(--line-strong);
-}
-
-/* Patentes e IDs: se leen carácter a carácter, y `O`/`0` tienen que
-   distinguirse. Es legibilidad operativa, no estética. */
-.patente {
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* La cifra grande que se lee a distancia de brazo. */
-.cifra {
-  font-size: var(--fs-cifra);
-  line-height: var(--lh-cifra);
-  letter-spacing: var(--tr-cifra);
-  font-weight: var(--fw-cifra);
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Números que cambian en vivo (temporizadores, montos): ancho fijo para que la
-   fila no se mueva a cada segundo. */
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

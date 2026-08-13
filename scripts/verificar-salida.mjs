@@ -13,6 +13,7 @@
  */
 
 import postgres from "postgres";
+import { EMAIL_OPERADOR } from "./lib/fixtures.mjs";
 import { leerJson } from "./lib/respuesta.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
@@ -37,7 +38,7 @@ async function entrarComoOperador() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "operador@fixture.invalid",
+      email: EMAIL_OPERADOR,
       clave: process.env.CLAVE_ACCESO ?? "",
     }),
   });

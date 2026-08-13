@@ -49,8 +49,9 @@
  * Sin dependencias a propósito: lo importan `next.config.ts` (build),
  * `registrar-sw.tsx` (cliente) y el verificador. `public/sw.js` no puede
  * importarlo —es un script clásico servido estático— y repite `sanearVersion`
- * en cinco líneas; el verificador comprueba que las dos copias coincidan en lo
- * observable.
+ * en cinco líneas. Esa copia no se sostiene con buena voluntad:
+ * `scripts/verificar-int12.mjs` extrae la función del worker, la ejecuta contra
+ * esta y compara las dos salidas sobre un corpus de entradas. Si divergen, falla.
  */
 
 /** Lo que puede viajar en una query y en un nombre de caché sin sorpresas. */
@@ -92,33 +93,109 @@ export function sanearVersion(valor: string | null | undefined): string | null {
 }
 
 /**
+ * Hash corto y determinista (FNV-1a de 32 bits, en base 36).
+ *
+ * Sirve para meter un valor largo —una URL de deploy, la lista de assets de un
+ * build— en algo que quepa en un nombre de caché sin recortarlo por la mitad,
+ * que es como se pierden justo los caracteres que distinguen un deploy de otro.
+ */
+export function huellaCorta(texto: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i++) {
+    hash ^= texto.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+/**
+ * Variable donde el build memoriza la versión ya resuelta.
+ *
+ * `next.config.ts` se evalúa **más de una vez por build** —se midió: el manifiesto
+ * de servidor quedó con `build-msqzwpfk` y el chunk del cliente del mismo build
+ * con `build-msqzwpva`, 566 ms después—. Con el reloj como último recurso, cada
+ * evaluación inventaba su propia versión, así que "el instante del build" era en
+ * realidad "el instante de la evaluación que te toque leer". Memorizada en el
+ * entorno, las evaluaciones siguientes del mismo proceso y los procesos hijos
+ * del build heredan el valor.
+ *
+ * No lleva prefijo `NEXT_PUBLIC_`: no tiene por qué viajar al cliente, y así no
+ * se confunde con la variable que sí se inlinea.
+ *
+ * **Y no puede usarse para fijar la versión desde afuera.** Una variable de
+ * entorno la puede escribir cualquiera —copiada de un log de build, puesta como
+ * variable de proyecto, arrastrada en un `.env`—, y una versión fijada e igual
+ * en todos los deploys es INT-12 otra vez, con un valor bien formado que
+ * `sanearVersion` no tiene por qué rechazar. Por eso `resolverVersionApp` solo
+ * la lee cuando **no** hay identidad de deploy, que es la única rama que sin
+ * memo sería no determinista. Donde el valor podría hacer daño —un deploy real,
+ * que siempre trae identidad— ni se mira.
+ */
+export const VAR_MEMO_VERSION = "NEXT_PRIVATE_VERSION_APP";
+
+/**
+ * Identidad del deploy: lo que cambia entre un deploy y otro, aunque el commit
+ * sea el mismo.
+ *
+ * **Se sanea al final, nunca al principio.** `sanearVersion` recorta a 40
+ * caracteres, así que sanear primero y comprimir después significa comprimir un
+ * valor al que ya le cortaron la cola —justo donde vive lo que distingue un
+ * deploy de otro—. Con un scope de nombre largo, `p4rk-<hash>-<scope>.vercel.app`
+ * pasa de 40 caracteres y dos deploys distintos comparten prefijo: mismo
+ * `unico`, mismo nombre de caché, INT-12 de vuelta y en silencio. Por eso se
+ * toma la cola cruda del identificador, o el hash de la URL cruda, y recién
+ * entonces se sanea.
+ */
+function identidadDeDeploy(entorno: Record<string, string | undefined>): string | null {
+  const id = entorno.VERCEL_DEPLOYMENT_ID?.trim().replace(/^dpl[_-]/i, "");
+  if (id) return sanearVersion(id.slice(-12));
+
+  const url = entorno.VERCEL_URL?.trim();
+  if (url) return sanearVersion(huellaCorta(url));
+
+  return null;
+}
+
+/**
  * Versión del build, resuelta en `next.config.ts`.
  *
  * Recibe el entorno como argumento —en vez de leer `process.env` adentro— para
- * que el caso que causó la regresión, variables presentes y vacías, se pueda
- * probar sin ensuciar el proceso.
+ * que los casos que ya fallaron, variables presentes y vacías, se puedan probar
+ * sin ensuciar el proceso.
  *
- * Orden: commit desplegado (lo más informativo), identificador del deploy
- * (existe también en los deploys por CLI, que es donde falló esto), URL del
- * deploy, y como último recurso el instante del build. Ese último recurso es el
- * que hace que la garantía no dependa de Vercel.
+ * Se compone de dos partes con roles distintos, y esa separación es la
+ * corrección: **la trazabilidad nunca decide la unicidad**.
+ *
+ *  - `unico`: identificador del deploy, o el hash de su URL, o el instante del
+ *    build. Cualquiera de los tres cambia entre deploys distintos, incluso si el
+ *    commit es el mismo. Ninguno se repite en un *Redeploy*.
+ *  - `traza`: los primeros 7 caracteres del commit, para poder mirar
+ *    `estacionamiento-shell-ad63b7e-9xKq2mZ` y saber qué código hay adentro. Es
+ *    decoración: si falta, la versión sigue siendo correcta; si está, no aporta
+ *    unicidad y no puede volver a apropiársela.
  */
 export function resolverVersionApp(
   entorno: Record<string, string | undefined>,
   ahora: number = Date.now(),
 ): string {
-  const candidatos = [
-    entorno.VERCEL_GIT_COMMIT_SHA?.trim().slice(0, 12),
-    entorno.VERCEL_DEPLOYMENT_ID,
-    entorno.VERCEL_URL,
-  ];
+  const identidad = identidadDeDeploy(entorno);
 
-  for (const candidato of candidatos) {
-    const version = sanearVersion(candidato);
-    if (version) return version;
+  // El memo se consulta SOLO cuando no hay identidad de deploy, que es el único
+  // caso en que la resolución no es determinista (cae al reloj). Con identidad,
+  // todas las evaluaciones del build ya coinciden por construcción y el memo no
+  // hace falta: se ignora, y con él se ignora cualquier valor que alguien haya
+  // puesto en el entorno. Un `NEXT_PRIVATE_VERSION_APP` metido como variable de
+  // proyecto en Vercel no puede congelar el nombre del caché, porque en Vercel
+  // siempre hay `VERCEL_DEPLOYMENT_ID` o `VERCEL_URL` y esa rama gana.
+  if (!identidad) {
+    const memorizada = sanearVersion(entorno[VAR_MEMO_VERSION]);
+    if (memorizada) return memorizada;
   }
 
-  return `build-${ahora.toString(36)}`;
+  const unico = identidad ?? `build-${ahora.toString(36)}`;
+  const traza = sanearVersion(entorno.VERCEL_GIT_COMMIT_SHA?.trim().slice(0, 7));
+
+  return sanearVersion(traza ? `${traza}-${unico}` : unico) ?? unico;
 }
 
 /**
