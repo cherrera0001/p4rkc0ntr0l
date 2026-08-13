@@ -401,3 +401,91 @@ el mecanismo, el mecanismo es parte del cierre del hallazgo, no del siguiente.
 No levantó el gate. Producción sigue sirviendo el código sin endurecer y ahora se
 sabe con precisión cuánto: **10/29**. Medir mejor no arregla nada — solo saca del
 medio la excusa de no saber.
+
+---
+
+## M6 — La capa de presentación, y el verificador que no medía (2026-08-13)
+
+### La lección del día: verificar la propiedad, no su forma
+
+INT-12 exige una propiedad: **la versión del caché cambia entre deploys
+distintos**. Tres redes distintas la dieron por cumplida y ninguna la medía:
+
+- El `throw` en `next.config.ts` valida que la versión sea *sana*, no que *cambió*.
+- El test de "dos deploys distintos" variaba solo el SHA — **asumía la
+  conclusión**. Es el error más difícil de ver en una prueba: el caso que
+  distingue las dos hipótesis es justo el que no está escrito.
+- El verificador comprobaba *forma* (que no fuera `v1`, que no estuviera vacía) y
+  no *cambio*. La única comprobación de la propiedad estaba detrás de un flag
+  opcional, `--anterior=`, que sin pasarlo imprime una NOTA y sale 0.
+
+Resultado: 6/6 PASS sobre un fix que **movía** el defecto en vez de cerrarlo, de
+"versión vacía" a "versión válida pero constante". Mismo bug, mejor cara.
+
+Regla: **cuando un criterio habla de un cambio entre dos estados, una sola
+observación no puede verificarlo.** Si el verificador solo puede mirar un estado,
+no está midiendo el criterio — está midiendo su apariencia.
+
+### Corolario: un verificador opcional no es una red
+
+`verificar-int12.mjs` no estaba en `package.json`, no aparecía en `LEDGER.md` ni
+en `STATE.md`, y su comprobación central era un flag. Tres capas de opcionalidad
+sobre la única cosa que importaba.
+
+Un verificador que nadie va a correr, y que si lo corren sale 0 sin comprobar lo
+que dice comprobar, no es una red: es documentación con `exit 0`.
+
+### El concilio funcionó, y esta es la evidencia
+
+Es la primera vez que el veto cambia el resultado. El implementador entregó una
+corrección buena en casi todo —el fuzz de 102.937 entradas del auditor no
+encontró una sola divergencia entre el módulo TS y la copia del worker— y aun así
+el auditor encontró el bypass, **lo reprodujo en un sandbox aislado con tres
+builds** y midió la purga en un navegador real.
+
+Lo que hizo posible el hallazgo: el auditor no leyó la descripción del fix, leyó
+el código y después lo ejecutó. Y encontró que la premisa del diseño ya era falsa
+—el comentario decía "repo sin remoto conectado" y el remoto se había configurado
+esa misma tarde—. **Un comentario que justifica un diseño es una afirmación sobre
+el mundo, y el mundo cambia.**
+
+### Mérito que conviene no perder: descartar la defensa falsa
+
+El implementador había construido una segunda fuente de versión a partir de los
+hashes de chunk `main-app-*` / `webpack-*`. Al probarla descubrió que este build
+es Turbopack y esos nombres no existen: habría sido *un mecanismo que parece
+defensa y nunca dispara* — exactamente la forma del bug que estaba corrigiendo.
+
+La descartó y puso en su lugar una barrera que falla ruidosamente. **Borrar una
+defensa que no funciona es mejor que dejarla**: la que no funciona además
+tranquiliza.
+
+### Presentación: el defecto estaba en una línea
+
+`globals.css` era la plantilla por defecto de Next, terminada en
+`font-family: Arial`. `layout.tsx` cargaba Geist por `next/font/google` desde M1.
+La app venía descargando una tipografía y descartándola en la línea siguiente,
+durante cinco días, mientras todos los AC daban verde.
+
+Ningún criterio de aceptación miraba la presentación, así que la presentación no
+existía. **Lo que no tiene criterio no se construye** — y en un proceso
+spec-driven eso no es un accidente, es el diseño funcionando. El problema no fue
+el proceso: fue que SPEC-004 se escribió el día 4 y no el día 1.
+
+### La capa de presentación puede romper el endurecimiento
+
+Primer intento de M6: un `style={{ boxShadow: "var(--shadow-glow)" }}` en el botón
+de ingreso. La CSP de INT-2 no lleva `'unsafe-inline'` en `style-src`, así que fue
+una **violación de CSP real** — 29/30, detectada por el verificador y no por
+revisión.
+
+Por eso AC-UI-4 —*"la CSP sigue en verde tras incorporar el sistema de diseño"*—
+no es burocracia. Un estilo inline es la forma más natural de escribir CSS en
+React y es exactamente lo que una CSS con nonce prohíbe.
+
+### Qué cambiaría
+
+Escribir el criterio de "cambia entre dos estados" **antes** que el fix, y con la
+comparación obligatoria desde el principio. El flag `--anterior` opcional nació
+como comodidad para la primera corrida y se quedó como agujero. Toda comodidad
+que apaga una comprobación termina siendo la comprobación apagada.

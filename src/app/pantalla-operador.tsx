@@ -404,47 +404,67 @@ export default function PantallaOperador({
   const sinSincronizar = locales.filter((s) => s.syncEstado === "local").length;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
-      <header className="flex items-start justify-between gap-3">
-        <h1 className="text-lg font-semibold">Estacionamiento</h1>
-        <div className="flex flex-col items-end gap-1">
-          <span
-            data-testid="estado-conexion"
-            className={`rounded-full px-2 py-1 text-xs font-medium ${
-              enLinea
-                ? "bg-emerald-100 text-emerald-900"
-                : "bg-amber-100 text-amber-900"
-            }`}
-          >
-            {enLinea ? "en línea" : "sin conexión"}
-          </span>
-          {/* Dispositivo compartido por turnos: salir borra también lo que el
-              dispositivo guarda (INT-8). */}
-          <CerrarSesion />
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
+      <header className="flex items-start justify-between gap-3 pt-1">
+        <div className="flex flex-col gap-1">
+          <span className="eyebrow">Operación</span>
+          <h1>Estacionamiento</h1>
         </div>
+        <CerrarSesion />
       </header>
 
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Ocupación: <strong data-testid="ocupacion">{activas.length}</strong>
-        {sinSincronizar > 0 && (
-          <span data-testid="pendientes" className="ml-2 text-amber-700">
-            · {sinSincronizar} sin sincronizar
+      {/* AC-UX-1 — el estado de red es contenido de primer nivel, no un ícono.
+          El operador tiene que saber sin preguntar si lo que registró ya subió;
+          de eso depende que confíe en la app cuando la señal se corta. */}
+      <section
+        className={`flex items-center gap-4 rounded-2xl border p-4 shadow-xs ${
+          enLinea ? "border-line bg-card" : "border-warning/25 bg-warning-soft"
+        }`}
+      >
+        <div className="flex flex-1 flex-col">
+          <span className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase">
+            Ocupación
           </span>
-        )}
-      </p>
+          <span className="cifra tabular" data-testid="ocupacion">
+            {activas.length}
+          </span>
+        </div>
+        <div className="flex flex-col items-end gap-1.5">
+          <span
+            data-testid="estado-conexion"
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+              enLinea ? "bg-success-soft text-success" : "bg-card text-warning"
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`size-1.5 rounded-full ${enLinea ? "bg-success" : "bg-warning"}`}
+            />
+            {enLinea ? "en línea" : "sin conexión"}
+          </span>
+          {sinSincronizar > 0 && (
+            <span data-testid="pendientes" className="text-xs font-medium text-warning">
+              {sinSincronizar} esperando red
+            </span>
+          )}
+        </div>
+      </section>
 
       {!tecleando ? (
         <button
           type="button"
           onClick={nuevoIngreso}
           data-testid="nuevo-ingreso"
-          className="rounded-xl bg-slate-900 px-4 py-5 text-lg font-semibold text-white active:bg-slate-700"
+          className="rounded-2xl bg-accent px-4 py-6 text-lg font-semibold text-white shadow-glow transition-colors duration-200 active:bg-accent-strong"
         >
           Nuevo ingreso
         </button>
       ) : (
         <form onSubmit={confirmar} className="flex flex-col gap-3">
-          <label htmlFor="patente" className="text-sm font-medium">
+          <label
+            htmlFor="patente"
+            className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase"
+          >
             Patente
           </label>
           <input
@@ -458,20 +478,23 @@ export default function PantallaOperador({
             spellCheck={false}
             inputMode="text"
             maxLength={10}
-            className="rounded-xl border-2 border-slate-300 px-4 py-4 text-center text-2xl font-mono tracking-widest uppercase"
+            className="patente rounded-2xl border-2 border-line-strong bg-card px-4 py-5 text-center text-3xl text-ink caret-accent focus:border-accent focus:outline-none"
           />
+          {/* AC-UX-4 — la normalización existe desde M2 y nunca se dijo en
+              pantalla. Un operador que no lo sabe teclea el guion. */}
+          <p className="text-xs text-faint">Se normaliza sola. Sin guiones ni espacios.</p>
           <div className="flex gap-2">
             <button
               type="submit"
               data-testid="confirmar-ingreso"
-              className="flex-1 rounded-xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white active:bg-slate-700"
+              className="flex-1 rounded-2xl bg-accent px-4 py-4 text-lg font-semibold text-white transition-colors duration-200 active:bg-accent-strong"
             >
               Confirmar
             </button>
             <button
               type="button"
               onClick={cancelar}
-              className="rounded-xl border-2 border-slate-300 px-4 py-4 font-medium"
+              className="rounded-2xl border border-line-strong bg-card px-5 py-4 font-medium text-muted transition-colors duration-200 active:bg-canvas-2"
             >
               Cancelar
             </button>
@@ -480,7 +503,11 @@ export default function PantallaOperador({
       )}
 
       {error && (
-        <p data-testid="error" role="alert" className="text-sm font-medium text-red-700">
+        <p
+          data-testid="error"
+          role="alert"
+          className="rounded-xl border border-critical/20 bg-critical-soft p-3 text-sm font-medium text-critical"
+        >
           {error}
         </p>
       )}
@@ -488,22 +515,27 @@ export default function PantallaOperador({
       {!operacionReal && (
         <p
           data-testid="aviso-piloto"
-          className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900"
+          className="rounded-xl border border-warning/20 bg-warning-soft p-3 text-xs leading-relaxed text-warning"
         >
-          <strong>Piloto con datos de prueba.</strong> Solo se aceptan patentes
-          de prueba, y una patente real ni siquiera se guarda en este
-          dispositivo. Para registrar vehículos reales hay que definir antes la
-          base de licitud y el plazo de retención (Ley 21.719).
+          <strong className="font-semibold">Piloto con datos de prueba.</strong>{" "}
+          Solo se aceptan patentes de prueba, y una patente real ni siquiera se
+          guarda en este dispositivo. Para registrar vehículos reales hay que
+          definir antes la base de licitud y el plazo de retención (Ley 21.719).
         </p>
       )}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-slate-500">En el estacionamiento</h2>
+      <section className="flex flex-col gap-2.5">
+        <h2 className="eyebrow">En el estacionamiento</h2>
         {activas.length === 0 && (
-          <p className="text-sm text-slate-500">Sin vehículos registrados.</p>
+          <p className="rounded-xl border border-dashed border-line-strong p-6 text-center text-sm text-faint">
+            Sin vehículos registrados.
+          </p>
         )}
         {!listaCompleta && (
-          <p data-testid="lista-parcial" className="text-xs text-amber-700">
+          <p
+            data-testid="lista-parcial"
+            className="rounded-xl bg-canvas-2 p-3 text-xs leading-relaxed text-subtle"
+          >
             Sin conexión con el servidor: se muestra lo que hay guardado en este
             dispositivo —las sesiones activas y los ingresos que todavía no
             subieron—. Al reconectar se completa.
@@ -515,19 +547,21 @@ export default function PantallaOperador({
               key={s.id}
               data-patente={s.patente}
               data-sync={s.pendiente ? "local" : "sincronizada"}
-              className="flex items-center justify-between rounded-xl border border-slate-200 p-3"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-3 pl-4 shadow-xs"
             >
-              <div>
-                <p className="font-mono text-lg font-semibold tracking-wider">{s.patente}</p>
-                <p className="text-xs text-slate-500">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="patente text-lg font-semibold text-ink">{s.patente}</p>
+                <p className="text-xs text-faint tabular">
                   {duracion(s.entradaAt)}
-                  {s.pendiente && " · sin sincronizar"}
+                  {s.pendiente && (
+                    <span className="text-warning"> · sin sincronizar</span>
+                  )}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => registrarSalida(s)}
-                className="rounded-lg bg-slate-100 px-4 py-3 font-medium active:bg-slate-200"
+                className="shrink-0 rounded-xl border border-line-strong bg-canvas-2 px-5 py-3 font-medium text-ink transition-colors duration-200 active:bg-canvas-3"
               >
                 Salida
               </button>
@@ -537,23 +571,26 @@ export default function PantallaOperador({
       </section>
 
       {cobradas.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-slate-500">Últimas salidas</h2>
+        <section className="flex flex-col gap-2.5">
+          <h2 className="eyebrow">Últimas salidas</h2>
           <ul data-testid="lista-cerradas" className="flex flex-col gap-2">
             {cobradas.map((s) => (
               <li
                 key={s.id}
                 data-patente={s.patente}
-                className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
+                className="flex items-center justify-between gap-3 rounded-2xl border border-success/20 bg-success-soft p-3 pl-4"
               >
-                <span className="font-mono tracking-wider">{s.patente}</span>
-                <span className="font-semibold" data-testid="monto">
+                <span className="patente font-medium text-ink">{s.patente}</span>
+                <span
+                  className="cifra tabular text-2xl leading-none"
+                  data-testid="monto"
+                >
                   $ {s.montoCalculado?.toLocaleString("es-CL") ?? "—"}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-faint">
             El cobro es en efectivo, fuera del sistema.
           </p>
         </section>

@@ -1,26 +1,275 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPEC-004 — capa de presentación (M6)
+
+   Tokens del sistema de diseño de C4A, tomados de
+   `_ds/…/colors_and_type.css` del proyecto de Claude Design
+   `964c3090-9776-4aa0-a79f-816b50244a83`. No se inventó ningún valor.
+
+   Tres reglas que este archivo hace cumplir, y sus criterios:
+
+   AC-UI-1 · Todo color, radio y sombra sale de una variable declarada UNA vez.
+             Cero literales hex en los componentes. La maqueta repite
+             `#0A0A0A` decenas de veces porque es una maqueta; el producto no
+             puede — un cambio de marca no se hace con buscar y reemplazar.
+
+   AC-UI-2 · La escala tipográfica se consume por token, nunca con un número
+             suelto en un `.tsx`.
+
+   AC-UI-3 · Cero peticiones a terceros en tiempo de ejecución. El `fonts.css`
+             del sistema de diseño hace `@import` al CDN de fuentes de Google:
+             NO se copió. Geist ya viene autoalojado por `next/font/google`,
+             que lo descarga en build y lo sirve desde el propio origen. Es
+             además lo que exige la CSP de INT-2 y la minimización de la Ley
+             21.719 — cada carga desde un tercero es una petición con la IP del
+             dispositivo del operador.
+
+   Minimización, la misma regla de `spec.md` §4 aplicada al CSS: se copia lo que
+   las pantallas usan. Los tokens decorativos del sistema (`--bg-hero-glow`,
+   `--bg-noise`, `--bg-grid-line`) y la escala de display grande no entran
+   "por si sirven".
+
+   Defecto conocido que este archivo corrige: `globals.css` era la plantilla por
+   defecto de Next —dos colores y `font-family: Arial`— así que la app cargaba
+   Geist y lo descartaba en la línea siguiente.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Superficies ─────────────────────────────────────────────────────── */
+  --canvas: #fafaf9;
+  --canvas-2: #f5f5f4;
+  --canvas-3: #efeeeb;
+  --card: #ffffff;
+  --line: #e7e5e4;
+  --line-soft: #f0efec;
+  --line-strong: #d6d3d1;
+
+  /* ── Tinta (contraste WCAG AA ≥ 4.5:1 contra --canvas) ───────────────── */
+  --ink: #0a0a0a;
+  --ink-soft: #171717;
+  --muted: #44403c;
+  --subtle: #57534e;
+  --faint: #737373;
+
+  /* ── Acento de marca ─────────────────────────────────────────────────── */
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-strong: #1d4ed8;
+  --accent-ink: #1e3a8a;
+
+  /* ── Semánticos ──────────────────────────────────────────────────────── */
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --critical: #b91c1c;
+  --critical-soft: #fef2f2;
+
+  /* ── Familias. Geist llega por `next/font/google`, autoalojado. ──────── */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: var(--font-sans);
+  /* Mono reservada para lo que se lee carácter a carácter: patentes e IDs. */
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  /* ── Escala tipográfica ──────────────────────────────────────────────── */
+  --fs-h1: 2rem;         --lh-h1: 2.5rem;       --tr-h1: -0.022em;  --fw-h1: 500;
+  --fs-h2: 1.5rem;       --lh-h2: 2rem;         --tr-h2: -0.02em;   --fw-h2: 500;
+  --fs-h3: 1.125rem;     --lh-h3: 1.625rem;     --tr-h3: -0.018em;  --fw-h3: 500;
+  --fs-body-lg: 1.125rem;--lh-body-lg: 1.875rem;--tr-body-lg: -0.005em;
+  --fs-body: 1rem;       --lh-body: 1.625rem;   --tr-body: -0.005em;
+  --fs-body-sm: 0.875rem;--lh-body-sm: 1.375rem;--tr-body-sm: 0;
+  --fs-caption: 0.6875rem;--lh-caption: 1rem;   --tr-caption: 0.16em;--fw-caption: 500;
+
+  /* La cifra que el operador lee de pie, a distancia de brazo: ocupación,
+     temporizador, monto a cobrar. Es la tipografía que sostiene H1. */
+  --fs-cifra: 2.75rem;   --lh-cifra: 3rem;      --tr-cifra: -0.03em; --fw-cifra: 500;
+
+  --measure-prose: 68ch;
+
+  /* ── Radios ──────────────────────────────────────────────────────────── */
+  --r-sm: 0.375rem;
+  --r-md: 0.625rem;
+  --r-lg: 0.75rem;
+  --r-xl: 1rem;
+  --r-2xl: 1.25rem;
+  --r-full: 9999px;
+
+  /* ── Sombras ─────────────────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 8px 16px -4px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 16px 32px -8px rgba(15, 23, 42, 0.1), 0 4px 8px -4px rgba(15, 23, 42, 0.04);
+  --shadow-glow: 0 12px 32px -8px rgba(37, 99, 235, 0.22);
+
+  /* ── Movimiento ──────────────────────────────────────────────────────── */
+  --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 200ms;
+  --duration: 300ms;
+
+  /* Alto mínimo de un objetivo táctil. El operador registra de pie y con una
+     mano; es requisito de H1, no una preferencia estética. */
+  --tap: 3rem;
 }
 
+/* Los tokens entran a Tailwind como datos: `bg-canvas`, `text-muted`,
+   `rounded-xl` y `shadow-md` salen de las mismas variables de arriba, así que
+   una utilidad y un CSS a mano no pueden divergir. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-canvas: var(--canvas);
+  --color-canvas-2: var(--canvas-2);
+  --color-canvas-3: var(--canvas-3);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-faint: var(--faint);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  /* Como utilidad y no como `style` inline: la CSP de INT-2 no lleva
+     'unsafe-inline' en style-src, así que un estilo inline es una violación. */
+  --shadow-glow: var(--shadow-glow);
+
+  --ease-out-expo: var(--ease-out-expo);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   Defaults semánticos
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "ss03", "cv11";
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.005em;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-feature-settings: "ss01", "ss03", "cv11";
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); letter-spacing: var(--tr-h1); font-weight: var(--fw-h1); }
+h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); letter-spacing: var(--tr-h2); font-weight: var(--fw-h2); }
+h3 { font-size: var(--fs-h3); line-height: var(--lh-h3); letter-spacing: var(--tr-h3); font-weight: var(--fw-h3); }
+
+p {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  letter-spacing: var(--tr-body);
+  text-wrap: pretty;
+  max-width: var(--measure-prose);
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.16);
+  color: var(--ink);
+}
+
+/* Visible siempre: el operador puede estar navegando con teclado físico en un
+   equipo compartido, y una app sin foco visible es inoperable sin mouse. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Utilidades del sistema
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  letter-spacing: var(--tr-caption);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.eyebrow::before {
+  content: "";
+  display: block;
+  height: 1px;
+  width: 1.5rem;
+  background: var(--line-strong);
+}
+
+/* Patentes e IDs: se leen carácter a carácter, y `O`/`0` tienen que
+   distinguirse. Es legibilidad operativa, no estética. */
+.patente {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* La cifra grande que se lee a distancia de brazo. */
+.cifra {
+  font-size: var(--fs-cifra);
+  line-height: var(--lh-cifra);
+  letter-spacing: var(--tr-cifra);
+  font-weight: var(--fw-cifra);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Números que cambian en vivo (temporizadores, montos): ancho fijo para que la
+   fila no se mueva a cada segundo. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

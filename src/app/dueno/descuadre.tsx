@@ -30,12 +30,12 @@ export default function Descuadre({
   const diferencia = valido ? valor - ocupacionRegistrada : null;
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4">
-      <div>
-        <label htmlFor="observada" className="text-sm font-medium">
+    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4 shadow-xs">
+      <div className="flex flex-col gap-1">
+        <label htmlFor="observada" className="font-medium text-ink">
           ¿Cuántos vehículos contás en el patio?
         </label>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-faint">
           Compará lo que ves con lo que el sistema tiene registrado.
         </p>
       </div>
@@ -46,15 +46,17 @@ export default function Descuadre({
         inputMode="numeric"
         value={observada}
         onChange={(e) => setObservada(e.target.value.replace(/[^0-9]/g, ""))}
-        className="rounded-xl border-2 border-slate-300 px-4 py-3 text-center text-2xl font-semibold"
+        className="tabular rounded-xl border-2 border-line-strong bg-canvas px-4 py-3 text-center text-2xl font-semibold text-ink caret-accent focus:border-accent focus:outline-none"
       />
 
       {diferencia !== null && (
         <p
           data-testid="descuadre"
           data-valor={diferencia}
-          className={`text-sm font-medium ${
-            diferencia === 0 ? "text-emerald-700" : "text-amber-700"
+          className={`rounded-xl p-3 text-sm font-medium ${
+            diferencia === 0
+              ? "bg-success-soft text-success"
+              : "bg-warning-soft text-warning"
           }`}
         >
           {diferencia === 0

@@ -1779,3 +1779,387 @@ Gate ADR-001 limpio: AC-SCOPE-1/2/3 sin resultados. `OPERACION_REAL_HABILITADA=f
 Fixtures limpiados al terminar (`sesiones restantes en la base: 0`). Los tres
 fixtures que la corrida contra producción escribió en la base de Railway
 (FIXT91/92/93) fueron borrados: `sesiones de prueba borradas: 3`.
+
+---
+
+### 2026-08-12 · M5 · commit y DEPLOY a producción · 29/30
+
+Decisión del decisor ante el gate abierto: desplegar por **CLI de Vercel** ahora,
+sin pasar por GitHub. Motivo: producción servía código sin endurecer con INT-4
+abierto —el dueño podía listar patentes y la API devolvía la fila entera— y
+publicar antes los informes de vulnerabilidad en un repo público habría entregado
+el mapa de ataque de un sistema todavía sin parchar. Para el repo remoto, el
+decisor optó por **pasar `p4rkc0ntr0l` a privado**; queda pendiente de ejecutar y
+no bloquea nada.
+
+`spec.md` §8 pide despliegue por `git push`. Sigue siendo deuda declarada, la
+misma que arrastra M4.
+
+**Commit** — el árbol tenía M5 entero sin versionar desde el 2026-08-10:
+
+```
+git commit  ->  57fe4c5  "M5 endurecimiento: 20 hallazgos del informe integral
+                          + guards de verificación"
+53 archivos · 6642 inserciones · 649 eliminaciones
+```
+
+Comprobado antes de commitear: ningún `.env` en el índice
+(`git check-ignore -v .env .env.local` → `.gitignore:52:.env*`).
+
+**Variables en Vercel** — las cuatro que M5 exige ya existían, sin cambios:
+
+```
+npx vercel env ls production
+DATABASE_URL · OPERACION_REAL_HABILITADA · CLAVE_ACCESO · SESSION_SECRET
+(las cuatro Sensitive, Production)
+```
+
+**Deploy**:
+
+```
+npx vercel --prod --yes
+readyState: READY · target: production
+Production  https://estacionamiento-2exyzau3i-c4-all.vercel.app
+Aliased     https://estacionamiento-three.vercel.app
+```
+
+**Comando del gate, contra la URL viva:**
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs https://estacionamiento-three.vercel.app
+
+29/30 comprobaciones PASS
+FALLARON: INT-12 · el worker se registra con la versión del build en la URL
+exit=1
+```
+
+De 10/29 a 29/30. Los diecinueve FAIL de esta mañana cerraron contra producción:
+INT-2 (los cinco), C-1, A-1, **INT-4 en sus dos comprobaciones**, B-2, INT-14 (las
+cinco), INT-15 y INT-8. La exposición de patentes al dueño en la URL viva quedó
+cerrada.
+
+#### El deploy destapó una regresión que ningún entorno local podía mostrar
+
+```
+FAIL · INT-12 · el worker se registra con la versión del build en la URL
+              · https://estacionamiento-three.vercel.app/sw.js?v=
+PASS · INT-12 · los cachés llevan esa versión en el nombre, no el literal v1
+              · estacionamiento-shell-sin-version
+```
+
+Local, mismo árbol: `?v=local-msqxui5o`, caché `estacionamiento-shell-local-msqxui5o`,
+30/30.
+
+Causa: `next.config.ts:17` deriva la versión de `VERCEL_GIT_COMMIT_SHA` con `?.`
+y `??`. En un deploy por CLI sobre un repo sin remoto conectado a Vercel esa
+variable llega como **cadena vacía**, no como `undefined`; `""` no es nullish, así
+que ni el `?.slice()` ni el `??` disparan y la versión queda vacía. Lo mismo río
+abajo en `registrar-sw.tsx:22`.
+
+No es cosmético: con la versión vacía **todos** los deploys comparten el nombre de
+caché `estacionamiento-shell-sin-version`, el `activate` del worker no tiene nada
+que purgar y el shell viejo queda vigente para siempre — el defecto exacto que
+INT-12 corrigió. Sin red, un dispositivo puede seguir ejecutando un cliente
+anterior a la barrera de A-3 (INT-3).
+
+Es también la razón por la que el gate exige medir contra la URL viva y no contra
+local: la diferencia no estaba en el código sino en el entorno de build, y ningún
+verificador local podía verla. La segunda comprobación de INT-12 pasó igual
+—`sin-version` no es el literal `v1`— y por sí sola habría dado el hallazgo por
+cerrado. Hizo falta la primera, que mira el valor y no su forma.
+
+Segunda observación registrada: la comprobación de minimización de INT-4 pasó como
+`(sin sesiones activas: no concluyente)`. Es honesta en su detalle, pero PASA sin
+concluir. La que sí concluyó fue la de permisos. Anotado como deuda del verificador.
+
+**GATE TERMINAL: sigue abierto por INT-12.** No se cierra con 29/30.
+
+---
+
+### 2026-08-13 · INT-12 · **VETADO por el auditor** · ciclo 2 abierto
+
+**El hallazgo, por segunda vez.** INT-12 se había cerrado el 2026-08-10 con 30/30
+en local. Al desplegar volvió intacto: `?v=` vacío y caché
+`estacionamiento-shell-sin-version` compartido por todos los deploys.
+
+Causa: `next.config.ts` derivaba la versión con `?.` y `??`. En un deploy por CLI
+sobre un repo sin remoto conectado a Vercel, `VERCEL_GIT_COMMIT_SHA` llega como
+**cadena vacía**. `""` no es nullish: ni el `?.slice()` ni el `??` disparan.
+
+**La corrección** (implementador; el concilio no la cerró solo):
+
+- `src/lib/version-app.ts` (nuevo, sin dependencias — lo importan el config, el
+  cliente y los verificadores). `sanearVersion()` devuelve `null` —no `""`— ante
+  vacío, blancos, BOM o valores degenerados (`v1`, `sin-version`, `degradado`,
+  `undefined`, `null`). Que devuelva `null` obliga a quien llama a decidir, en vez
+  de heredar un `""` que se ve como valor.
+- Cadena de candidatos `VERCEL_GIT_COMMIT_SHA` → `VERCEL_DEPLOYMENT_ID` →
+  `VERCEL_URL` → `build-<timestamp>`. **La garantía no depende de Vercel**: el
+  último recurso la cumple por construcción.
+- `next.config.ts` **lanza en build** si la versión resulta inutilizable.
+  Inalcanzable hoy; está para el próximo que reintroduzca la forma.
+- `public/sw.js` no puede importar el módulo —es script clásico servido
+  estático— y repite `sanearVersion` en cinco líneas. El verificador comprueba
+  que las dos copias coincidan en lo observable.
+
+**Lo que el implementador descartó, y por qué importa.** Su primera versión sacaba
+una huella de respaldo de los hashes de chunk `main-app-*` / `webpack-*`. Este
+build es Turbopack: esos nombres no existen. Habría sido *un mecanismo que parece
+defensa y nunca dispara* — exactamente la forma de este bug. Lo reemplazó por una
+barrera que falla ruidosamente (el throw en build). Descartar la defensa falsa es
+la decisión correcta y queda registrada como tal.
+
+**Control negativo, que es lo que hace que el verificador valga:** el mismo
+`verificar-int12.mjs` contra el deploy anterior devuelve `2/6` y `exit=1`,
+reproduciendo el hallazgo. No es un sello de goma.
+
+**Verificación contra la URL viva:**
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs https://estacionamiento-three.vercel.app
+30/30 comprobaciones PASS   ENDURECIMIENTO: PASS   exit=0
+
+node --env-file=.env scripts/verificar-int12.mjs https://estacionamiento-three.vercel.app
+6/6 comprobaciones PASS     INT-12: PASS           exit=0
+```
+
+De 10/29 por la mañana a 30/30. **Y aun así el hallazgo no se cierra.**
+
+#### VETO del auditor — el bypass, reproducido
+
+El auditor levantó los 30/30 y encontró que el fix **mueve** el defecto en vez de
+cerrarlo. `resolverVersionApp` retorna en el primer candidato, y el primero es el
+commit. **Dos deploys distintos con el mismo SHA producen la misma versión** →
+mismo nombre de caché → misma URL `/sw.js?v=…` → el navegador no instala worker
+nuevo → `activate` nunca corre → el shell viejo sobrevive. Es INT-12 textual.
+
+No es teoría. Lo ejecutó en una copia aislada del repo, tres builds con
+`VERCEL_GIT_COMMIT_SHA` fijo y `VERCEL_DEPLOYMENT_ID` / `VERCEL_URL` distintos, con
+cambio de código verificado en el tercero:
+
+```
+deploy 1 -> "ad63b7e12345"
+deploy 2 -> "ad63b7e12345"
+deploy 3 -> "ad63b7e12345"    (código demostrablemente distinto)
+```
+
+Y midió la purga en el navegador: solo se dispara cuando el nombre del caché
+cambia.
+
+**La premisa del fix ya es falsa.** `version-app.ts:11-12` lo justifica con "repo
+sin remoto conectado"; el remoto se configuró y se empujó hoy. Conectado el
+proyecto a Vercel, `VERCEL_GIT_COMMIT_SHA` deja de venir vacío y pasa a ser **la**
+fuente. Desde ahí, un *Redeploy* del mismo commit —lo estándar tras cambiar una
+variable de entorno, por ejemplo al rotar un secreto— publica un artefacto
+distinto con versión idéntica.
+
+El invariante lo había escrito el propio implementador
+(`version-app.ts:27-28`): *"distinta entre deploys distintos: de eso, y solo de
+eso, depende que `activate` tenga algo que purgar"*. El candidato preferido no lo
+cumple. Se pasó de "versión vacía" a "versión válida pero constante" — el mismo
+defecto con mejor cara.
+
+**Ninguna red lo atrapaba**, y esto es lo que hay que aprender:
+
+| Red | Por qué no lo ve |
+|---|---|
+| el throw en `next.config.ts` | valida que la versión sea *sana*, no que *cambió* |
+| `version-app.test.ts` | el caso "dos deploys distintos" solo varía el SHA: **asume la conclusión** |
+| `verificar-endurecimiento` | comprueba forma y valor, no cambio |
+| `verificar-int12` | la única comprobación de la propiedad es `--anterior=`, y es **opcional**: sin el flag imprime NOTA y sale 0 → 6/6 PASS |
+| `package.json` | `verificar-int12.mjs` **no está** en los scripts: nadie lo iba a correr |
+
+Lo que el auditor atacó y **no** cedió, y por lo tanto queda validado: divergencia
+entre el módulo TS y la copia de `public/sw.js` (fuzz de 102.937 entradas, cero
+divergencias), `DEGENERADAS` como defensa real, la versión no varía por carga ni
+por ruta, el caché tibio de Turbopack no la congela, la purga real funciona
+cuando el nombre cambia, el offline no se rompe en modo degradado, INT-11 intacto
+y ADR-001 limpio.
+
+Hallazgo secundario del auditor: `next.config.ts` se evalúa **más de una vez por
+build**, con `Date.now()` distinto (`build-msqzwpfk` en
+`required-server-files.json` contra `build-msqzwpva` en el chunk cliente, 566 ms).
+Hoy es inerte porque nadie lee esa variable en servidor, pero *"el último recurso
+es el instante del build"* es en realidad *"el instante de la evaluación que te
+toque leer"*.
+
+**GATE TERMINAL: sigue ABIERTO por INT-12.** Los 30/30 contra producción son
+reales y valen —los otros diecinueve hallazgos están cerrados en la URL viva—,
+pero el verificador que los cuenta no mide la propiedad que INT-12 exige. Ciclo 2
+de 3 abierto con el implementador.
+
+**Lección, antes de cerrar nada:** un verificador cuya comprobación central está
+detrás de un flag opcional, y que además no está en `package.json`, no es una red.
+Es documentación con `exit 0`.
+
+---
+
+### 2026-08-13 · ADR-004 · DECIDIDO · aceptado parcialmente (alternativa 2)
+
+Decisión del decisor: **enmienda mínima — cobro de suscripción, sin multisitio.**
+
+- Se abre: entidad `suscripcion` y pasarela `{{PASARELA_SUSCRIPCION}}`
+  **exclusivamente** para la suscripción (dueño → C4A). Habilita `1i` y `1j`.
+- Sigue excluido: multisitio, `tenant`, rol `plataforma`. `1d`, `1h`, `1k`, `1m`
+  siguen rechazadas por el gate.
+- **No se mueve**: el cobro del estacionamiento al conductor sigue siendo en
+  efectivo, fuera del sistema.
+
+Consecuencia registrada: `AC-SCOPE-1` es hoy un `grep` de `webpay|flow` que
+empezaría a dar positivo por diseño. **Hasta que se reescriba, no entra ninguna
+dependencia de pasarela.** Un gate más fino es un gate más frágil, y se reescribe
+antes de necesitarlo. `CLAUDE.md` §1 lleva la tabla que distingue los dos cobros.
+
+Aceptar el ADR **no abre M7**: cuatro de sus cinco precondiciones siguen abiertas
+(INT-7 con mecanismo, H1 medido, `{{PRECIO_SUSCRIPCION_UF}}`, placeholders de la
+traducción). La quinta —endurecimiento desplegado— se cumplió.
+
+---
+
+### 2026-08-13 · M6 · capa de presentación · SPEC-004 · PASS
+
+Origen de los tokens: `_ds/…/colors_and_type.css` del proyecto de Claude Design
+`964c3090-…`, leído por `DesignSync`. **Ningún valor inventado.**
+
+#### El defecto que explicaba lo que se veía
+
+`globals.css` era la plantilla por defecto de Next —dos colores y
+`font-family: Arial`—. `layout.tsx` cargaba Geist por `next/font/google` y el CSS
+lo descartaba en la línea siguiente. La app venía renderizando en Arial sobre el
+tema oscuro por defecto desde M1, mientras cargaba una tipografía que no usaba.
+
+#### Qué se construyó
+
+| Capa | Archivo |
+|---|---|
+| Tokens (color, tipografía, radios, sombras, movimiento) | `src/app/globals.css` |
+| Puente a Tailwind (`@theme inline`) | `src/app/globals.css` |
+| Utilidades `.eyebrow` · `.patente` · `.cifra` · `.tabular` | `src/app/globals.css` |
+| Color de marca fuera del CSS (viewport + manifiesto) | `src/lib/marca.ts` |
+| Pantallas | `login/page`, `login/formulario`, `pantalla-operador`, `dueno/page`, `dueno/descuadre`, `cerrar-sesion` |
+
+Decisiones de traducción, no de gusto:
+
+- **`.patente` en mono, sin ligaduras y con `letter-spacing`.** Una patente se lee
+  carácter a carácter y `O`/`0` tienen que distinguirse. Es legibilidad operativa.
+- **`.cifra` y `.tabular` con `tabular-nums`.** El temporizador y el monto cambian
+  en vivo; sin ancho fijo la fila salta a cada segundo.
+- **AC-UX-1 aplicado:** el estado de red pasó a ser contenido de primer nivel —la
+  tarjeta de ocupación cambia de color sin conexión y muestra
+  *"N esperando red"*—, no un ícono.
+- **AC-UX-4 aplicado:** *"Se normaliza sola. Sin guiones ni espacios."* La
+  normalización existía desde M2 y nunca se decía en pantalla.
+- **Minimización en CSS**, misma regla de `spec.md` §4: no se copiaron
+  `--bg-hero-glow`, `--bg-noise`, `--bg-grid-line` ni la escala de display grande.
+  Un token que ninguna pantalla consume no entra.
+
+#### Los tres defectos del sistema de diseño de origen
+
+1. **`fonts.css` hace `@import` al CDN de fuentes de Google.** No se copió. Geist
+   ya viene autoalojado por `next/font/google`, que lo descarga en build y lo
+   sirve desde el propio origen — cumple la CSP de INT-2 y la minimización de la
+   Ley 21.719 sin trabajo extra.
+2. **Íconos por `unpkg.com/lucide@latest`, sin versión fijada.** No se incorporó
+   ninguna dependencia de CDN.
+3. La fórmula del simulador de `1e` y el `6,2 s` inventado siguen sin corregir:
+   son de las pantallas que aún no se construyeron.
+
+#### Verificación — SPEC-004
+
+```
+AC-UI-1 · Get-ChildItem -Recurse src -Include *.tsx |
+          Select-String "#[0-9A-Fa-f]{6}"              -> sin resultados
+AC-UI-2 · ídem con "font-size:\s*\d"                   -> sin resultados
+AC-UI-3 · Select-String "fonts.googleapis|unpkg|cdn."
+          sobre src\ y public\                          -> sin resultados
+AC-UI-4 · verificar-endurecimiento                      -> 30/30 PASS
+```
+
+**Defecto encontrado por AC-UI-4, y corregido.** El primer intento puso
+`style={{ boxShadow: "var(--shadow-glow)" }}` en el botón de ingreso. La CSP de
+INT-2 no lleva `'unsafe-inline'` en `style-src`, así que fue una **violación de
+CSP real**, detectada por el verificador y no por revisión: `29/30`. Corregido
+exponiendo `--shadow-glow` como utilidad de Tailwind. Es la prueba de que AC-UI-4
+no es decorativo — la capa de presentación sí puede romper el endurecimiento.
+
+También se alinearon `themeColor` del viewport y `background_color` /
+`theme_color` del manifiesto con `--canvas`, desde una sola constante
+(`src/lib/marca.ts`). Estaban en `#0f172a`, un azul oscuro que ya no existe en el
+sistema: la app instalada habría parpadeado en otro color al abrir.
+
+#### Regresión completa tras M6
+
+```
+npm test                     -> 109 pruebas, 27 suites, 0 fallos
+npx tsc --noEmit             -> exit=0      npm run lint -> exit=0
+npm run build                -> exit=0 · Next.js 16.3.0
+
+verificar-pwa            13/13  AC-PWA-1: PASS
+verificar-op1            11/11  AC-OP-1: PASS
+verificar-a3             11/11  A-3: PASS
+verificar-m4             29/29  M-4: PASS
+verificar-int12           6/6   INT-12: PASS   <- vetado: no mide la propiedad
+verificar-endurecimiento 30/30  ENDURECIMIENTO: PASS
+verificar-verificadores  23/23  VERIFICADORES: PASS
+```
+
+M6 se construyó con el gate reabierto por el veto de INT-12. Se declara: el veto
+es sobre la derivación de la versión del service worker
+(`version-app.ts` / `next.config.ts` / `public/sw.js`), y la capa de presentación
+no toca ninguno de esos archivos. Cero solape. Aun así es una desviación de
+WIP = 1 y se registra como tal, no se disimula.
+
+Nota de la corrida: `verificar-op1` dio 10/11 en la tanda secuencial y 11/11
+aislado. Es la contención entre instancias de Edge ya registrada el 2026-08-09,
+no una regresión — el mismo patrón, la misma conclusión.
+
+Gate ADR-001 limpio. `OPERACION_REAL_HABILITADA=false`. Fixtures borrados
+(`sesiones restantes en la base: 0`).
+
+---
+
+### 2026-08-13 · Repositorio remoto · EMPUJADO
+
+`git push -u origin main` → `57fe4c5` en `refs/heads/main` de
+`https://github.com/cherrera0001/p4rkc0ntr0l`. Rama renombrada `master` → `main`
+para coincidir con el default del remoto y con `spec.md` §8.
+
+Antes de empujar, escaneo de las tres credenciales sobre los archivos versionados
+**y sobre el historial completo** (`git log -p --all -S`):
+
+```
+PGPASSWORD     -> no aparece en archivos versionados · no aparece en historial
+SESSION_SECRET -> no aparece en archivos versionados · no aparece en historial
+CLAVE_ACCESO   -> no aparece en archivos versionados · no aparece en historial
+```
+
+**Riesgo abierto, declarado:** el repositorio sigue siendo **público**
+(`privado: False`, comprobado por API). El decisor eligió pasarlo a privado; la
+acción no se ejecutó y no se puede ejecutar desde acá (no hay `gh` ni token). El
+árbol contiene `docs/revision-seguridad-2026-08-09.md` y
+`docs/revision-integral-2026-08-09.md`. Hoy describen hallazgos **corregidos y
+desplegados** —producción está en 30/30—, así que el riesgo bajó mucho respecto
+del 2026-08-12; lo que queda documentado y sin cerrar es INT-7.
+
+---
+
+### 2026-08-13 · `.env` · datos de prueba registrados
+
+Los fixtures dejaron de estar hardcodeados en cada script y pasaron a `.env`
+(sección DATOS DE PRUEBA), documentados en `.env.example`: emails de los dos
+roles, nombre y capacidad del estacionamiento, zona horaria, tarifa completa y
+`URL_PRODUCCION`.
+
+Mover valores a configuración abrió un agujero: se podía sembrar un email que
+pareciera real, contra `spec.md` §11. La convención pasó a ser un chequeo:
+
+```
+node --env-file=.env scripts/sembrar.mjs              -> PASS · semilla lista
+EMAIL_OPERADOR=operador@estacionamientocentro.cl ...  -> FAIL · no termina en .invalid
+                                                         exit=1
+```
+
+**El prefijo `FIXT` NO se hizo configurable, a propósito.** Es la barrera de
+cumplimiento de A-3, no un ajuste: una barrera que se afloja con una variable de
+entorno no es una barrera. Queda en `src/lib/fixtures.ts` y anotada en `.env`
+como referencia de solo lectura.

@@ -9,7 +9,11 @@
  *
  * Idempotente: se puede correr las veces que haga falta.
  *
- * Uso:  npm run sembrar
+ * Los valores salen de `.env` (sección DATOS DE PRUEBA), no de este archivo:
+ * antes estaban hardcodeados acá y duplicados en cada verificador. Los defaults
+ * se conservan para que el script siga corriendo sin configurar nada.
+ *
+ * Uso:  node --env-file=.env scripts/sembrar.mjs
  */
 
 import { eq } from "drizzle-orm";
@@ -27,9 +31,40 @@ if (!url) {
 const cliente = postgres(url, { max: 1 });
 const db = drizzle(cliente, { schema });
 
-const NOMBRE_FIXTURE = "Estacionamiento de prueba (fixture)";
-const EMAIL_OPERADOR = "operador@fixture.invalid";
-const EMAIL_DUENO = "duena@fixture.invalid";
+const entero = (nombre, pordefecto) => {
+  const v = Number(process.env[nombre]);
+  return Number.isInteger(v) && v > 0 ? v : pordefecto;
+};
+
+const NOMBRE_FIXTURE =
+  process.env.FIXTURE_NOMBRE_ESTACIONAMIENTO ?? "Estacionamiento de prueba (fixture)";
+const EMAIL_OPERADOR = process.env.EMAIL_OPERADOR ?? "operador@fixture.invalid";
+const EMAIL_DUENO = process.env.EMAIL_DUENO ?? "duena@fixture.invalid";
+const CAPACIDAD_TOTAL = entero("FIXTURE_CAPACIDAD_TOTAL", 20);
+const ZONA_HORARIA = process.env.FIXTURE_ZONA_HORARIA ?? "America/Santiago";
+const VALOR_HORA = entero("FIXTURE_VALOR_HORA", 1000);
+const FRACCION_MINUTOS = entero("FIXTURE_FRACCION_MINUTOS", 15);
+const MONTO_MINIMO = entero("FIXTURE_MONTO_MINIMO", 500);
+const VIGENTE_DESDE = new Date(process.env.FIXTURE_VIGENTE_DESDE ?? "2026-01-01T00:00:00.000Z");
+
+// `spec.md` §11 exige que los datos de prueba se vean como datos de prueba. Al
+// mover los valores a `.env` se abrió la posibilidad de sembrar un email que
+// parezca real, así que la regla pasa a ser un chequeo en vez de una convención.
+// `.invalid` está reservado por RFC 2606 y nunca resuelve.
+for (const email of [EMAIL_OPERADOR, EMAIL_DUENO]) {
+  if (!email.endsWith(".invalid")) {
+    console.error(
+      `FAIL · ${email} no termina en .invalid. Los fixtures deben verse como fixtures ` +
+        `(spec.md §11). Corregí EMAIL_OPERADOR / EMAIL_DUENO en .env.`,
+    );
+    process.exit(1);
+  }
+}
+
+if (!Number.isFinite(VIGENTE_DESDE.getTime())) {
+  console.error("FAIL · FIXTURE_VIGENTE_DESDE no es una fecha ISO válida.");
+  process.exit(1);
+}
 
 try {
   let [est] = await db
@@ -42,8 +77,8 @@ try {
       .insert(schema.estacionamiento)
       .values({
         nombre: NOMBRE_FIXTURE,
-        capacidadTotal: 20,
-        zonaHoraria: "America/Santiago",
+        capacidadTotal: CAPACIDAD_TOTAL,
+        zonaHoraria: ZONA_HORARIA,
       })
       .returning();
     console.log(`creado estacionamiento ${est.id}`);
@@ -63,10 +98,10 @@ try {
       .insert(schema.tarifa)
       .values({
         estacionamientoId: est.id,
-        valorHora: 1000,
-        fraccionMinutos: 15,
-        montoMinimo: 500,
-        vigenteDesde: new Date("2026-01-01T00:00:00.000Z"),
+        valorHora: VALOR_HORA,
+        fraccionMinutos: FRACCION_MINUTOS,
+        montoMinimo: MONTO_MINIMO,
+        vigenteDesde: VIGENTE_DESDE,
       })
       .returning();
     console.log(`creada tarifa ${t.id}`);

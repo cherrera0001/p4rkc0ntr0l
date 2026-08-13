@@ -49,8 +49,11 @@ export default function FormularioLogin() {
 
   return (
     <>
-      <form onSubmit={entrar} className="flex flex-col gap-3">
-        <label htmlFor="email" className="text-sm font-medium">
+      <form onSubmit={entrar} className="flex flex-col gap-2">
+        <label
+          htmlFor="email"
+          className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase"
+        >
           Email
         </label>
         <input
@@ -61,10 +64,13 @@ export default function FormularioLogin() {
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="username"
           required
-          className="rounded-xl border-2 border-slate-300 px-4 py-3"
+          className="mb-2 rounded-xl border border-line-strong bg-card px-4 py-3.5 text-ink caret-accent focus:border-accent focus:outline-none"
         />
 
-        <label htmlFor="clave" className="text-sm font-medium">
+        <label
+          htmlFor="clave"
+          className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase"
+        >
           Clave
         </label>
         <input
@@ -75,21 +81,25 @@ export default function FormularioLogin() {
           onChange={(e) => setClave(e.target.value)}
           autoComplete="current-password"
           required
-          className="rounded-xl border-2 border-slate-300 px-4 py-3"
+          className="mb-3 rounded-xl border border-line-strong bg-card px-4 py-3.5 text-ink caret-accent focus:border-accent focus:outline-none"
         />
 
         <button
           type="submit"
           data-testid="entrar"
           disabled={enviando}
-          className="rounded-xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white active:bg-slate-700 disabled:opacity-50"
+          className="rounded-2xl bg-accent px-4 py-4 text-lg font-semibold text-white transition-colors duration-200 active:bg-accent-strong disabled:opacity-50"
         >
           {enviando ? "Entrando..." : "Entrar"}
         </button>
       </form>
 
       {error && (
-        <p data-testid="error-login" role="alert" className="text-sm font-medium text-red-700">
+        <p
+          data-testid="error-login"
+          role="alert"
+          className="rounded-xl border border-critical/20 bg-critical-soft p-3 text-sm font-medium text-critical"
+        >
           {error}
         </p>
       )}

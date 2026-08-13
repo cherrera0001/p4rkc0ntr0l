@@ -31,6 +31,27 @@ monto a cobrar.
 Si una tarea parece exigir algo de esta tabla: detenerse, decirlo, y pedir el ADR.
 No implementar "una versión chica" ni dejar el hook preparado "por si acaso".
 
+### Enmienda vigente — ADR-004, aceptado parcialmente (2026-08-12)
+
+Se enmendó **una** fila, y solo en un sentido: se habilita **cobro de la
+suscripción** (el dueño le paga a C4A por el servicio). Todo lo demás de la tabla
+sigue igual, y **multisitio siguió excluido**: ADR-004 se aceptó en su
+alternativa 2, no completo.
+
+La distinción que hay que sostener, porque es la que el gate tiene que seguir
+haciendo cumplir:
+
+| | Permitido | Prohibido |
+|---|---|---|
+| Pago de **suscripción** (dueño → C4A) | sí, tras reescribir AC-SCOPE-1 | — |
+| Pago del **estacionamiento** (conductor → local) | — | **sí, sin excepción.** Sigue siendo efectivo, fuera del sistema |
+
+**Hasta que AC-SCOPE-1 se reescriba en `spec.md` §9, la tabla de arriba manda tal
+cual y no entra ninguna dependencia de pasarela al `package.json`.** Hoy el
+criterio es un `grep` de `webpay|flow` que empezaría a dar positivo por diseño;
+un gate más fino es un gate más frágil, y se reescribe antes de necesitarlo, no
+después.
+
 ### Verificación del gate (AC-SCOPE-1/2/3)
 
 ```
@@ -71,12 +92,15 @@ amplía a `docs/revision-seguridad-2026-08-09.md`.
 Tras **cada** corrección se corre la regresión completa. Si una corrección rompe
 un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 
-**Estado actual: M0–M5 cerrados en código. M6 NO se abre: gate terminal ABIERTO.**
-**URL viva: https://estacionamiento-three.vercel.app — sirve el código ANTERIOR
-al endurecimiento. Falta desplegar.** Medido el 2026-08-12 contra la URL viva:
-`verificar:endurecimiento` da **10/29**, con el mismo árbol en 30/30 local. Entre
-los FAIL, INT-4: el dueño puede listar patentes y la API devuelve la fila entera.
-Mientras el gate esté abierto **no se toca `src/`**.
+**Estado al 2026-08-13: M0–M5 cerrados y DESPLEGADOS. M6 en curso.**
+**URL viva: https://estacionamiento-three.vercel.app — sirve el código endurecido
+y la capa de presentación.** Medido contra la URL viva:
+`verificar:endurecimiento` da **30/30** (por la mañana daba 10/29).
+
+**Un hallazgo sigue abierto: INT-12, vetado por el auditor.** El verificador da
+6/6 pero no mide la propiedad que INT-12 exige: dos deploys del mismo commit
+producen la misma versión de caché, así que `activate` no purga y sobrevive el
+shell viejo. Ciclo 2 de 3 con el implementador. Detalle en `STATE.md`.
 
 Único hallazgo del informe integral sin cerrar: **INT-7** (mecanismo de retención
 de patente), bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.

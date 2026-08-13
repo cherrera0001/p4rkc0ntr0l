@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { COLOR_CANVAS } from "@/lib/marca";
 import "./globals.css";
 import { RegistrarServiceWorker } from "./registrar-sw";
 
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f172a",
+  themeColor: COLOR_CANVAS,
   width: "device-width",
   initialScale: 1,
   // El operador registra de pie y con una mano: que un doble toque no haga zoom

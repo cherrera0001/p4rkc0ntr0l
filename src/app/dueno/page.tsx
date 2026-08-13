@@ -76,32 +76,37 @@ export default async function PanelDueno() {
   const libres = est.capacidadTotal - activas;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Panel</h1>
-          <span className="text-xs text-slate-500">{est.nombre}</span>
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
+      <header className="flex items-start justify-between gap-3 pt-1">
+        <div className="flex flex-col gap-1">
+          <span className="eyebrow">Visibilidad</span>
+          <h1>Panel</h1>
+          <span className="text-sm text-subtle">{est.nombre}</span>
         </div>
         <CerrarSesion />
       </header>
 
       <section className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-slate-200 p-4">
-          <p className="text-xs font-medium text-slate-500">Ocupación ahora</p>
-          <p data-testid="ocupacion" className="text-3xl font-semibold">
+        <div className="flex flex-col gap-1 rounded-2xl border border-line bg-card p-4 shadow-xs">
+          <p className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase">
+            Ocupación ahora
+          </p>
+          <p data-testid="ocupacion" className="cifra tabular">
             {activas}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-faint tabular">
             de {est.capacidadTotal} · {libres} libres
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 p-4">
-          <p className="text-xs font-medium text-slate-500">Ingresos observados hoy</p>
-          <p data-testid="ingresos" className="text-3xl font-semibold">
+        <div className="flex flex-col gap-1 rounded-2xl border border-line bg-card p-4 shadow-xs">
+          <p className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase">
+            Ingresos observados hoy
+          </p>
+          <p data-testid="ingresos" className="cifra tabular text-[2rem] leading-10">
             $ {ingresos.toLocaleString("es-CL")}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-faint tabular">
             <span data-testid="cerradas">{cerradasHoy}</span> salidas registradas
           </p>
         </div>
@@ -109,11 +114,12 @@ export default async function PanelDueno() {
 
       <Descuadre ocupacionRegistrada={activas} />
 
-      <p className="text-xs text-slate-500">
-        Los ingresos son los <strong>observados por el sistema</strong>: la suma de
-        lo que se calculó al registrar cada salida. El cobro es en efectivo y
-        ocurre fuera del sistema, así que esta cifra es la referencia contra la
-        cual comparar la caja, no un registro de lo recaudado.
+      <p className="text-xs leading-relaxed text-subtle">
+        Los ingresos son los <strong className="font-semibold text-muted">observados
+        por el sistema</strong>: la suma de lo que se calculó al registrar cada
+        salida. El cobro es en efectivo y ocurre fuera del sistema, así que esta
+        cifra es la referencia contra la cual comparar la caja, no un registro de
+        lo recaudado.
       </p>
     </main>
   );

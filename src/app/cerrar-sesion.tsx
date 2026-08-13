@@ -70,7 +70,7 @@ export default function CerrarSesion() {
         onClick={salir}
         disabled={saliendo}
         data-testid="cerrar-sesion"
-        className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 active:bg-slate-100 disabled:opacity-50"
+        className="rounded-lg border border-line-strong bg-card px-3 py-1.5 text-xs font-medium text-muted transition-colors duration-200 active:bg-canvas-2 disabled:opacity-50"
       >
         {saliendo ? "Saliendo..." : "Cerrar sesión"}
       </button>
@@ -78,7 +78,7 @@ export default function CerrarSesion() {
         <p
           data-testid="error-cerrar-sesion"
           role="alert"
-          className="text-sm font-medium text-red-700"
+          className="rounded-xl border border-critical/20 bg-critical-soft p-3 text-right text-sm font-medium text-critical"
         >
           {error}
         </p>

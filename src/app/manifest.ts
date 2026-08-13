@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { COLOR_CANVAS } from "@/lib/marca";
+
 /**
  * Manifiesto PWA (spec.md §8, AC-PWA-1).
  *
@@ -16,8 +18,8 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
-    theme_color: "#0f172a",
+    background_color: COLOR_CANVAS,
+    theme_color: COLOR_CANVAS,
     lang: "es-CL",
     icons: [
       {

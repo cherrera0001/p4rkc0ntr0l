@@ -39,10 +39,40 @@
  */
 
 /**
- * Versión del build. Viene de la URL con la que se registró el worker; el
- * respaldo solo aplica si alguien lo registra a mano sin query.
+ * Saneo de la versión. Espejo de `sanearVersion` en `src/lib/version-app.ts`:
+ * este archivo se sirve estático y no puede importar del bundle, así que las
+ * cinco líneas se repiten. El verificador comprueba que las dos copias
+ * coincidan en lo observable.
+ *
+ * Existe por la regresión de INT-12: el build de producción inlineó la versión
+ * vacía, el cliente registró `/sw.js?v=` y acá el `||` la reemplazó por el
+ * literal `"sin-version"`. Nombre estable entre deploys = `activate` sin nada
+ * que purgar = el defecto original, con otro nombre. Una versión vacía ya no se
+ * acepta como válida en ninguno de los dos extremos.
  */
-const VERSION = new URL(self.location.href).searchParams.get("v") || "sin-version";
+function sanearVersion(valor) {
+  const limpio = String(valor ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .slice(0, 40)
+    .replace(/^[-.]+/, "")
+    .replace(/[-.]+$/, "");
+  if (limpio.length === 0) return null;
+  return ["v1", "sin-version", "degradado", "undefined", "null"].includes(limpio.toLowerCase())
+    ? null
+    : limpio;
+}
+
+/**
+ * Versión del build. Viene de la URL con la que se registró el worker. Sin una
+ * versión utilizable se sigue trabajando —quedarse sin worker es quedarse sin
+ * offline, y offline no es opcional— pero bajo un nombre que se delata.
+ */
+const VERSION = sanearVersion(new URL(self.location.href).searchParams.get("v")) ?? "degradado";
+if (VERSION === "degradado") {
+  console.warn("service worker sin versión de build: los cachés no se pueden purgar (INT-12).");
+}
+
 const CACHE_SHELL = `estacionamiento-shell-${VERSION}`;
 const CACHE_ESTATICOS = `estacionamiento-estaticos-${VERSION}`;
 

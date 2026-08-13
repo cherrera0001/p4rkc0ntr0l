@@ -1,17 +1,64 @@
 # ADR-004 — Multisitio bajo un tenant y cobro de la suscripción
 
-**Estado:** **PROPUESTO — requiere decisión humana. No implementar.**
+**Estado:** **ACEPTADO PARCIALMENTE — alternativa 2 (enmienda mínima).**
 **Fecha del borrador:** 2026-08-12
-**Decisor:** Cristóbal Herrera (pendiente)
-**Enmienda:** ADR-001 (alcance por exclusión), en dos filas de su tabla y solo dos.
+**Fecha de decisión:** 2026-08-12
+**Decisor:** Cristóbal Herrera
+**Enmienda:** ADR-001 (alcance por exclusión), en **una** fila de su tabla, no dos.
 **Origen:** capa de diseño importada de Claude Design
 `964c3090-9776-4aa0-a79f-816b50244a83`, traducida en
 `docs/diseno-2026-08-12-traduccion.md`.
 
 > Este archivo existe porque `CLAUDE.md` §1 lo exige: *"Si una tarea parece
-> exigir algo de esta tabla: detenerse, decirlo, y pedir el ADR."* Es el pedido,
-> redactado en el formato del repo para que decidir cueste poco. **Mientras diga
-> PROPUESTO, el gate sigue rechazando todo lo que hay acá.**
+> exigir algo de esta tabla: detenerse, decirlo, y pedir el ADR."*
+
+---
+
+## DECISIÓN TOMADA (2026-08-12)
+
+Se acepta la **alternativa 2**: enmendar solo el cobro de la suscripción.
+**Multisitio queda excluido, igual que en ADR-001.**
+
+El resto de este documento se conserva **sin editar** como el análisis sobre el
+que se decidió. Donde la sección *"Decisión propuesta"* pedía dos enmiendas, la
+decisión concedió una. Lo que sigue manda sobre ella.
+
+### Se abre — y nada más que esto
+
+| # | Qué | Habilita |
+|---|---|---|
+| 1 | Entidad `suscripcion` — plan, estado, UF/mes | `1i` (planes), `1j` (facturación) |
+| 2 | Pasarela local `{{PASARELA_SUSCRIPCION}}` (Webpay o Flow) **exclusivamente para la suscripción** | el cobro que hace medible a H2 |
+
+### Sigue excluido — sin cambios respecto de ADR-001
+
+- **Multisitio / entidad `tenant` / rol `plataforma`.** Ninguna hipótesis los
+  necesita. Un dueño con tres estacionamientos prueba H1 y H2 con uno.
+  Siguen bloqueadas: `1d`, `1h`, `1k`, `1m`, y la mitad multisitio de `1a` y `1f`.
+- **El cobro del estacionamiento al conductor sigue siendo en efectivo, fuera del
+  sistema.** Esta es la línea que no se mueve, y la enmienda la hace *más*
+  importante, no menos: a partir de ahora el repo va a contener una pasarela, y
+  el gate tiene que distinguir para qué se usa.
+- LPR / cámaras / barreras físicas · reserva de cupos.
+
+### Consecuencia inmediata sobre el gate
+
+`AC-SCOPE-1` hoy rechaza `webpay|flow` en `package.json` por simple `grep`. Con
+esta enmienda ese `grep` va a dar positivo por diseño. **Hasta que AC-SCOPE-1 se
+reescriba, el gate no se toca y no entra ninguna dependencia de pasarela.** Un
+gate más fino es un gate más frágil: la redacción nueva tiene que seguir
+rechazando inequívocamente el pago **del conductor**.
+
+### Las precondiciones de abajo siguen vigentes
+
+Aceptar este ADR **no abre M7**. Las cinco precondiciones se mantienen tal cual,
+con una aclaración: la #2 (endurecimiento desplegado) se cumplió el 2026-08-12.
+Las otras cuatro siguen abiertas, y la #1 —INT-7 con mecanismo, no solo valores—
+es la que importa.
+
+**Qué se puede construir hoy con esta decisión: nada nuevo.** Lo que se
+desbloquea es el *camino*, no la obra. El hito en curso es **M6 — capa de
+presentación**, que no necesitaba este ADR.
 
 ---
 
@@ -129,6 +176,9 @@ Aunque este ADR se acepte, **nada se construye hasta que**:
 
 ## Qué hacer con este archivo
 
+*(Sección del borrador. La decisión ya se tomó — ver arriba. Se conserva porque
+describe el procedimiento que ahora hay que ejecutar.)*
+
 - **Si se acepta:** cambiar el estado, firmar, reescribir AC-SCOPE-1/2 en
   `spec.md` §9, y recién entonces abrir M7.
 - **Si se rechaza:** cambiar el estado a *rechazado* y dejarlo. El ledger
@@ -136,3 +186,15 @@ Aunque este ADR se acepte, **nada se construye hasta que**:
   la respuesta ya está escrita.
 - **Mientras diga PROPUESTO:** el gate rechaza. `1a`, `1d`, `1h`, `1i`, `1j`,
   `1k`, `1m` no se construyen ni en versión chica ni con el hook preparado.
+
+### Estado de ejecución de ese procedimiento
+
+| Paso | Estado |
+|---|---|
+| Cambiar el estado y firmar | **hecho** (2026-08-12, alternativa 2) |
+| Reescribir AC-SCOPE-1 en `spec.md` §9 para distinguir cobro de suscripción de cobro al conductor | **pendiente** — hasta entonces no entra ninguna pasarela |
+| Abrir M7 | **bloqueado** por las precondiciones 1, 3, 4 y 5 |
+
+`1d`, `1h`, `1k`, `1m` **siguen rechazadas por el gate**: multisitio no se
+enmendó. `1i` y `1j` quedan habilitadas en principio, y bloqueadas en la
+práctica hasta que AC-SCOPE-1 se reescriba y `{{PRECIO_SUSCRIPCION_UF}}` exista.

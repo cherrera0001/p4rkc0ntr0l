@@ -1,21 +1,34 @@
 import type { NextConfig } from "next";
 
+import { resolverVersionApp, sanearVersion } from "./src/lib/version-app.ts";
+
 /**
  * Identidad del build, para versionar los cachés del service worker
  * (hallazgo INT-12).
  *
- * El nombre del caché llevaba el literal `"v1"`, así que `activate` nunca tenía
- * nada que purgar y el shell de hace tres deploys seguía siendo "vigente". Con
- * red no se notaba —la navegación es network-first—; sin red se servía el HTML
- * viejo y con él un bundle que puede ser anterior a la barrera de datos reales
- * de A-3 (INT-3).
- *
- * En Vercel el valor sale del commit desplegado. Fuera de Vercel se usa el
- * instante del build: dos builds distintos no comparten caché, que es la
- * propiedad que se necesita.
+ * Acá vivía la regresión: `process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ??
+ * ...`. En los deploys por CLI esa variable llega **vacía**, no ausente, así que
+ * el `??` no dispara y la versión quedaba en `""`. El porqué completo y la
+ * propiedad que hay que sostener están en `src/lib/version-app.ts`, que además
+ * es lo que se prueba sin levantar nada.
  */
-const VERSION_APP =
-  process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? `local-${Date.now().toString(36)}`;
+const VERSION_APP = resolverVersionApp(process.env);
+
+/**
+ * Segunda barrera, y la que no puede pasar inadvertida: un build que no logra
+ * identificarse no se publica.
+ *
+ * `resolverVersionApp` no puede devolver algo inservible —el último recurso es
+ * el instante del build—, así que esto solo se dispara si alguien cambia el
+ * resolutor y reintroduce la forma del defecto. Falla en el build, que es donde
+ * se ve, y no en un dispositivo sin red tres deploys después.
+ */
+if (!sanearVersion(VERSION_APP)) {
+  throw new Error(
+    `Versión de build inservible (${JSON.stringify(VERSION_APP)}): los cachés del service worker ` +
+      "quedarían con nombre fijo entre deploys y `activate` no purgaría nada (INT-12).",
+  );
+}
 
 /**
  * Permisos de API del navegador. Se declaran cerrados, incluidos `camera` y

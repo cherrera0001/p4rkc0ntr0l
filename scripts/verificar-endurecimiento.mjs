@@ -30,6 +30,7 @@ import { existsSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { leerJson } from "./lib/respuesta.mjs";
 import { limpiarFixtures } from "./lib/fixtures.mjs";
+import { sanearVersion } from "../src/lib/version-app.ts";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO;
@@ -301,19 +302,39 @@ try {
   );
 
   // --- INT-12 · el caché lleva la versión del build --------------------------
+  // La espera va acotada: `serviceWorker.ready` no rechaza, así que si la app no
+  // hidrata esta promesa no vuelve nunca y la corrida se muere acá, con las
+  // comprobaciones que siguen sin ejecutar ni reportar.
   const registro = await page.evaluate(async () => {
-    const reg = await navigator.serviceWorker.ready.catch(() => null);
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready.catch(() => null),
+      new Promise((r) => setTimeout(() => r(null), 15_000)),
+    ]);
     return {
       script: reg?.active?.scriptURL ?? null,
       caches: await caches.keys(),
     };
   });
 
-  comprobar("INT-12 · el worker se registra con la versión del build en la URL", /\/sw\.js\?v=.+/.test(registro.script ?? ""), registro.script ?? "sin worker");
+  // Este par dio PASS sobre producción con el caché llamado
+  // `estacionamiento-shell-sin-version`: pedía un prefijo y la ausencia del
+  // literal `v1`, y con la versión vacía las dos cosas eran ciertas. Ahora se
+  // exige la propiedad de la que depende la purga —que el nombre derive de una
+  // versión utilizable— con el mismo saneo que usa el build. El detalle está en
+  // `scripts/verificar-int12.mjs`.
+  const versionSw = sanearVersion(
+    registro.script ? new URL(registro.script).searchParams.get("v") : null,
+  );
+  const cachesMios = registro.caches.filter((c) => c.startsWith("estacionamiento-"));
+
   comprobar(
-    "INT-12 · los cachés llevan esa versión en el nombre, no el literal v1",
-    registro.caches.some((c) => c.startsWith("estacionamiento-shell-")) &&
-      !registro.caches.includes("estacionamiento-shell-v1"),
+    "INT-12 · el worker se registra con una versión utilizable en la URL",
+    versionSw !== null,
+    registro.script ?? "sin worker",
+  );
+  comprobar(
+    "INT-12 · los cachés llevan exactamente esa versión, no una marca fija",
+    versionSw !== null && cachesMios.length > 0 && cachesMios.every((c) => c.endsWith(`-${versionSw}`)),
     registro.caches.join(", "),
   );
 
