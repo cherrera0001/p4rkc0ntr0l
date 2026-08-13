@@ -21,6 +21,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
 import { exigirEnv } from "@/lib/env";
+import { ErrorBaseDatos, ErrorConfiguracion } from "@/lib/errores";
 import * as schema from "./schema";
 
 type BaseDatos = ReturnType<typeof drizzle<typeof schema>>;
@@ -37,6 +38,21 @@ function crear(): BaseDatos {
       "desde Vercel. No la escribas en el repo.",
   );
 
+  // Se parsea acá, ANTES de dárselo al driver (hallazgo INT-1). Cuando la
+  // cadena venía con un BOM adelante, `postgres()` la pasaba a `new URL()` y el
+  // TypeError resultante llevaba la cadena entera —contraseña incluida— en su
+  // mensaje y en su propiedad `input`, y de ahí a los logs de runtime de
+  // Vercel. Esta comprobación falla con un mensaje que no contiene la cadena.
+  try {
+    new URL(connectionString);
+  } catch {
+    throw new ErrorConfiguracion(
+      "DATABASE_URL no es una URL válida. Revisá que empiece por postgresql:// y " +
+        "que no haya quedado con caracteres invisibles al copiarla. El valor no se " +
+        "escribe en este mensaje a propósito.",
+    );
+  }
+
   /**
    * `max: 1` porque cada invocación serverless es un proceso efímero: un pool
    * grande por instancia agota las conexiones del servidor sin dar throughput.
@@ -45,9 +61,35 @@ function crear(): BaseDatos {
     max: 1,
     idle_timeout: 20,
     connect_timeout: 10,
+    // El log del driver imprimiría la consulta y sus parámetros: en esta base
+    // los parámetros son patentes (dato personal, Ley 21.719).
+    debug: false,
+    onnotice: () => {},
   });
 
   return drizzle(cliente, { schema });
+}
+
+/**
+ * Envoltura obligatoria de todo acceso a la base.
+ *
+ * Hace dos cosas que las rutas necesitaban por separado:
+ *
+ *  - **Sanea** (INT-1): lo que sale de acá es siempre un `ErrorBaseDatos`
+ *    reconstruido, sin las propiedades del error del driver. Aunque quien llama
+ *    se olvide de atraparlo y el error termine en el logger de Next, la
+ *    credencial ya no viaja con él.
+ *  - **Marca el punto de fallo** (INT-19): antes ningún acceso a `db` estaba
+ *    dentro de un `try`, así que cualquier hipo de Railway era un 500 sin
+ *    cuerpo tipado. Con esto, quien llama puede distinguir "la base falló" de
+ *    "el pedido era inválido" y responder distinto.
+ */
+export async function conBase<T>(operacion: () => Promise<T>): Promise<T> {
+  try {
+    return await operacion();
+  } catch (error) {
+    throw ErrorBaseDatos.desde(error);
+  }
 }
 
 /**

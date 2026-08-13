@@ -8,6 +8,10 @@
  * y un solo estacionamiento, y cualquier cosa más grande sería infraestructura
  * que administrar en contra del criterio rector de ADR-002.
  *
+ * El formato del token y su vencimiento viven en `sesion-token.ts`, que no
+ * depende de Next ni de la base y por eso tiene pruebas unitarias. Acá queda lo
+ * que sí necesita el entorno: la cookie y la relectura del usuario.
+ *
  * Qué protege y qué no:
  *  - La cookie va firmada: el cliente no puede cambiar su rol de `operador` a
  *    `dueño` editándola. Cualquier alteración invalida la firma.
@@ -16,70 +20,48 @@
  *  - NO es un sistema de identidad. La barrera es una clave compartida del
  *    piloto. Alcanza para separar dos roles en un estacionamiento; no alcanza
  *    para multiusuario real. Cuando el piloto lo exija, se reemplaza.
+ *
+ * **Vencimiento y revocación (hallazgo A-1).** Antes la firma era lo único que
+ * se comprobaba: una cookie robada valía para siempre, `maxAge` era un atributo
+ * que el cliente podía ignorar, y ninguna ruta volvía a mirar la tabla `usuario`
+ * después del login. Ahora la carga lleva `iat`/`exp` firmados y verificados en
+ * el servidor, y el rol y el estacionamiento se releen de la base en cada
+ * petición. Eso último absorbe M-3: el rol ya no queda congelado en la cookie.
+ *
+ * No hay `jti` ni lista de revocación, y es deliberado: una lista de tokens
+ * revocados es otra tabla que administrar, y la revocación que el piloto
+ * necesita —dar de baja a alguien, o cambiarle el rol— la da la relectura de
+ * `usuario`. Rotar `SESSION_SECRET` sigue invalidando de golpe todo lo emitido.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 
-import { exigirEnv } from "./env";
+import { conBase, db, usuario } from "@/db";
+import { exigirEnv } from "./env.ts";
+import {
+  deserializarSesion,
+  DURACION_SEGUNDOS,
+  igualEnTiempoConstante,
+  serializarSesion,
+  type SesionUsuario,
+} from "./sesion-token.ts";
 
 const COOKIE = "sesion";
-const DURACION_DIAS = 30;
 
-export type SesionUsuario = {
-  id: string;
-  email: string;
-  rol: "operador" | "dueño";
-  estacionamientoId: string;
-};
+export type { SesionUsuario };
+export { deserializarSesion, serializarSesion };
 
-function secreto(): string {
-  return exigirEnv(
-    "SESSION_SECRET",
-    "Definila como variable de entorno; nunca en el repo.",
-  );
-}
-
-const b64url = (b: Buffer) => b.toString("base64url");
-
-function firmar(carga: string): string {
-  return b64url(createHmac("sha256", secreto()).update(carga).digest());
-}
-
-/** Compara en tiempo constante: una comparación normal filtra la firma por timing. */
-function firmaValida(carga: string, firma: string): boolean {
-  const esperada = Buffer.from(firmar(carga));
-  const recibida = Buffer.from(firma);
-  if (esperada.length !== recibida.length) return false;
-  return timingSafeEqual(esperada, recibida);
-}
-
-export function serializarSesion(usuario: SesionUsuario): string {
-  const carga = b64url(Buffer.from(JSON.stringify(usuario), "utf8"));
-  return `${carga}.${firmar(carga)}`;
-}
-
-export function deserializarSesion(valor: string | undefined): SesionUsuario | null {
-  if (!valor) return null;
-  const [carga, firma] = valor.split(".");
-  if (!carga || !firma) return null;
-  if (!firmaValida(carga, firma)) return null;
-
-  try {
-    return JSON.parse(Buffer.from(carga, "base64url").toString("utf8")) as SesionUsuario;
-  } catch {
-    return null;
-  }
-}
-
-export async function iniciarSesion(usuario: SesionUsuario): Promise<void> {
+export async function iniciarSesion(usuarioSesion: SesionUsuario): Promise<void> {
   const almacen = await cookies();
-  almacen.set(COOKIE, serializarSesion(usuario), {
+  almacen.set(COOKIE, serializarSesion(usuarioSesion), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: DURACION_DIAS * 24 * 60 * 60,
+    // Coincide con el `exp` firmado. El atributo le ahorra al navegador mandar
+    // una cookie que igual se va a rechazar; la verificación real es el `exp`.
+    maxAge: DURACION_SEGUNDOS,
   });
 }
 
@@ -88,10 +70,31 @@ export async function cerrarSesion(): Promise<void> {
   almacen.delete(COOKIE);
 }
 
-/** Usuario de la petición actual, o `null` si no hay sesión válida. */
+/**
+ * Usuario de la petición actual, o `null` si no hay sesión válida.
+ *
+ * Comprueba firma y vencimiento, **y relee la fila del usuario**: si lo dieron
+ * de baja, o le cambiaron el rol o el estacionamiento, la cookie deja de valer
+ * en la petición siguiente sin esperar a que caduque. Lo que devuelve sale de la
+ * base, no de la cookie: la cookie dice quién dice ser, la base dice qué puede
+ * hacer.
+ */
 export async function sesionActual(): Promise<SesionUsuario | null> {
   const almacen = await cookies();
-  return deserializarSesion(almacen.get(COOKIE)?.value);
+  const carga = deserializarSesion(almacen.get(COOKIE)?.value);
+  if (!carga) return null;
+
+  const [fila] = await conBase(() =>
+    db.select().from(usuario).where(eq(usuario.id, carga.id)).limit(1),
+  );
+  if (!fila) return null;
+
+  return {
+    id: fila.id,
+    email: fila.email,
+    rol: fila.rol,
+    estacionamientoId: fila.estacionamientoId,
+  };
 }
 
 /**
@@ -101,18 +104,14 @@ export async function sesionActual(): Promise<SesionUsuario | null> {
 export async function exigirRol(
   ...roles: Array<SesionUsuario["rol"]>
 ): Promise<SesionUsuario | null> {
-  const usuario = await sesionActual();
-  if (!usuario) return null;
-  return roles.includes(usuario.rol) ? usuario : null;
+  const usuarioSesion = await sesionActual();
+  if (!usuarioSesion) return null;
+  return roles.includes(usuarioSesion.rol) ? usuarioSesion : null;
 }
 
-/** Verifica la clave compartida del piloto en tiempo constante. */
+/** Verifica la clave compartida del piloto en tiempo constante (ver B-1). */
 export function claveCorrecta(entrada: unknown): boolean {
   const esperada = exigirEnv("CLAVE_ACCESO", "Definila como variable de entorno.");
   if (typeof entrada !== "string") return false;
-
-  const a = Buffer.from(esperada);
-  const b = Buffer.from(entrada);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return igualEnTiempoConstante(esperada, entrada);
 }

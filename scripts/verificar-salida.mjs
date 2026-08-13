@@ -13,6 +13,7 @@
  */
 
 import postgres from "postgres";
+import { leerJson } from "./lib/respuesta.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const PATENTE_FIXTURE = "FIXT01";
@@ -93,7 +94,7 @@ try {
       tecleoFinAt: entrada.toISOString(),
     }),
   });
-  const cuerpoDup = await rDuplicado.json();
+  const cuerpoDup = await leerJson(rDuplicado);
   comprobar(
     "reenviar el mismo id no crea otra sesión",
     rDuplicado.status === 200 && cuerpoDup.duplicada === true,
@@ -104,7 +105,7 @@ try {
     method: "POST",
     headers: cabeceras,
   });
-  const { sesion } = await rSalida.json();
+  const { sesion } = await leerJson(rSalida);
   comprobar("la salida responde 200", rSalida.status === 200, `HTTP ${rSalida.status}`);
   comprobar("la sesión queda cerrada", sesion?.estado === "cerrada", sesion?.estado);
 
@@ -120,7 +121,7 @@ try {
     method: "POST",
     headers: cabeceras,
   });
-  const repetida = await rRepetida.json();
+  const repetida = await leerJson(rRepetida);
   comprobar(
     "cerrar dos veces no cambia el monto",
     repetida.yaCerrada === true && repetida.sesion?.montoCalculado === 1500,

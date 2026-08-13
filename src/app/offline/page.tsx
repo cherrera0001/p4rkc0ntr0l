@@ -4,7 +4,13 @@
  * El service worker la precachea en `install`, así que existe aunque nunca se
  * haya visitado. Es la última red de seguridad: el registro del operador debe
  * seguir funcionando sin señal (spec.md §3).
+ *
+ * `force-dynamic` por la CSP con nonce (INT-2): una página prerenderizada no
+ * recibe el nonce de la petición y sus scripts quedan bloqueados. Acá eso
+ * significaría que el service worker no se registre desde esta pantalla.
  */
+export const dynamic = "force-dynamic";
+
 export default function SinConexion() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">

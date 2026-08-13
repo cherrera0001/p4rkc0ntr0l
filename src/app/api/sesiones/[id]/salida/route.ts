@@ -8,23 +8,41 @@
  * para que el operador lo cobre; no registra ningún movimiento de dinero.
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { db, sesionVehiculo } from "@/db";
+import { conBase, db, sesionVehiculo } from "@/db";
 import { exigirRol } from "@/lib/auth";
 import { obtenerTarifaVigente } from "@/lib/contexto";
+import {
+  noAutorizado,
+  origenAjeno,
+  origenPropio,
+  respuestaDeFallo,
+} from "@/lib/peticion";
 import { calcularMonto } from "@/lib/tarificacion";
+import { entradaFacturable, montoAlmacenable } from "@/lib/tiempo";
 
 export const dynamic = "force-dynamic";
 
+/** Lo que el cliente necesita de una salida. Nada más (minimización, §7). */
+const COLUMNAS_SALIDA = {
+  id: sesionVehiculo.id,
+  patente: sesionVehiculo.patente,
+  entradaAt: sesionVehiculo.entradaAt,
+  salidaAt: sesionVehiculo.salidaAt,
+  montoCalculado: sesionVehiculo.montoCalculado,
+  estado: sesionVehiculo.estado,
+};
+
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!(await exigirRol("operador"))) {
-    return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-  }
+  if (!origenPropio(request)) return origenAjeno();
+
+  const operador = await exigirRol("operador");
+  if (!operador) return noAutorizado();
 
   const { id } = await params;
 
@@ -32,35 +50,80 @@ export async function POST(
     return NextResponse.json({ error: "Id de sesión inválido." }, { status: 400 });
   }
 
-  const [sesion] = await db.select().from(sesionVehiculo).where(eq(sesionVehiculo.id, id));
+  try {
+    // **Pertenencia, no solo rol** (hallazgo M-1). Antes se comprobaba que
+    // quien pedía fuera operador y después se buscaba la sesión por id a secas:
+    // cualquier operador podía cerrar la sesión de cualquier estacionamiento con
+    // solo conocer su id. El POST de ingreso ya derivaba el estacionamiento del
+    // usuario autenticado; esta ruta no.
+    const [sesion] = await conBase(() =>
+      db
+        .select(COLUMNAS_SALIDA)
+        .from(sesionVehiculo)
+        .where(
+          and(
+            eq(sesionVehiculo.id, id),
+            eq(sesionVehiculo.estacionamientoId, operador.estacionamientoId),
+          ),
+        ),
+    );
 
-  if (!sesion) {
-    return NextResponse.json({ error: "La sesión no existe." }, { status: 404 });
+    // Un id de otro estacionamiento responde igual que un id inexistente: la
+    // diferencia entre "no existe" y "no es tuyo" ya es información.
+    if (!sesion) {
+      return NextResponse.json({ error: "La sesión no existe." }, { status: 404 });
+    }
+
+    // Cerrar dos veces devuelve lo mismo: el operador puede tocar "Salida" de
+    // nuevo tras una reconexión sin que el monto cambie.
+    if (sesion.estado === "cerrada") {
+      return NextResponse.json({ sesion, yaCerrada: true });
+    }
+
+    const salidaAt = new Date();
+    const tarifa = await obtenerTarifaVigente(operador.estacionamientoId, salidaAt);
+
+    /**
+     * Entrada acotada al rango facturable (hallazgo INT-14).
+     *
+     * `calcularMonto` lanza si la entrada es posterior a la salida, y esta ruta
+     * no capturaba nada: una sesión con `entradaAt` en el futuro —un teléfono
+     * con el reloj adelantado— daba 500 en cada intento y **no había forma de
+     * cerrarla desde la interfaz**. El vehículo no podía irse y su patente
+     * quedaba retenida para siempre en la base y en el dispositivo, reabriendo
+     * M-4 por una puerta que la corrección de M-4 no puede cerrar.
+     *
+     * El ingreso ya se sanea al entrar, así que esto cubre las filas que
+     * quedaron escritas antes de aquella corrección.
+     */
+    const entrada = entradaFacturable(sesion.entradaAt, salidaAt);
+
+    const montoCalculado = montoAlmacenable(
+      calcularMonto(
+        { entradaAt: entrada, salidaAt },
+        {
+          valorHora: tarifa.valorHora,
+          fraccionMinutos: tarifa.fraccionMinutos,
+          montoMinimo: tarifa.montoMinimo,
+        },
+      ),
+    );
+
+    const [cerrada] = await conBase(() =>
+      db
+        .update(sesionVehiculo)
+        .set({ salidaAt, montoCalculado, estado: "cerrada", syncEstado: "sincronizada" })
+        .where(
+          and(
+            eq(sesionVehiculo.id, id),
+            eq(sesionVehiculo.estacionamientoId, operador.estacionamientoId),
+          ),
+        )
+        .returning(COLUMNAS_SALIDA),
+    );
+
+    return NextResponse.json({ sesion: cerrada, yaCerrada: false });
+  } catch (error) {
+    return respuestaDeFallo(`POST /api/sesiones/${id}/salida`, error);
   }
-
-  // Cerrar dos veces devuelve lo mismo: el operador puede tocar "Salida" de
-  // nuevo tras una reconexión sin que el monto cambie.
-  if (sesion.estado === "cerrada") {
-    return NextResponse.json({ sesion, yaCerrada: true });
-  }
-
-  const salidaAt = new Date();
-  const tarifa = await obtenerTarifaVigente(sesion.estacionamientoId, salidaAt);
-
-  const montoCalculado = calcularMonto(
-    { entradaAt: sesion.entradaAt, salidaAt },
-    {
-      valorHora: tarifa.valorHora,
-      fraccionMinutos: tarifa.fraccionMinutos,
-      montoMinimo: tarifa.montoMinimo,
-    },
-  );
-
-  const [cerrada] = await db
-    .update(sesionVehiculo)
-    .set({ salidaAt, montoCalculado, estado: "cerrada", syncEstado: "sincronizada" })
-    .where(eq(sesionVehiculo.id, id))
-    .returning();
-
-  return NextResponse.json({ sesion: cerrada, yaCerrada: false });
 }

@@ -14,6 +14,8 @@
  * Normalizar al leer es más barato que volver a diagnosticar eso.
  */
 
+import { ErrorConfiguracion } from "./errores.ts";
+
 /** Marca de orden de bytes. */
 const BOM = String.fromCharCode(0xfeff);
 /** Espacio de ancho cero. */
@@ -38,11 +40,18 @@ export function leerEnv(nombre: string): string | undefined {
   return limpio.length > 0 ? limpio : undefined;
 }
 
-/** Igual que `leerEnv`, pero falla ruidosamente si falta. */
+/**
+ * Igual que `leerEnv`, pero falla ruidosamente si falta.
+ *
+ * Lanza `ErrorConfiguracion` y no un `Error` pelado: quien lo atrapa tiene que
+ * poder decir "el servidor está mal configurado" en vez de "el servicio falló"
+ * (hallazgo INT-20). Son dos problemas distintos y hasta ahora daban el mismo
+ * 500 mudo.
+ */
 export function exigirEnv(nombre: string, ayuda: string): string {
   const valor = leerEnv(nombre);
   if (!valor) {
-    throw new Error(`Falta ${nombre}. ${ayuda}`);
+    throw new ErrorConfiguracion(`Falta ${nombre}. ${ayuda}`);
   }
   return valor;
 }

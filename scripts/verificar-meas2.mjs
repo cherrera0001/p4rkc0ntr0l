@@ -20,6 +20,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
+import { limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -46,6 +47,10 @@ if (!navegador) {
   console.error("FAIL · no se encontró Edge. Definí CHROME_PATH.");
   process.exit(1);
 }
+
+// Precondición mecanizada, no confiada al humano: las activas de una corrida
+// anterior se copian al dispositivo y falsean las cuentas de registros.
+await limpiarFixtures();
 
 const resultados = [];
 const comprobar = (nombre, ok, detalle) => {
@@ -133,14 +138,29 @@ try {
 
   for (let i = 0; i < A_CERRAR; i++) {
     const objetivo = i + 1;
-    const botones = await operador.$$('[data-testid="lista-activas"] li button');
-    if (botones.length === 0) break;
-    await botones[0].click();
-
     let confirmado = false;
-    for (let intento = 0; intento < 40 && !confirmado; intento++) {
-      await esperar(250);
-      confirmado = (await contarCerradas()) >= objetivo;
+
+    // El botón se vuelve a buscar en cada intento: la lista se repinta sola
+    // (llega la respuesta del servidor, se actualiza el espejo local) y un
+    // handle capturado un instante antes puede haberse desprendido del DOM.
+    // Antes se capturaba una vez y se clickeaba: cuando el repintado caía justo
+    // en medio, el script abortaba sin resultado en vez de fallar una aserción.
+    for (let intento = 0; intento < 12 && !confirmado; intento++) {
+      const botones = await operador.$$('[data-testid="lista-activas"] li button');
+      if (botones.length === 0) {
+        await esperar(300);
+        continue;
+      }
+      try {
+        await botones[0].click();
+      } catch {
+        await esperar(300);
+        continue;
+      }
+      for (let espera = 0; espera < 12 && !confirmado; espera++) {
+        await esperar(250);
+        confirmado = (await contarCerradas()) >= objetivo;
+      }
     }
     if (!confirmado) break;
   }

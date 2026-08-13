@@ -1,37 +1,50 @@
 /**
  * Contexto de operación del servidor.
  *
- * La v1 es de un solo estacionamiento (spec.md §8): no hay multitenancy ni
- * selector de sucursal. Estas funciones resuelven ese único contexto.
+ * **Ya no resuelve "el" estacionamiento: resuelve EL DEL USUARIO** (hallazgos
+ * M-1 y M-2). Antes esto era `select().from(estacionamiento).limit(1)` — la
+ * primera fila de la tabla, sin mirar quién preguntaba. Con un solo
+ * estacionamiento sembrado el resultado coincidía por casualidad, y esa
+ * casualidad es toda la separación que había.
  *
- * En M2 el operador se resuelve como el único usuario con rol `operador` del
- * estacionamiento. La auth mínima de dos roles llega en M3; hasta entonces esto
- * NO es autenticación y no se declara como tal.
+ * El agravante que hacía urgente cambiarlo no es de lectura sino de escritura:
+ * lo que devuelve `GET /api/sesiones` va a `reconciliarActivas`, que **persiste**
+ * esas patentes en el IndexedDB del dispositivo. Con un segundo estacionamiento
+ * en la tabla, el operador de B se llevaba las patentes de A guardadas en su
+ * teléfono.
+ *
+ * La v1 sigue siendo de un solo estacionamiento (spec.md §8): esto no es
+ * multitenancy ni la prepara. Es dejar de depender del orden de las filas para
+ * algo que el usuario autenticado ya sabe.
  */
 
 import { and, desc, eq, lte } from "drizzle-orm";
 
-import { db, estacionamiento, tarifa, usuario } from "@/db";
+import { conBase, db, estacionamiento, tarifa } from "@/db";
+import { ErrorConfiguracion } from "./errores.ts";
 
-export async function obtenerEstacionamiento() {
-  const [fila] = await db.select().from(estacionamiento).limit(1);
+/**
+ * El estacionamiento del usuario autenticado.
+ *
+ * Recibe el id, no lo adivina. Quien llama lo saca de la sesión, que a su vez lo
+ * releyó de la tabla `usuario` (ver `auth.ts`), así que no viene del cliente.
+ */
+export async function obtenerEstacionamiento(estacionamientoId: string) {
+  const [fila] = await conBase(() =>
+    db
+      .select()
+      .from(estacionamiento)
+      .where(eq(estacionamiento.id, estacionamientoId))
+      .limit(1),
+  );
+
   if (!fila) {
-    throw new Error(
-      "No hay estacionamiento configurado. Corré `npm run sembrar` para cargar los fixtures.",
+    // Configuración y no fallo de servicio: el usuario existe pero apunta a un
+    // estacionamiento que no está. Reintentar no lo arregla (INT-20).
+    throw new ErrorConfiguracion(
+      "El usuario autenticado apunta a un estacionamiento que no existe. " +
+        "Corré `npm run sembrar` o revisá los datos.",
     );
-  }
-  return fila;
-}
-
-export async function obtenerOperador(estacionamientoId: string) {
-  const [fila] = await db
-    .select()
-    .from(usuario)
-    .where(and(eq(usuario.estacionamientoId, estacionamientoId), eq(usuario.rol, "operador")))
-    .limit(1);
-
-  if (!fila) {
-    throw new Error("No hay usuario con rol operador. Corré `npm run sembrar`.");
   }
   return fila;
 }
@@ -42,17 +55,21 @@ export async function obtenerOperador(estacionamientoId: string) {
  * la tarifa que regía entonces.
  */
 export async function obtenerTarifaVigente(estacionamientoId: string, momento: Date) {
-  const [fila] = await db
-    .select()
-    .from(tarifa)
-    .where(
-      and(eq(tarifa.estacionamientoId, estacionamientoId), lte(tarifa.vigenteDesde, momento)),
-    )
-    .orderBy(desc(tarifa.vigenteDesde))
-    .limit(1);
+  const [fila] = await conBase(() =>
+    db
+      .select()
+      .from(tarifa)
+      .where(
+        and(eq(tarifa.estacionamientoId, estacionamientoId), lte(tarifa.vigenteDesde, momento)),
+      )
+      .orderBy(desc(tarifa.vigenteDesde))
+      .limit(1),
+  );
 
   if (!fila) {
-    throw new Error("No hay tarifa vigente para este estacionamiento.");
+    throw new ErrorConfiguracion(
+      "No hay tarifa vigente para este estacionamiento. Cargá una antes de operar.",
+    );
   }
   return fila;
 }

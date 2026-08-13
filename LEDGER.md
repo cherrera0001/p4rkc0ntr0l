@@ -1273,7 +1273,509 @@ vigente                     : 1b199545
 
 **GATE TERMINAL A-2 LEVANTADO.** El concilio puede abrir M-4.
 
+---
+
+### 2026-08-09 · M5 · M-4 · ciclo 1 · **VETO del auditor**
+
+El objetivo estricto de M-4 se cumple (`verificar-m4.mjs` 19/19 en corrida limpia;
+el acuse queda con `patente: ""` en el acto), pero el rediseño que lo consigue
+rompe tres cosas de forma reproducible y debilita una prueba existente.
+
+**V-1 · La lista queda vacía con vehículos registrados (bloqueante).**
+`src/app/pantalla-operador.tsx` (`refrescar`). Los `GET /api/sesiones` emitidos
+durante una ráfaga de ingresos vuelven `[]` —se emiten antes de que los INSERT
+lleguen a Railway— y al resolver últimos **pisan** la lista buena. No hay guarda
+de orden de respuestas ni refetch periódico: el `setInterval` solo llama
+`forzarRender`. Y ya no hay copia local de la que recuperarse. Medido: ~3 s con
+4 autos en la base y ocupación 0 en pantalla; sin otra acción del operador la
+ventana no está acotada. **AC-MEAS-2 falla 3 de 3 corridas** (`botones.length === 0`,
+el bucle de cierre corta). Colateral del mismo lugar: `confirmar()` lanza
+`sincronizarYRefrescar()` sin guarda de concurrencia y cada ingreso re-postea
+toda la cola (una patente se posteó 4 veces).
+
+**V-2 · Un 4xx transitorio destruye el ingreso offline (bloqueante, pérdida de datos).**
+`src/lib/cola-local.ts`: `r.status >= 400 && r.status < 500` → `eliminar()`. Todo
+el rango se trata como rechazo definitivo. Reproducido con 401 por cookie
+borrada: un fixture válido registrado sin red se borra del dispositivo y nunca
+llega al servidor. Contradice AC-OP-1. El aviso dice "hay que registrarlos de
+nuevo" pero la patente ya no existe. No es hipotético: la cookie caduca (A-1), la
+revocación propuesta para A-1 es rotar `SESSION_SECRET`, y **el remedio previsto
+para C-1 responde 429** — arreglar C-1 vaciaría la cola del operador.
+
+**V-3 · Tras recargar sin red, la pantalla queda en cero (bloqueante).**
+`activasServidor` vive solo en memoria de React. Una recarga sin cobertura deja
+al operador con ocupación 0 y sin ver quién está adentro. Contradice `spec.md`
+§8 y §11 ("no tratar offline-first como opcional"). El verificador nunca prueba
+esta combinación: el paso 2 recarga **con** red, el paso 5 prueba sin red **sin**
+recargar. La única combinación que falla es la única que no se prueba.
+
+**V-4 · La modificación de `verificar-a3.mjs` debilitó la comprobación.**
+El primer cambio es legítimo (registrar el fixture offline: bajo la nueva
+invariante la patente sincronizada ya no está en el dispositivo). El segundo no:
+la aserción "la purga no se lleva por delante el registro de prueba" pasó de
+mirar IndexedDB a contar filas en Postgres, sobre una función que solo toca
+IndexedDB. Es **tautológica**: si `purgarNoFixtures()` borrara todo el almacén,
+A-3 seguiría dando 10/10. Además ningún verificador comprueba que un pendiente
+`local` sobreviva a una apertura, así que `purgarSincronizadas()` tampoco tiene
+guarda contra sobre-borrado.
+
+**Verificado y correcto, a no romper al corregir:**
+`verificar-m4.mjs` 19/19 · `verificar-a3.mjs` 10/10 · `verificar-op1.mjs` 11/11 ·
+sin patente en ningún otro almacén del cliente (volcado en vivo de `caches.keys()`:
+solo shell y estáticos, ninguna respuesta de `/api/sesiones` cacheada; cero
+coincidencias de `localStorage|sessionStorage|document.cookie` en `src/`) ·
+gate ADR-001 limpio · `OPERACION_REAL_HABILITADA=false`.
+
+**Dudas registradas, sin veto:** el acuse conserva el `id` (PK del servidor) y los
+timestamps hasta la próxima apertura — seudonimizado reidentificable por el
+responsable; decidir si entra en el alcance de M-4. Y vaciar el campo con `put`
+no borra el valor del almacenamiento subyacente hasta la compactación, igual que
+`delete`: no se puede prometer *borrado*, solo *no exposición por API*.
+
+**Nota de entorno del auditor:** encontró un `next start` viejo (arrancado 21:28)
+ocupando el puerto 3000. Si el implementador validó contra ese proceso, validó
+contra código anterior al build.
+
+**Error de proceso del orquestador, registrado:** lancé al auditor cuando vi
+aparecer `verificar-m4.mjs`, sin señal de cierre del implementador, que siguió
+editando `pantalla-operador.tsx` 19 minutos después. El auditor revisó un blanco
+móvil. La regla del concilio —esperar la entrega del implementador antes de
+auditar— existe por esto y la salté por impaciencia.
+
+**VETO terminal. Vuelve al implementador, ciclo 2 de 3.**
+
 Segunda rotación de esta credencial en el proyecto. La primera fue por exposición
 en el chat; esta, por exposición en los logs de runtime de Vercel. Lección para
 `LEARNINGS.md`: un driver que incluye la cadena de conexión en el mensaje de
 error convierte cualquier fallo de conexión en una fuga de credencial.
+
+---
+
+### 2026-08-10 · M5 · endurecimiento integral sobre `docs/revision-integral-2026-08-09.md` · **PASS**
+
+Alcance pedido: **todo lo corregible por código** del informe integral, en el
+orden por riesgo real de su rol 6. Queda fuera **INT-7** (mecanismo de retención
+de patente), que no es implementable sin `{{PLAZO_RETENCION_PATENTE}}` y
+`{{BASE_LICITUD}}`: sigue como bloqueo humano.
+
+**Cerrado en este asiento:** INT-1, C-1, INT-14, A-1 (+M-3 absorbido), INT-11,
+INT-2, M-1, M-2, INT-4, INT-12, INT-3, INT-15, INT-16, INT-17, INT-19, INT-20,
+INT-8, INT-9, B-1, B-2, B-3, B-4, PRV-obs-1. Y **M-4 ciclo 2**, que estaba en el
+árbol sin asiento de cierre: `verificar:m4` 29/29 en corrida limpia.
+
+#### Qué se hizo, por hallazgo
+
+- **INT-1** — `src/lib/errores.ts` nuevo. Todo error del driver se **reconstruye**
+  (no se decora): sobreviven el código y el mensaje redactado, y se descartan
+  `input`, `cause` y las demás propiedades, que es donde postgres-js guarda la
+  cadena. `DATABASE_URL` se parsea en `src/db/index.ts` **antes** de dárselo al
+  driver, así que el `ERR_INVALID_URL` que provocó la rotación de A-2 ya no puede
+  originarse. Redacta por patrón (credenciales en cualquier URI) y por valor
+  (coincidencia literal de los secretos del entorno).
+- **C-1** — `src/lib/limite-intentos.ts`: ventana deslizante por IP **y** por
+  email, 5 intentos / 15 min, retardo que se duplica hasta 15 min, 429 con
+  `Retry-After`. Techo de claves recordadas para que rotar la IP no se vuelva un
+  vector de agotamiento de memoria. Alcance real —contador en memoria, por
+  instancia serverless— documentado en el módulo, sin venderlo como más de lo que
+  es.
+- **INT-14** — `src/lib/tiempo.ts`. Se **corrige el desfase**, no se rechaza: un
+  400 es rechazo definitivo para la cola local y borraría el ingreso del
+  dispositivo, o sea cambiar un 500 por pérdida de datos. El cliente manda su
+  `clienteAhora` al sincronizar y el servidor deriva el desfase del reloj de ese
+  dispositivo. Entrada acotada a `[ahora-30d, ahora]`; los instantes de tecleo se
+  corrigen pero **no** se acotan (son evidencia medida de H1, no se fabrican). En
+  la salida, `entradaFacturable` vuelve cerrable la fila ya envenenada.
+- **A-1 + M-3** — `src/lib/sesion-token.ts` (puro, con pruebas) + `auth.ts`.
+  `iat`/`exp` firmados y verificados en el servidor; duración 30 días → **12 h**.
+  El rol y el estacionamiento se **releen de `usuario`** en cada petición: eso
+  revoca sin lista de tokens y absorbe M-3.
+- **INT-11 + INT-12 + INT-3** — el service worker guarda como shell solo
+  respuestas propias, 2xx y **no redirigidas** (la redirección al login ya no
+  envenena la copia offline), y el nombre del caché lleva la versión del build,
+  que viaja en `/sw.js?v=…`. Con eso `activate` sí purga entre deploys y deja de
+  poder ejecutarse offline un cliente anterior a la barrera de A-3.
+- **INT-2** — CSP con nonce por petición en `src/proxy.ts` (en Next 16
+  `middleware` está deprecado y se llama `proxy`). `connect-src 'self'` es lo que
+  corta la exfiltración de IndexedDB. `worker-src 'self'` explícito porque
+  `strict-dynamic` anula el `'self'` de `script-src` para los workers.
+  `Permissions-Policy` con `camera=()`, coherente con ADR-001.
+- **M-1 + M-2 + INT-4 + B-3** — `obtenerEstacionamiento()` pasó de "la primera
+  fila de la tabla" a "la del usuario autenticado". La salida comprueba
+  **pertenencia**, no solo rol. `GET /api/sesiones` devuelve tres columnas y se le
+  niega al `dueño`. La rama de idempotencia del POST ya no devuelve la fila
+  entera.
+- **INT-15/16/17** — migración `drizzle/0001_large_kinsey_walden.sql`: índice
+  único parcial que impide dos sesiones activas por patente, 7 `CHECK` y 2
+  índices. Aplicada a Railway tras un pre-chequeo de solo lectura que confirmó
+  cero filas en conflicto.
+- **INT-19 + INT-20** — `conBase()` envuelve todo acceso a la base; las rutas
+  responden **503** (recuperable para la cola, a diferencia de un 400) y
+  distinguen "mal configurado" de "servicio caído". `src/app/error.tsx` contiene
+  el fallo de render que antes dejaba el panel del dueño en blanco.
+- **INT-8 + B-4** — `CerrarSesion` en las dos pantallas: borra cookie **y**
+  IndexedDB, con recarga completa para no dejar patentes en el estado en memoria.
+  **Se niega a cerrar si quedan ingresos sin sincronizar**: ese registro existe
+  solo en el dispositivo y borrarlo sería perderlo (AC-OP-1).
+- **INT-9** — los cierres locales se anotan 30 s y se descuentan de la lista del
+  servidor, así una respuesta emitida antes del cierre no vuelve a persistir la
+  patente.
+- **B-1** — se comparan huellas HMAC, no valores: ya no se filtra el largo.
+- **B-2** — `origenPropio()` en las mutaciones. Asimétrica a propósito: si el
+  navegador dice de dónde viene, tiene que decir que viene de acá; si no lo dice,
+  pasa (no es un navegador, y no es a quien el CSRF ataca).
+- **PRV-obs-1** — se registra el código HTTP del rechazo, no el cuerpo.
+
+#### Dos defectos que encontró la propia verificación, y se corrigieron
+
+1. **El índice único de INT-15 rompía el doble toque.** Un 23505 se convertía en
+   503 y la cola local reintentaba para siempre algo que la base nunca iba a
+   aceptar. Además el código del driver venía envuelto por `DrizzleQueryError`, y
+   sin recorrer la cadena de causas quedaba como `desconocido`. Corregido: se
+   recorre la cadena y el duplicado responde 200 `patente-ya-activa`. De paso, el
+   mensaje que se conserva es el del driver y no el de drizzle — el de drizzle
+   arrastra la consulta **y sus parámetros**, o sea patentes.
+2. **`verificar-m4.mjs` cerraba con `now()` de Postgres una sesión cuya entrada
+   la puso el reloj de la app.** Con 33 ms de desfase entre las dos máquinas, el
+   `CHECK salida_posterior_a_entrada` lo rechazaba — con razón. La app nunca
+   mezcla los dos relojes; el script sí. Corregido a `greatest(now(), entrada_at)`.
+   Es exactamente lo que INT-16 anticipaba: "los propios scripts de verificación
+   insertan por SQL directo".
+
+#### Regresión completa — salida real
+
+```
+npm test                     -> 97 pruebas, 24 suites, 0 fallos
+npm run build                -> PASS · Next.js 16.3.0 · 9 rutas + Proxy
+npx tsc --noEmit             -> sin salida
+npm run lint                 -> sin salida
+
+verificar-esquema        exit=0  Total: 4 tablas, 3 enums, 4 FKs
+verificar-pwa            exit=0  13/13 PASS   AC-PWA-1: PASS
+verificar-op1            exit=0  11/11 PASS   AC-OP-1: PASS
+verificar-a3             exit=0  11/11 PASS   A-3: PASS
+verificar-m4             exit=0  29/29 PASS   M-4: PASS
+verificar-salida         exit=0  11/11 PASS   Ciclo ingreso/salida: PASS
+verificar-meas1          exit=0               AC-MEAS-1: PASS
+verificar-meas2          exit=0  10/10 PASS   AC-MEAS-2: PASS
+verificar-invariantes    exit=0   8/8  PASS   INT-15 / INT-16 / INT-17: PASS
+verificar-endurecimiento exit=0  30/30 PASS   ENDURECIMIENTO: PASS
+```
+
+Gate ADR-001 limpio: AC-SCOPE-1/2/3 sin resultados.
+`OPERACION_REAL_HABILITADA=false`. Fixtures limpiados al terminar
+(`sesiones restantes en la base: 0`).
+
+#### Decisiones que conviene que alguien confirme
+
+1. **Duración de sesión: 12 h.** No es un `{{placeholder}}` de `spec.md`, así que
+   se eligió en vez de bloquear; pero es una decisión de operación. Doce horas
+   cubren un turno. Si el piloto quiere otra cosa, se cambia en
+   `sesion-token.ts`.
+2. **Permanencia máxima facturable: 30 días.** No es una regla de negocio sobre
+   cuánto puede quedarse un auto: es el techo que impide que un reloj roto
+   produzca un monto imposible de cobrar y una fila imposible de cerrar.
+3. **La migración se aplicó a la base de Railway**, que es la productiva del
+   piloto. Aditiva y reversible (`DROP INDEX` / `DROP CONSTRAINT`), con
+   pre-chequeo de solo lectura previo. **No se desplegó a Vercel**: producción
+   sigue sirviendo el código anterior.
+
+#### Sin cerrar
+
+- **INT-7** — mecanismo de retención. Bloqueado por `{{PLAZO_RETENCION_PATENTE}}`
+  y `{{BASE_LICITUD}}`. Y como señala el informe, resolverlos no alcanza: hay que
+  construir el mecanismo, y `patente NOT NULL` impide hoy el enmascaramiento que
+  `spec.md:150` promete.
+- **OFF-obs-4** — la reconciliación de IndexedDB no es atómica. Anotado, no
+  corregido: a escala de piloto no tiene consecuencia observable.
+
+---
+
+### 2026-08-12 · Capa de diseño · importación y traducción · SIN CAMBIO DE CÓDIGO
+
+Origen: proyecto Claude Design `964c3090-9776-4aa0-a79f-816b50244a83`
+("PWA estacionamientos por tenant"), leído por el MCP `claude_design`.
+Archivos leídos: `Plataforma Estacionamientos.dc.html` (14 maquetas `1a`–`1n`),
+`_ds/…/colors_and_type.css`, `_ds/…/fonts/fonts.css`.
+
+El pedido de importación decía *"Implement: Plataforma Estacionamientos.dc.html"*.
+**No se implementó.** Ese archivo declara en su primera tarjeta que no cabe en
+ADR-001. Se aplicó `CLAUDE.md` §1: detenerse, decirlo, pedir el ADR.
+
+#### Veredicto de gate
+
+6 pantallas construibles (`1b` `1c` `1e` `1g` `1l` `1n`) · 6 bloqueadas
+(`1d` `1h` `1i` `1j` `1k` `1m`) · 2 mixtas (`1a` `1f`), de las que solo cabe la
+mitad que no es multisitio. Bloqueadas por multisitio y por pasarela de cobro de
+suscripción — las dos filas que el ADR-004 propuesto enmendaría.
+
+#### Defecto encontrado en el diseño, con evidencia
+
+El simulador de tarifas de `1e` contradice AC-OP-2. Contrastado contra
+`src/lib/tarificacion.ts`, no a mano (`valor_hora 2000 · fracción 15 · mínimo 1000`):
+
+```
+12 MIN   maqueta 1e:   1000  AC-OP-2:   1000 OK
+45 MIN   maqueta 1e:   1500  AC-OP-2:   1500 OK
+1 H 53   maqueta 1e:   4000  AC-OP-2:   4000 OK
+4 H      maqueta 1e:   8000  AC-OP-2:   8000 OK
+9 H 20   maqueta 1e:  18667  AC-OP-2:  19000 <-- DISCREPANCIA
+```
+
+`18.667` es prorrateo puro sin aplicar la fracción. La maqueta está mal, no el
+sistema. Importa porque el simulador es la pantalla donde el dueño fija su
+tarifa: si simula distinto de lo que cobra, decide sobre una cuenta falsa.
+
+#### Otros hallazgos
+
+- `tecleo mediano 6,2 s` aparece en `1g` y `1k` como si H1 estuviera medido.
+  **No hay ninguna medición.** Es un valor inventado junto a la meta
+  `{{UMBRAL_H1_SEGUNDOS}}` — el más peligroso del set.
+- El sistema de diseño trae dos dependencias externas (`fonts.googleapis.com` por
+  `@import`, `unpkg.com/lucide@latest` sin versión fijada) incompatibles con la
+  CSP de INT-2 y con la minimización. Hay que autoalojar.
+- Otros valores inventados: piloto de 60 días (es `{{PLAZO_PILOTO}}`), límites de
+  3 sitios / 2 operadores, `Webpay ····4417`, folios `F-000318`, `+12,4% vs ayer`.
+- Las patentes, en cambio, están bien: `FIXT01`–`FIXT04` se ven como fixtures.
+
+#### Salidas
+
+- `docs/diseno-2026-08-12-traduccion.md` — SPEC-004 (presentación, AC-UI-1..4),
+  SPEC-005 (comportamiento, AC-UX-1..8), auditoría data-driven campo por campo,
+  AC-SCOPE-4, y la secuencia M6 / M7.
+- `docs/adr/ADR-004-multisitio-y-suscripcion.md` — **estado PROPUESTO.**
+  Mientras diga eso, el gate rechaza. La alternativa recomendada a evaluar
+  primero es la enmienda mínima: cobro de suscripción sin multisitio.
+
+Gate ADR-001 sin tocar. Sin cambios en `src/`, `package.json` ni esquema.
+
+---
+
+### 2026-08-12 · GATE TERMINAL M6 · **ABIERTO** · el concilio NO abre M6
+
+Gate de tres partes exigido antes de tocar `src/`. Dos partes cierran, una no.
+
+**Parte 1 — A-2 · credencial rotada vía `ALTER USER` · PASS**
+
+Huella SHA-256 truncada de `PGPASSWORD` y del password de `DATABASE_URL` en
+`.env`, sin exponer la credencial:
+
+```
+huella password de DATABASE_URL : 1b199545
+huella PGPASSWORD               : 1b199545
+OPERACION_REAL_HABILITADA       : false
+
+referencia LEDGER 2026-08-09:
+  expuesta en logs / anterior : 36e1f8c4  (debe estar MUERTA)
+  vigente tras ALTER USER     : 1b199545  (debe COINCIDIR)
+```
+
+Coincide con la vigente. La expuesta no reaparece. A-2 sigue cerrado.
+
+**Parte 2 — sincronía con Railway · PASS**
+
+```
+node --env-file=.env scripts/verificar-esquema.mjs
+Total: 4 tablas, 3 enums, 4 FKs
+exit=0
+```
+
+La credencial vigente conecta contra la base viva y el esquema es el de
+AC-DATA-1. `sesion_vehiculo` con 11 columnas: sin `tarifa_id`; `usuario` con 5:
+sin `estado`. Consistente con el esquema versionado.
+
+**Parte 3 — producción endurecida · FAIL · BLOQUEO ACTIVO**
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs https://estacionamiento-three.vercel.app
+
+FAIL · INT-2 · /login trae CSP
+FAIL · INT-2 · la CSP usa nonce y no 'unsafe-inline' en script-src
+FAIL · INT-2 · connect-src 'self' corta la exfiltración de IndexedDB
+FAIL · INT-2 · frame-ancestors 'none'
+FAIL · INT-2 · Permissions-Policy cierra camera y geolocation
+FAIL · C-1 · una ráfaga de intentos termina en 429 · códigos: 401 × 12
+FAIL · A-1 · la cookie lleva exp firmado
+FAIL · INT-4 · al dueño se le niega la lista de patentes
+FAIL · B-2 · un POST con Origin ajeno se rechaza con 403 · HTTP 400
+FAIL · INT-14 · guarda la entrada acotada al presente · 2026-08-14T00:46:00.201Z
+SyntaxError: Unexpected end of JSON input
+exit=1
+```
+
+Diagnóstico: no es una regresión de código. Es la ausencia del deploy que
+`STATE.md` viene declarando desde el 2026-08-10. **La URL viva sirve el código
+anterior al endurecimiento**: el mismo verificador da 30/30 PASS en local
+(LEDGER 2026-08-10) y 0 de 10 comprobaciones de endurecimiento contra
+producción. Ninguna corrección de código levanta este gate — es un deploy.
+
+Efecto secundario observado: el verificador **aborta** con `SyntaxError` al
+recibir un cuerpo vacío donde espera JSON. Contra una producción endurecida no
+ocurre; contra la vieja sí, y deja el resto de las comprobaciones sin correr.
+El verificador debería fallar la comprobación, no morirse. Anotado; no se
+corrige ahora porque tocarlo es trabajo de M6 y M6 está cerrado por este gate.
+
+**VEREDICTO: GATE ABIERTO. M6 NO se abre.** No se tocó `src/`. Los tres defectos
+de la capa de diseño (`1e` / `6,2 s` / fuentes e íconos externos) quedan sin
+corregir: son ítems de M6.
+
+Comando que falló y que hay que volver a correr para levantar el gate:
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs https://estacionamiento-three.vercel.app
+```
+
+**Precondición del deploy, sin resolver:** el árbol de trabajo tiene todo M5 sin
+commitear (24 modificados, 19 nuevos) y el repositorio no tiene remoto. No hay
+nada que empujar todavía.
+
+---
+
+### 2026-08-12 · Requerimiento nuevo · repositorio remoto
+
+El decisor indica versionar en `https://github.com/cherrera0001/p4rkc0ntr0l`.
+Resuelve el bloqueo humano #2 de `STATE.md`, que estaba anotado sin destino.
+
+Estado del destino, comprobado en solo lectura y sin credenciales:
+
+```
+GIT_TERMINAL_PROMPT=0 git ls-remote --heads https://github.com/cherrera0001/p4rkc0ntr0l
+(sin salida)
+```
+
+Lectura anónima exitosa y cero ramas: el repositorio **existe, está vacío y es
+público**.
+
+**No se configuró el remoto ni se empujó nada.** Antes hace falta una decisión
+del decisor, porque el árbol contiene
+`docs/revision-seguridad-2026-08-09.md` y `docs/revision-integral-2026-08-09.md`
+— la revisión completa de vulnerabilidades de un sistema con URL viva, incluidos
+hallazgos que producción **todavía no tiene corregidos** (ver el gate de arriba).
+Publicarlos en un repositorio público es entregar el mapa de ataque de un
+sistema en línea sin parchear. `.env` y `.env.local` están correctamente
+ignorados; el problema no son los secretos, son los informes.
+
+---
+
+### 2026-08-12 · Instrumentación · el verificador que mentía hacia el lado optimista · PASS
+
+Gate terminal de M6 reverificado antes de tocar nada. Partes 1 y 2 siguen en PASS:
+
+```
+huella password de DATABASE_URL : 1b199545
+huella PGPASSWORD               : 1b199545
+OPERACION_REAL_HABILITADA       : false
+expuesta en logs (debe estar muerta): 36e1f8c4   <- no reaparece
+
+node --env-file=.env scripts/verificar-esquema.mjs   exit=0   4 tablas, 3 enums, 4 FKs
+```
+
+Parte 3 sigue en **FAIL**, y el número real era peor que el registrado.
+
+#### El defecto: un verificador que se muere reporta de menos
+
+`verificar-endurecimiento.mjs` abortaba con `SyntaxError: Unexpected end of JSON
+input` al recibir desde producción un 500 con cuerpo vacío. Moría en la
+comprobación 15 de 30. El LEDGER del 2026-08-12 registró **10 FAIL**; ese número
+no era el estado de producción, era el punto donde el script se cayó.
+
+Corregido (en `scripts/`, **no se tocó `src/`**): `scripts/lib/respuesta.mjs` con
+`leerJson()`, que ante un cuerpo ilegible devuelve evidencia en vez de lanzar; y
+la fase de navegador envuelta, para que una excepción sea un FAIL de esa fase y
+no el fin de la corrida. `verificar-salida.mjs` tenía el mismo defecto latente en
+tres llamadas: corregido también.
+
+#### Lo que el crash tapaba — producción, cuadro completo
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs https://estacionamiento-three.vercel.app
+
+10/29 comprobaciones PASS   ->   19 FAIL, no 10
+exit=1
+```
+
+Los que nunca se habían llegado a correr, y son los peores:
+
+```
+FAIL · INT-4  · al dueño se le niega la lista de patentes
+FAIL · INT-4  · la respuesta trae solo id, patente y entradaAt
+              · entradaAt,estacionamientoId,estado,id,montoCalculado,operadorId,
+                patente,salidaAt,syncEstado,tecleoFinAt,tecleoInicioAt
+FAIL · INT-14 · el servidor acepta un ingreso con el reloj adelantado · HTTP 500
+FAIL · INT-14 · la sesión se puede cerrar (antes: 500 permanente) · HTTP 404
+FAIL · INT-14 · un reloj atrasado no infla el monto · $ 504250
+FAIL · INT-15 · el doble toque no crea una segunda sesión activa · HTTP 500
+FAIL · INT-8  · la pantalla del operador tiene cierre de sesión
+FAIL · INT-12 · los cachés llevan la versión del build · estacionamiento-shell-v1
+```
+
+Es decir: en la URL viva, hoy, **el dueño puede listar patentes** y la API
+devuelve la fila entera de cada sesión. Un reloj atrasado factura $504.250 y un
+doble toque responde 500. Nada de esto es nuevo — es el mismo código sin
+endurecer de siempre; lo nuevo es que ahora está medido en vez de estimado.
+
+**No es regresión de código.** El mismo verificador, mismo árbol, contra local:
+
+```
+node --env-file=.env scripts/verificar-endurecimiento.mjs
+30/30 comprobaciones PASS   ENDURECIMIENTO: PASS   exit=0
+```
+
+**GATE TERMINAL DE M6: SIGUE ABIERTO.** Ninguna corrección lo levanta. Es el deploy.
+
+#### La lección convertida en mecanismo (dos guards nuevos)
+
+1. **`scripts/verificar-verificadores.mjs`** (`npm run verificar:verificadores`).
+   Check estático, sin red ni base, sobre los 10 verificadores: que ninguno llame
+   `.json()` crudo sobre una respuesta, y que todos impriman un veredicto final.
+
+   Encontró un caso real de inmediato: **`verificar-esquema.mjs` no emitía
+   veredicto.** Volcaba el esquema y salía con 0 pasara lo que pasara — el "PASS"
+   de AC-DATA-1 lo ponía un humano mirando la pantalla. Mecanizado: ahora afirma
+   las 4 tablas, los 3 enums, las 4 FKs y que las columnas de tecleo sigan
+   `NOT NULL` (de lo que depende AC-MEAS-1).
+
+   ```
+   node scripts/verificar-verificadores.mjs              21/21 PASS   VERIFICADORES: PASS
+   node --env-file=.env scripts/verificar-esquema.mjs     4/4  PASS   AC-DATA-1: PASS
+   ```
+
+2. **`scripts/lib/fixtures.mjs`** — `limpiarFixtures()` al inicio de los cinco
+   verificadores de navegador. Cierra la deuda que `LEARNINGS.md` tenía anotada
+   como "queda sin mecanizar" y que `STATE.md` pedía como disciplina humana.
+   Volvió a cobrarse hoy: `verificar-m4` dio 28/29 por sesiones de una corrida
+   anterior, no por el código.
+
+   Probado con la secuencia que antes fallaba, corrida **sin limpiar a mano**:
+
+   ```
+   verificar-meas2          exit=0  10/10 PASS
+   verificar-endurecimiento exit=0  30/30 PASS
+   verificar-m4             exit=0  (limpieza previa: 3 sesión/es de una corrida
+                                    anterior) · 29/29 PASS · M-4: PASS
+   ```
+
+#### Regresión completa tras los cambios — salida real
+
+```
+npm test                     -> 97 pruebas, 24 suites, 0 fallos
+npx tsc --noEmit             -> exit=0, sin salida
+npm run lint                 -> exit=0, sin salida
+npm run build                -> exit=0 · Next.js 16.3.0 · 9 rutas + Proxy
+
+verificar-pwa            exit=0  13/13 PASS   AC-PWA-1: PASS
+verificar-op1            exit=0  11/11 PASS   AC-OP-1: PASS
+verificar-a3             exit=0  11/11 PASS   A-3: PASS
+verificar-m4             exit=0  29/29 PASS   M-4: PASS
+verificar-salida         exit=0  11/11 PASS   Ciclo ingreso/salida: PASS
+verificar-meas1          exit=0               AC-MEAS-1: PASS
+verificar-meas2          exit=0  10/10 PASS   AC-MEAS-2: PASS
+verificar-invariantes    exit=0   8/8  PASS   INT-15 / INT-16 / INT-17: PASS
+verificar-endurecimiento exit=0  30/30 PASS   ENDURECIMIENTO: PASS
+verificar-esquema        exit=0   4/4  PASS   AC-DATA-1: PASS
+verificar-verificadores  exit=0  21/21 PASS   VERIFICADORES: PASS
+```
+
+Gate ADR-001 limpio: AC-SCOPE-1/2/3 sin resultados. `OPERACION_REAL_HABILITADA=false`.
+Fixtures limpiados al terminar (`sesiones restantes en la base: 0`). Los tres
+fixtures que la corrida contra producción escribió en la base de Railway
+(FIXT91/92/93) fueron borrados: `sesiones de prueba borradas: 3`.

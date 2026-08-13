@@ -15,6 +15,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
+import { limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -40,6 +41,10 @@ if (!navegador) {
   console.error("FAIL · no se encontró Edge. Definí CHROME_PATH.");
   process.exit(1);
 }
+
+// Precondición mecanizada, no confiada al humano: las activas de una corrida
+// anterior se copian al dispositivo y falsean las cuentas de registros.
+await limpiarFixtures();
 
 const resultados = [];
 const comprobar = (nombre, ok, detalle) => {
@@ -106,6 +111,37 @@ try {
         }),
     );
 
+  /** Escribe un registro directo en IndexedDB, saltándose la pantalla. */
+  const inyectar = (patente, syncEstado) =>
+    page.evaluate(
+      (p, s) =>
+        new Promise((resolve) => {
+          const req = indexedDB.open("estacionamiento", 1);
+          req.onsuccess = () => {
+            const bd = req.result;
+            const tx = bd.transaction("sesiones", "readwrite");
+            const ahora = new Date().toISOString();
+            tx.objectStore("sesiones").put({
+              id: crypto.randomUUID(),
+              patente: p,
+              entradaAt: ahora,
+              tecleoInicioAt: ahora,
+              tecleoFinAt: ahora,
+              estado: "activa",
+              syncEstado: s,
+              montoCalculado: null,
+              salidaAt: null,
+            });
+            tx.oncomplete = () => {
+              bd.close();
+              resolve(undefined);
+            };
+          };
+        }),
+      patente,
+      syncEstado,
+    );
+
   const registrar = async (patente) => {
     // Tras un rechazo el formulario queda abierto, así que "Nuevo ingreso" puede
     // no estar en pantalla. Se abre solo si hace falta.
@@ -156,10 +192,10 @@ try {
   comprobar("tampoco llegó a la base", enBaseReal === 0, `${enBaseReal} fila(s)`);
 
   // ---- Patente fixture: el flujo normal sigue funcionando -----------------
-  // Se registra SIN RED a propósito. Desde la corrección de M-4, IndexedDB es la
-  // cola de pendientes y no el espejo de la base: apenas el servidor acepta la
-  // sesión, la patente se borra del dispositivo. Para comprobar que la barrera
-  // de A-3 deja pasar a las de prueba hay que mirarla mientras todavía es local.
+  // Se registra SIN RED a propósito, y se queda sin red hasta el final de la
+  // sección siguiente. Un pendiente que nunca subió existe en un solo lugar del
+  // mundo —este dispositivo—, y esa es justamente la condición en la que una
+  // purga demasiado ancha destruye datos. Es el caso que hay que mirar.
   await page.setOfflineMode(true);
   await esperar(300);
   await registrar(PATENTE_FIXTURE);
@@ -171,42 +207,15 @@ try {
     `${colaTrasFixture.length} registro(s)`,
   );
 
-  await page.setOfflineMode(false);
-
-  let enBaseFixture = 0;
-  for (let i = 0; i < 30 && enBaseFixture === 0; i++) {
-    await esperar(400);
-    [{ n: enBaseFixture }] = await sql`
-      SELECT count(*)::int AS n FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}
-    `;
-  }
-  comprobar("y sí llega a la base", enBaseFixture === 1, `${enBaseFixture} fila(s)`);
-
-  // ---- Purga de dispositivos con datos viejos ----------------------------
-  await page.evaluate((patente) => {
-    return new Promise((resolve) => {
-      const req = indexedDB.open("estacionamiento", 1);
-      req.onsuccess = () => {
-        const bd = req.result;
-        const tx = bd.transaction("sesiones", "readwrite");
-        tx.objectStore("sesiones").put({
-          id: crypto.randomUUID(),
-          patente,
-          entradaAt: new Date().toISOString(),
-          tecleoInicioAt: new Date().toISOString(),
-          tecleoFinAt: new Date().toISOString(),
-          estado: "activa",
-          syncEstado: "local",
-          montoCalculado: null,
-          salidaAt: null,
-        });
-        tx.oncomplete = () => {
-          bd.close();
-          resolve(undefined);
-        };
-      };
-    });
-  }, PATENTE_REAL);
+  // ---- Las purgas de apertura son DIRIGIDAS ------------------------------
+  // Al abrir la app corren dos purgas: `purgarNoFixtures()` (esta corrección) y
+  // `purgarNoActivas()` (M-4). Se contamina el dispositivo con una patente real
+  // y se vuelve a abrir la app SIN RED. Tienen que pasar las dos cosas a la vez:
+  // que la real desaparezca, y que el pendiente de prueba siga entero. Se mira
+  // IndexedDB, que es lo único que estas dos funciones tocan: comprobarlo
+  // contando filas en Postgres sería tautológico —una purga que borrara el
+  // almacén completo seguiría dando PASS—.
+  await inyectar(PATENTE_REAL, "local");
 
   const colaContaminada = await leerCola();
   comprobar(
@@ -214,9 +223,9 @@ try {
     colaContaminada.some((s) => s.patente === PATENTE_REAL),
   );
 
-  await page.reload({ waitUntil: "networkidle2" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="nuevo-ingreso"]');
-  await esperar(800);
+  await esperar(1200);
 
   const colaPurgada = await leerCola();
   comprobar(
@@ -225,17 +234,38 @@ try {
     `${colaPurgada.length} registro(s) restantes`,
   );
 
-  // Antes de M-4 esto se comprobaba mirando si el fixture seguía en IndexedDB.
-  // Ya no aplica: la sesión sincronizada se borra del dispositivo por diseño. Lo
-  // que la comprobación siempre quiso decir —que la purga es dirigida y no
-  // destruye el registro legítimo— se verifica donde ese registro vive ahora.
-  const [{ n: fixtureVive }] = await sql`
-    SELECT count(*)::int AS n FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}
-  `;
+  const pendienteFixture = colaPurgada.find((s) => s.patente === PATENTE_FIXTURE);
   comprobar(
-    "la purga no se lleva por delante el registro de prueba",
-    fixtureVive === 1,
-    `${fixtureVive} fila(s) en la base`,
+    "la purga no se lleva por delante el pendiente de prueba (sigue en IndexedDB)",
+    Boolean(pendienteFixture),
+    `en el dispositivo: [${colaPurgada.map((s) => s.patente).join(", ") || "nada"}]`,
+  );
+  comprobar(
+    "y sigue marcado como pendiente de sincronizar",
+    pendienteFixture?.syncEstado === "local",
+    pendienteFixture?.syncEstado ?? "(no está)",
+  );
+
+  // El pendiente sobrevivió a la purga; ahora se comprueba que además sirve.
+  // Sin esto, "sobrevivir" podría significar "quedó como un huérfano inerte".
+  // Se vuelve a abrir la app con red, que es lo que hace el operador cuando
+  // recupera señal: la cola se reintenta en cada apertura.
+  await page.setOfflineMode(false);
+  await esperar(500);
+  await page.reload({ waitUntil: "networkidle2" });
+  await page.waitForSelector('[data-testid="nuevo-ingreso"]');
+
+  let enBaseFixture = 0;
+  for (let i = 0; i < 30 && enBaseFixture === 0; i++) {
+    await esperar(400);
+    [{ n: enBaseFixture }] = await sql`
+      SELECT count(*)::int AS n FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}
+    `;
+  }
+  comprobar(
+    "el pendiente que sobrevivió a la purga sí llega a la base al reconectar",
+    enBaseFixture === 1,
+    `${enBaseFixture} fila(s)`,
   );
 } finally {
   if (browser) await browser.close();

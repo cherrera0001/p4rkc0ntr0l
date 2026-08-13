@@ -12,9 +12,10 @@
 import { and, count, eq, gte, sum } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
-import { db, sesionVehiculo } from "@/db";
+import { conBase, db, sesionVehiculo } from "@/db";
 import { sesionActual } from "@/lib/auth";
 import { obtenerEstacionamiento } from "@/lib/contexto";
+import CerrarSesion from "../cerrar-sesion";
 import Descuadre from "./descuadre";
 
 export const dynamic = "force-dynamic";
@@ -39,29 +40,36 @@ export default async function PanelDueno() {
   if (!usuario) redirect("/login");
   if (usuario.rol !== "dueño") redirect("/");
 
-  const est = await obtenerEstacionamiento();
+  // El estacionamiento del dueño autenticado, no la primera fila de la tabla
+  // (hallazgo M-2). Con un solo estacionamiento sembrado daban lo mismo, y esa
+  // coincidencia era toda la separación que había.
+  const est = await obtenerEstacionamiento(usuario.estacionamientoId);
   const desde = inicioDelDia(est.zonaHoraria);
 
-  const [{ activas }] = await db
-    .select({ activas: count() })
-    .from(sesionVehiculo)
-    .where(
-      and(
-        eq(sesionVehiculo.estacionamientoId, est.id),
-        eq(sesionVehiculo.estado, "activa"),
+  const [{ activas }] = await conBase(() =>
+    db
+      .select({ activas: count() })
+      .from(sesionVehiculo)
+      .where(
+        and(
+          eq(sesionVehiculo.estacionamientoId, est.id),
+          eq(sesionVehiculo.estado, "activa"),
+        ),
       ),
-    );
+  );
 
-  const [agregado] = await db
-    .select({ cerradas: count(), ingresos: sum(sesionVehiculo.montoCalculado) })
-    .from(sesionVehiculo)
-    .where(
-      and(
-        eq(sesionVehiculo.estacionamientoId, est.id),
-        eq(sesionVehiculo.estado, "cerrada"),
-        gte(sesionVehiculo.salidaAt, desde),
+  const [agregado] = await conBase(() =>
+    db
+      .select({ cerradas: count(), ingresos: sum(sesionVehiculo.montoCalculado) })
+      .from(sesionVehiculo)
+      .where(
+        and(
+          eq(sesionVehiculo.estacionamientoId, est.id),
+          eq(sesionVehiculo.estado, "cerrada"),
+          gte(sesionVehiculo.salidaAt, desde),
+        ),
       ),
-    );
+  );
 
   const ingresos = Number(agregado?.ingresos ?? 0);
   const cerradasHoy = agregado?.cerradas ?? 0;
@@ -69,9 +77,12 @@ export default async function PanelDueno() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-lg font-semibold">Panel</h1>
-        <span className="text-xs text-slate-500">{est.nombre}</span>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">Panel</h1>
+          <span className="text-xs text-slate-500">{est.nombre}</span>
+        </div>
+        <CerrarSesion />
       </header>
 
       <section className="grid grid-cols-2 gap-3">

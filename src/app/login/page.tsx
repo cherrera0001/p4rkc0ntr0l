@@ -1,94 +1,23 @@
-"use client";
-
 /**
  * Ingreso al sistema. Dos roles, una pantalla (spec.md §3).
+ *
+ * Componente de servidor y `force-dynamic` por la CSP con nonce (hallazgo
+ * INT-2): Next estampa el nonce durante el renderizado, leyéndolo de la
+ * cabecera de la petición. Una página prerenderizada en el build no tiene
+ * petición de la que leerlo, así que sus scripts quedarían sin nonce y el
+ * navegador los bloquearía — la pantalla se vería pero el formulario no
+ * andaría. El formulario en sí vive en `formulario.tsx`, del lado del cliente.
  */
 
-import { useState } from "react";
+import FormularioLogin from "./formulario";
+
+export const dynamic = "force-dynamic";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [clave, setClave] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
-
-  async function entrar(evento: React.FormEvent) {
-    evento.preventDefault();
-    setEnviando(true);
-    setError(null);
-
-    try {
-      const r = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, clave }),
-      });
-
-      if (!r.ok) {
-        const { error: motivo } = await r.json();
-        setError(motivo ?? "No se pudo entrar.");
-        return;
-      }
-
-      const { destino } = await r.json();
-      // Recarga completa: el destino es un componente de servidor que necesita
-      // leer la cookie recién puesta.
-      window.location.href = destino;
-    } catch {
-      setError("Sin conexión.");
-    } finally {
-      setEnviando(false);
-    }
-  }
-
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 p-6">
       <h1 className="text-xl font-semibold">Estacionamiento</h1>
-
-      <form onSubmit={entrar} className="flex flex-col gap-3">
-        <label htmlFor="email" className="text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="email"
-          data-testid="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="username"
-          required
-          className="rounded-xl border-2 border-slate-300 px-4 py-3"
-        />
-
-        <label htmlFor="clave" className="text-sm font-medium">
-          Clave
-        </label>
-        <input
-          id="clave"
-          data-testid="clave"
-          type="password"
-          value={clave}
-          onChange={(e) => setClave(e.target.value)}
-          autoComplete="current-password"
-          required
-          className="rounded-xl border-2 border-slate-300 px-4 py-3"
-        />
-
-        <button
-          type="submit"
-          data-testid="entrar"
-          disabled={enviando}
-          className="rounded-xl bg-slate-900 px-4 py-4 text-lg font-semibold text-white active:bg-slate-700 disabled:opacity-50"
-        >
-          {enviando ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
-
-      {error && (
-        <p data-testid="error-login" role="alert" className="text-sm font-medium text-red-700">
-          {error}
-        </p>
-      )}
+      <FormularioLogin />
     </main>
   );
 }

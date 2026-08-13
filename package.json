@@ -19,6 +19,9 @@
     "verificar:salida": "node scripts/verificar-salida.mjs",
     "verificar:meas1": "node scripts/verificar-meas1.mjs",
     "verificar:meas2": "node scripts/verificar-meas2.mjs",
+    "verificar:invariantes": "node --env-file=.env scripts/verificar-invariantes.mjs",
+    "verificar:endurecimiento": "node --env-file=.env scripts/verificar-endurecimiento.mjs",
+    "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"
   },
   "dependencies": {

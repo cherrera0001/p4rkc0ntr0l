@@ -12,19 +12,65 @@
  * piloto mide, así que no es telemetría opcional: es parte del producto.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   eliminar,
   guardar,
-  pendientes,
+  listar,
+  purgarNoActivas,
   purgarNoFixtures,
-  purgarSincronizadas,
+  reconciliarActivas,
   sincronizar,
+  type SesionActivaServidor,
   type SesionLocal,
 } from "@/lib/cola-local";
 import { esPatenteFixture } from "@/lib/fixtures";
 import { validarPatente } from "@/lib/patente";
+import CerrarSesion from "./cerrar-sesion";
+
+/**
+ * Cuánto se recuerda que una sesión se cerró acá (hallazgo INT-9).
+ *
+ * Un `GET /api/sesiones` emitido ANTES del cierre puede resolver después, y su
+ * respuesta —legítima cuando salió— todavía lista el vehículo como activo: al
+ * aplicarla, `reconciliarActivas` vuelve a escribir en el dispositivo una
+ * patente que ya se había borrado. La guarda de orden de `refrescar` no cubre
+ * este caso, porque no es una respuesta vieja pisando a una nueva sino una
+ * respuesta válida que precede a un cierre local.
+ *
+ * Treinta segundos cubren de sobra cualquier pedido en vuelo; pasado ese plazo
+ * el servidor ya conoce el cierre y su lista manda.
+ */
+const MEMORIA_CIERRES_MS = 30_000;
+
+/**
+ * El reloj, tomado fuera del componente.
+ *
+ * `Date.now()` es impuro y React lo prohíbe en el cuerpo de un componente, con
+ * razón: un valor que cambia en cada render vuelve el render impredecible. Acá
+ * se usa dentro de un manejador de evento, no al renderizar, pero la regla no
+ * puede distinguirlo — y el módulo es el lugar honesto para el reloj de todas
+ * formas.
+ */
+const ahoraMs = () => Date.now();
+
+/**
+ * Estado de conexión, leído del navegador en vez de duplicado en React.
+ *
+ * Antes era un `useState` que un efecto sincronizaba con `navigator.onLine` al
+ * montar. Eso es exactamente el patrón que `useSyncExternalStore` existe para
+ * reemplazar: la fuente de verdad es el navegador, no una copia que hay que
+ * mantener al día.
+ */
+function suscribirseAConexion(alCambiar: () => void) {
+  window.addEventListener("online", alCambiar);
+  window.addEventListener("offline", alCambiar);
+  return () => {
+    window.removeEventListener("online", alCambiar);
+    window.removeEventListener("offline", alCambiar);
+  };
+}
 
 function duracion(desde: string): string {
   const ms = Date.now() - new Date(desde).getTime();
@@ -33,14 +79,7 @@ function duracion(desde: string): string {
   return h > 0 ? `${h} h ${min % 60} min` : `${min} min`;
 }
 
-/** Sesión activa tal como la devuelve `GET /api/sesiones`. */
-type SesionServidor = {
-  id: string;
-  patente: string;
-  entradaAt: string;
-};
-
-/** Fila de la lista en pantalla, venga del servidor o de la cola local. */
+/** Fila de la lista en pantalla, venga del servidor o del dispositivo. */
 type EnPantalla = {
   id: string;
   patente: string;
@@ -65,88 +104,177 @@ export default function PantallaOperador({
    */
   operacionReal: boolean;
 }) {
+  /** Lo que el servidor tiene por activo. Manda cuando hay red. */
+  const [activasServidor, setActivasServidor] = useState<SesionActivaServidor[]>([]);
   /**
-   * Las sesiones que ya están en el servidor se leen del servidor (M-4). Antes
-   * la lista salía de IndexedDB, y por eso el dispositivo tenía que conservar
-   * todas las patentes para poder mostrarlas.
+   * Lo que hay en el dispositivo: los pendientes de sincronizar más el espejo
+   * de las sesiones activas (ver la invariante en `cola-local.ts`). Es lo que
+   * sostiene la pantalla cuando no hay red, y también lo que impide que un
+   * `GET` que vuelve corto deje la lista en cero teniendo vehículos adentro.
    */
-  const [activasServidor, setActivasServidor] = useState<SesionServidor[]>([]);
-  /** Cola local: lo que todavía no llegó al servidor. Es lo único que se guarda. */
-  const [cola, setCola] = useState<SesionLocal[]>([]);
+  const [locales, setLocales] = useState<SesionLocal[]>([]);
   const [cobradas, setCobradas] = useState<Cobrada[]>([]);
   const [listaCompleta, setListaCompleta] = useState(true);
   const [tecleando, setTecleando] = useState(false);
   const [patente, setPatente] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [enLinea, setEnLinea] = useState(true);
   const [, forzarRender] = useState(0);
+
+  // En el servidor no hay `navigator`: se asume en línea, que es el estado que
+  // la pantalla mostraba antes de hidratar de todos modos.
+  const enLinea = useSyncExternalStore(
+    suscribirseAConexion,
+    () => navigator.onLine,
+    () => true,
+  );
 
   const tecleoInicioAt = useRef<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
+  const pidiendoLista = useRef(false);
+  const listaPedidaDeNuevo = useRef(false);
+  const secuenciaLista = useRef(0);
+  const sincronizando = useRef(false);
+  const sincronizarDeNuevo = useRef(false);
+  /** Sesiones cerradas en este dispositivo hace poco, con el instante del cierre. */
+  const cierresRecientes = useRef(new Map<string, number>());
 
-  const refrescar = useCallback(async () => {
-    // Primero lo local: funciona sin red y es lo que sostiene AC-OP-1.
-    setCola(await pendientes());
-    try {
-      const r = await fetch("/api/sesiones", { cache: "no-store" });
-      if (!r.ok) {
-        setListaCompleta(false);
-        return;
-      }
-      const { sesiones } = (await r.json()) as { sesiones: SesionServidor[] };
-      setActivasServidor(sesiones);
-      setListaCompleta(true);
-    } catch {
-      // Sin red: se sigue mostrando la última lista recibida, que vive en
-      // memoria y se pierde al recargar. Deliberadamente NO se guarda en disco:
-      // una caché persistente de la respuesta del servidor sería la misma copia
-      // local que M-4 viene a eliminar, con otro nombre.
-      setListaCompleta(false);
-    }
+  /** Lo del dispositivo: instantáneo y sin red. Es lo que sostiene AC-OP-1. */
+  const refrescarLocales = useCallback(async () => {
+    setLocales(await listar());
   }, []);
 
-  const sincronizarYRefrescar = useCallback(async () => {
-    const { rechazadas } = await sincronizar();
-    if (rechazadas > 0) {
-      setError(
-        `El servidor rechazó ${rechazadas} registro(s) de la cola. Se borraron ` +
-          "del dispositivo: hay que registrarlos de nuevo.",
-      );
+  /**
+   * Trae del servidor las sesiones activas y pone el dispositivo al día.
+   *
+   * Se pide de a una: el servidor abre UNA conexión a Postgres (`src/db`), así
+   * que dos lecturas en paralelo no van más rápido — se encolan, y encima dejan
+   * esperando al POST de salida, que es lo que el operador sí está mirando. Si
+   * llega un pedido mientras hay otro en vuelo, se marca para repetir al final:
+   * nunca se pierde la última actualización.
+   *
+   * Y sobre eso va una guarda de orden. Un `GET` emitido durante una ráfaga de
+   * ingresos puede salir antes de que el `INSERT` llegue a la base y volver
+   * corto; si resuelve último, pisa la lista buena y el operador se queda
+   * mirando ocupación 0 con el estacionamiento lleno. Solo la respuesta al
+   * pedido más reciente puede escribir el estado.
+   */
+  const refrescar = useCallback(async () => {
+    await refrescarLocales();
+    if (pidiendoLista.current) {
+      listaPedidaDeNuevo.current = true;
+      return;
     }
-    await refrescar();
+    pidiendoLista.current = true;
+    try {
+      do {
+        listaPedidaDeNuevo.current = false;
+        const mio = ++secuenciaLista.current;
+        const pedidoDesde = new Date().toISOString();
+        try {
+          const r = await fetch("/api/sesiones", { cache: "no-store" });
+          if (mio !== secuenciaLista.current) continue;
+          if (!r.ok) {
+            setListaCompleta(false);
+            continue;
+          }
+          const { sesiones } = (await r.json()) as { sesiones: SesionActivaServidor[] };
+          if (mio !== secuenciaLista.current) continue;
+
+          // Una respuesta emitida antes de un cierre local todavía lista el
+          // vehículo como activo. Aplicarla tal cual volvería a persistir en el
+          // dispositivo una patente que ya se borró (hallazgo INT-9): se
+          // descuentan los cierres recientes antes de creerle a la lista.
+          const limite = ahoraMs() - MEMORIA_CIERRES_MS;
+          for (const [id, cuando] of cierresRecientes.current) {
+            if (cuando < limite) cierresRecientes.current.delete(id);
+          }
+          const vigentes = sesiones.filter((s) => !cierresRecientes.current.has(s.id));
+
+          setActivasServidor(vigentes);
+          setListaCompleta(true);
+          // El dispositivo se queda con lo que está adentro del estacionamiento
+          // y suelta lo que el servidor ya no lista (spec.md §8 + M-4).
+          await reconciliarActivas(vigentes, pedidoDesde, { soloFixtures: !operacionReal });
+          await refrescarLocales();
+        } catch {
+          // Sin red se sigue mostrando lo que hay en el dispositivo, que ahora
+          // incluye las activas: por eso una recarga sin cobertura ya no deja
+          // la pantalla en cero.
+          setListaCompleta(false);
+        }
+      } while (listaPedidaDeNuevo.current);
+    } finally {
+      pidiendoLista.current = false;
+    }
+  }, [refrescarLocales, operacionReal]);
+
+  /**
+   * Sube la cola y repinta. Uno a la vez: sin esta guarda, cada ingreso lanzaba
+   * su propia sincronización y todas re-posteaban la cola entera (una misma
+   * patente llegó a postearse cuatro veces). Si llega un pedido mientras hay
+   * uno en curso se repite al final, así que el ingreso recién guardado nunca
+   * se queda sin su intento.
+   */
+  const sincronizarYRefrescar = useCallback(async () => {
+    if (sincronizando.current) {
+      sincronizarDeNuevo.current = true;
+      return;
+    }
+    sincronizando.current = true;
+    try {
+      do {
+        sincronizarDeNuevo.current = false;
+        const { rechazadas } = await sincronizar();
+        if (rechazadas > 0) {
+          setError(
+            `El servidor rechazó ${rechazadas} registro(s) de la cola. Se borraron ` +
+              "del dispositivo: hay que registrarlos de nuevo.",
+          );
+        }
+        await refrescar();
+      } while (sincronizarDeNuevo.current);
+    } finally {
+      sincronizando.current = false;
+    }
   }, [refrescar]);
 
   useEffect(() => {
-    const limpiarYRefrescar = async () => {
+    // Solo el efecto de sincronizar. Pintar el estado de conexión lo resuelve
+    // `useSyncExternalStore`, arriba.
+    const alConectar = async () => {
+      await sincronizarYRefrescar();
+    };
+
+    const arrancar = async () => {
       // Red de seguridad de A-3: un dispositivo que usó una versión anterior
       // puede tener patentes reales atascadas en la cola. Se borran al abrir.
       if (!operacionReal) await purgarNoFixtures();
-      // Purga de M-4: lo que el servidor ya tiene no se queda en el dispositivo.
-      await purgarSincronizadas();
-      await refrescar();
+      // Purga de M-4: lo cerrado no se queda en el dispositivo. Dirigida: no
+      // toca los pendientes ni las sesiones que siguen adentro.
+      await purgarNoActivas();
+      // Se pinta lo que hay en el dispositivo ANTES de tocar la red: con o sin
+      // cobertura, el operador ve el estacionamiento apenas abre.
+      await refrescarLocales();
+      if (navigator.onLine) await alConectar();
     };
-    void limpiarYRefrescar();
-    setEnLinea(navigator.onLine);
-
-    const alConectar = async () => {
-      setEnLinea(true);
-      await sincronizarYRefrescar();
-    };
-    const alDesconectar = () => setEnLinea(false);
+    void arrancar();
 
     window.addEventListener("online", alConectar);
-    window.addEventListener("offline", alDesconectar);
-    if (navigator.onLine) void alConectar();
 
-    // El temporizador de permanencia (§5) tiene que avanzar solo.
-    const reloj = setInterval(() => forzarRender((n) => n + 1), 30_000);
+    // El temporizador de permanencia (§5) tiene que avanzar solo. De paso se
+    // vuelve a pedir la lista y se reintenta la cola: sin refetch periódico,
+    // una lista que quedó corta —o un pendiente diferido por un 429— se queda
+    // así hasta que el operador toque algo.
+    const reloj = setInterval(() => {
+      forzarRender((n) => n + 1);
+      if (navigator.onLine) void sincronizarYRefrescar();
+    }, 30_000);
 
     return () => {
       window.removeEventListener("online", alConectar);
-      window.removeEventListener("offline", alDesconectar);
       clearInterval(reloj);
     };
-  }, [refrescar, sincronizarYRefrescar, operacionReal]);
+  }, [refrescarLocales, sincronizarYRefrescar, operacionReal]);
 
   function nuevoIngreso() {
     tecleoInicioAt.current = new Date().toISOString();
@@ -208,7 +336,9 @@ export default function PantallaOperador({
     // que el registro no dependa de la señal.
     await guardar(sesion);
     cancelar();
-    await refrescar();
+    // La fila aparece con lo local, sin esperar al servidor: el operador ve el
+    // ingreso al instante, haya red o no.
+    await refrescarLocales();
 
     void sincronizarYRefrescar();
   }
@@ -222,8 +352,11 @@ export default function PantallaOperador({
         return;
       }
       const { sesion: cerrada } = await r.json();
-      // La salida quedó registrada en el servidor: la copia local ya no tiene
-      // razón de existir (M-4). Si la sesión nunca fue local, esto es un no-op.
+      // Se anota ANTES de borrar: si un `GET` en vuelo resuelve entremedio, ya
+      // encuentra el cierre anotado y no vuelve a escribir la patente (INT-9).
+      cierresRecientes.current.set(vehiculo.id, ahoraMs());
+      // La salida quedó registrada en el servidor: el vehículo ya no está
+      // adentro, así que el dispositivo suelta la patente en el acto (M-4).
       await eliminar(vehiculo.id);
       // El monto se muestra para cobrar en efectivo (spec.md §5). Se guarda en
       // memoria mientras la pantalla siga abierta, no en el dispositivo.
@@ -233,48 +366,62 @@ export default function PantallaOperador({
           ...previas.filter((c) => c.id !== vehiculo.id),
         ].slice(0, 3),
       );
-      await refrescar();
+      // La respuesta ya dice que quedó cerrada: se saca de la lista sin volver a
+      // preguntarle al servidor. Un viaje menos por cada salida.
+      setActivasServidor((previas) => previas.filter((s) => s.id !== vehiculo.id));
+      await refrescarLocales();
     } catch {
       setError("Sin conexión: la salida necesita red para calcular el monto.");
     }
   }
 
-  // La lista es la unión de lo que el servidor tiene por activo y lo que todavía
-  // está en la cola. Se deduplica por id: una sesión recién sincronizada puede
-  // aparecer en ambos lados por un instante.
-  const idsServidor = new Set(activasServidor.map((s) => s.id));
-  const activas: EnPantalla[] = [
-    ...activasServidor.map((s) => ({
+  // La lista es la unión de lo que el dispositivo tiene por activo y lo que el
+  // servidor tiene por activo, deduplicada por id. El orden importa: el
+  // servidor va segundo porque es la fuente autoritativa cuando hay red. El
+  // dispositivo aporta las dos cosas que el servidor no puede dar — los
+  // ingresos que todavía no subieron, y la lista entera cuando no hay señal.
+  const porId = new Map<string, EnPantalla>();
+  for (const s of locales) {
+    if (s.estado !== "activa" || !s.patente) continue;
+    porId.set(s.id, {
+      id: s.id,
+      patente: s.patente,
+      entradaAt: s.entradaAt,
+      pendiente: s.syncEstado === "local",
+    });
+  }
+  for (const s of activasServidor) {
+    porId.set(s.id, {
       id: s.id,
       patente: s.patente,
       entradaAt: s.entradaAt,
       pendiente: false,
-    })),
-    ...cola
-      .filter((s) => !idsServidor.has(s.id))
-      .map((s) => ({
-        id: s.id,
-        patente: s.patente,
-        entradaAt: s.entradaAt,
-        pendiente: true,
-      })),
-  ].sort((a, b) => a.entradaAt.localeCompare(b.entradaAt));
-  const sinSincronizar = cola.length;
+    });
+  }
+  const activas: EnPantalla[] = [...porId.values()].sort((a, b) =>
+    a.entradaAt.localeCompare(b.entradaAt),
+  );
+  const sinSincronizar = locales.filter((s) => s.syncEstado === "local").length;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4">
-      <header className="flex items-center justify-between">
+      <header className="flex items-start justify-between gap-3">
         <h1 className="text-lg font-semibold">Estacionamiento</h1>
-        <span
-          data-testid="estado-conexion"
-          className={`rounded-full px-2 py-1 text-xs font-medium ${
-            enLinea
-              ? "bg-emerald-100 text-emerald-900"
-              : "bg-amber-100 text-amber-900"
-          }`}
-        >
-          {enLinea ? "en línea" : "sin conexión"}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span
+            data-testid="estado-conexion"
+            className={`rounded-full px-2 py-1 text-xs font-medium ${
+              enLinea
+                ? "bg-emerald-100 text-emerald-900"
+                : "bg-amber-100 text-amber-900"
+            }`}
+          >
+            {enLinea ? "en línea" : "sin conexión"}
+          </span>
+          {/* Dispositivo compartido por turnos: salir borra también lo que el
+              dispositivo guarda (INT-8). */}
+          <CerrarSesion />
+        </div>
       </header>
 
       <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -357,9 +504,9 @@ export default function PantallaOperador({
         )}
         {!listaCompleta && (
           <p data-testid="lista-parcial" className="text-xs text-amber-700">
-            Sin conexión con el servidor: se muestra la última lista recibida más
-            los ingresos que siguen en este dispositivo. Al reconectar se
-            completa.
+            Sin conexión con el servidor: se muestra lo que hay guardado en este
+            dispositivo —las sesiones activas y los ingresos que todavía no
+            subieron—. Al reconectar se completa.
           </p>
         )}
         <ul data-testid="lista-activas" className="flex flex-col gap-2">

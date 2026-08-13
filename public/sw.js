@@ -13,22 +13,59 @@
  *  - Todo lo demás: se deja pasar a la red sin intervenir.
  *
  * Nunca se interceptan métodos distintos de GET: las mutaciones no se cachean.
+ *
+ * **Qué se guarda como shell (hallazgo INT-11).** Solo respuestas propias, con
+ * estado 2xx y sin redirección. Antes se guardaba lo que viniera:
+ *
+ *  - un 500 transitorio en `/` quedaba como la copia offline del shell, y el
+ *    operador sin red abría la app y veía la página de error;
+ *  - `fetch` sigue redirecciones, así que con la cookie vencida `GET /`
+ *    devuelve la pantalla de **login** y esa quedaba guardada bajo la clave
+ *    `/`. A partir de ahí, abrir sin red mostraba un formulario que no puede
+ *    validar nada, con vehículos adentro y sin forma de registrar.
+ *
+ * El segundo caso era improbable mientras la cookie no vencía nunca. Al
+ * corregir A-1 pasa a ser rutinario, que es justamente por qué los dos
+ * hallazgos se corrigen juntos.
+ *
+ * **Qué versiona el caché (hallazgo INT-12).** El nombre llevaba el literal
+ * `"v1"`, así que `activate` no tenía nada que purgar: el shell de hace tres
+ * deploys seguía siendo "vigente". Con red no se notaba —la navegación es
+ * network-first—, pero sin red se servía el HTML viejo y con él su bundle
+ * viejo. Y ese bundle puede ser anterior a la barrera de datos reales de A-3,
+ * que vive en el cliente: eso es INT-3. Ahora la versión llega en la query del
+ * script (`/sw.js?v=...`), que cambia en cada deploy, así que un deploy nuevo
+ * instala un worker nuevo y `activate` se lleva los cachés de los anteriores.
  */
 
-const VERSION = "v1";
+/**
+ * Versión del build. Viene de la URL con la que se registró el worker; el
+ * respaldo solo aplica si alguien lo registra a mano sin query.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "sin-version";
 const CACHE_SHELL = `estacionamiento-shell-${VERSION}`;
 const CACHE_ESTATICOS = `estacionamiento-estaticos-${VERSION}`;
 
 /** Rutas del shell que deben existir en caché para poder abrir sin red. */
 const SHELL = ["/", "/offline"];
 
+/** ¿Esta respuesta puede guardarse como copia offline del shell? */
+function sirveComoShell(respuesta) {
+  return Boolean(respuesta) && respuesta.ok && !respuesta.redirected && respuesta.type === "basic";
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_SHELL);
-      // addAll es atómico: si una ruta falla, no se instala nada. Se piden de a
-      // una para que una ruta caída no deje al operador sin service worker.
-      await Promise.allSettled(SHELL.map((ruta) => cache.add(ruta)));
+      // Se piden de a una y se guardan solo si sirven: `cache.addAll` es atómico
+      // pero guarda cualquier respuesta, incluida la redirección al login.
+      await Promise.allSettled(
+        SHELL.map(async (ruta) => {
+          const respuesta = await fetch(ruta, { redirect: "follow" });
+          if (sirveComoShell(respuesta)) await cache.put(ruta, respuesta);
+        }),
+      );
       await self.skipWaiting();
     })(),
   );
@@ -72,7 +109,10 @@ async function navegacion(request) {
   const cache = await caches.open(CACHE_SHELL);
   try {
     const respuesta = await fetch(request);
-    cache.put(request, respuesta.clone());
+    // Solo se guarda lo que sirve como shell. Un error del servidor o una
+    // redirección al login se devuelven al navegador, pero no se guardan: la
+    // copia offline tiene que seguir siendo la última pantalla buena.
+    if (sirveComoShell(respuesta)) await cache.put(request, respuesta.clone());
     return respuesta;
   } catch {
     const enCache = await cache.match(request);
@@ -80,6 +120,9 @@ async function navegacion(request) {
 
     const raiz = await cache.match("/");
     if (raiz) return raiz;
+
+    const offline = await cache.match("/offline");
+    if (offline) return offline;
 
     return new Response(
       "<!doctype html><meta charset=utf-8><title>Sin conexión</title><p>Sin conexión y sin copia local de esta pantalla.",

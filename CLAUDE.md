@@ -63,21 +63,23 @@ del actual estén **verificados con su comando**, no razonados.
 | M4 | Deploy en Vercel + Railway DB (ADR-003) | URL en vivo + registro e2e |
 | M5 | Endurecimiento según `docs/revision-seguridad-2026-08-09.md` | A-3, M-4, C-1, A-1, M-1, M-2 verificados + regresión en verde |
 
-**M5 — orden de corrección** (refleja riesgo real, no severidad nominal; no se reordena):
-
-1. **A-3** — la barrera de datos reales no protege el dispositivo. Contención de
-   una exposición ya viva, no endurecimiento normal.
-2. **M-4** — purga de las copias locales en IndexedDB.
-3. **C-1** — freno de fuerza bruta en el login.
-4. **A-1** — vencimiento y revocación de sesión verificados en el servidor.
-5. **M-1 + M-2** — derivar el estacionamiento del usuario autenticado en todas
-   las rutas.
+**M5 — cerrado en código el 2026-08-10.** El orden se siguió por riesgo real, no
+por severidad nominal: A-3 → M-4 → INT-1 → C-1 → INT-14 → A-1 → M-1/M-2 → resto.
+La fuente pasó a ser `docs/revision-integral-2026-08-09.md`, que reemplaza y
+amplía a `docs/revision-seguridad-2026-08-09.md`.
 
 Tras **cada** corrección se corre la regresión completa. Si una corrección rompe
 un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 
-**Estado actual: v1 piloto COMPLETA. M0–M4 cerrados.**
-**URL viva: https://estacionamiento-three.vercel.app**
+**Estado actual: M0–M5 cerrados en código. M6 NO se abre: gate terminal ABIERTO.**
+**URL viva: https://estacionamiento-three.vercel.app — sirve el código ANTERIOR
+al endurecimiento. Falta desplegar.** Medido el 2026-08-12 contra la URL viva:
+`verificar:endurecimiento` da **10/29**, con el mismo árbol en 30/30 local. Entre
+los FAIL, INT-4: el dueño puede listar patentes y la API devuelve la fila entera.
+Mientras el gate esté abierto **no se toca `src/`**.
+
+Único hallazgo del informe integral sin cerrar: **INT-7** (mecanismo de retención
+de patente), bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.
 
 El sistema solo acepta patentes de prueba: `OPERACION_REAL_HABILITADA=false`.
 Encenderlo exige resolver antes `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}`.

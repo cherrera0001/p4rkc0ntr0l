@@ -17,6 +17,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
+import { limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const PATENTE_FIXTURE = "FIXT00";
@@ -38,6 +39,10 @@ if (!navegador) {
   console.error("FAIL · no se encontró Edge. Definí CHROME_PATH.");
   process.exit(1);
 }
+
+// Precondición mecanizada, no confiada al humano: las activas de una corrida
+// anterior se copian al dispositivo y falsean las cuentas de registros.
+await limpiarFixtures();
 
 const resultados = [];
 function comprobar(nombre, ok, detalle) {
