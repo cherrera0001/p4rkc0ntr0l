@@ -159,16 +159,45 @@ se registran como deuda de modelo, no como descarte.
 | Candidato | Gate | Justificación |
 |---|---|---|
 | `sesion_vehiculo.tarifa_id` (FK nullable) | **H2** | La maqueta `1e` promete que *"las sesiones cerradas conservan el valor con que se calcularon"*. Hoy se conserva el monto, no el **cómo**. Un dueño que cambia la tarifa y después audita un monto no puede reconstruirlo, y la visibilidad ES el producto. Aditivo, no toca ningún AC vigente. |
-| `usuario.estado` (`activo \| suspendido`) | **operativa** | Sin estado, dar de baja a un operador exige borrar la fila y la FK `sesion_vehiculo.operador_id` (`schema.ts:112`) lo impide. Es un agujero operativo real, no una petición de diseño. |
+| `usuario.estado` (`activo \| suspendido`) | **NO PASA HOY** — ver abajo | — |
+
+#### `usuario.estado` no pasa el gate, y conviene decir por qué
+
+Una versión anterior de este documento lo justificaba así: *"sin estado, dar de
+baja a un operador exige borrar la fila y la FK `sesion_vehiculo.operador_id`
+(`schema.ts:112`) lo impide"*. La mecánica de la FK es correcta; **la conclusión
+no**.
+
+`src/lib/auth.ts:113` autentica con **email registrado + clave compartida**.
+Suspender la fila de un operador **no le quita el acceso**: la misma persona
+entra con cualquier otro email sembrado y la misma clave, que ya conoce. Lo que
+cerraría el agujero es la credencial por usuario — que este mismo documento
+descarta dos filas más arriba como *"decisión de producto, no de modelo"*.
+
+Y contra el gate declarado en §1 —*"¿lo exige operar el flujo de `spec.md` §5, o
+la Ley 21.719?"*— dar de baja a un operador no está en §5 ni en la ley. Es el
+mismo estándar con que se rechazó `estacionamiento.direccion`.
+
+**Queda como decisión de producto pendiente, no como deuda de modelo.** Agregar
+la columna sin credencial por usuario da la apariencia de revocación sin la
+revocación, que es peor que no tenerla.
 
 ---
 
-## 6. Lo que este modelo no puede prometer
+## 6. La promesa de retención: el modelo la admite, el proyecto no la ejecuta
 
-**El enmascaramiento de la patente.** `spec.md:150` dice *"vencido el plazo, la
-patente se elimina o se enmascara"*. `patente` es `NOT NULL` (`src/db/schema.ts:116`):
-enmascarar exige migración, y **no existe mecanismo de purga**. Es INT-7,
-bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.
+`spec.md:150` dice *"vencido el plazo, la patente se elimina o se enmascara"*.
 
-Se registra en el MER porque es una promesa del modelo que el modelo no cumple, y
-eso pertenece acá y no a una nota al pie.
+**El modelo no lo impide.** `patente` es `NOT NULL` (`src/db/schema.ts:116`) pero
+sin CHECK de formato, así que un centinela es un valor válido; el índice único es
+parcial sobre las activas (`src/db/schema.ts:148`), así que repetir el centinela
+en filas cerradas no colisiona; y ninguna FK apunta a `sesion_vehiculo`, así que
+borrar la fila tampoco requiere migración. Detalle y la sentencia concreta en
+`MR.md` §8.
+
+**Lo que falta es decisión y mecanismo**: `{{PLAZO_RETENCION_PATENTE}}` y
+`{{BASE_LICITUD}}` sin resolver, y ninguna tarea que ejecute la purga. Es INT-7.
+
+Se registra en el MER porque es la única promesa de `spec.md` sobre el ciclo de
+vida del dato personal, y merece estar donde se define el dato — no en una nota
+al pie.

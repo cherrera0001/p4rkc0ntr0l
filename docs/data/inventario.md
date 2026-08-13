@@ -179,14 +179,20 @@ son campos ni entidades: son constantes de operación.**
 **Ninguna se propone incorporar a `spec.md` en la FASE 3.** Fijar un umbral es
 DECISIÓN, no formalización; van a la lista de decisiones pendientes.
 
-### 6.2 Deriva REAL: `spec.md` promete algo que el código no puede cumplir
+### 6.2 Deriva REAL: `spec.md` promete algo que nadie ejecuta
 
 **`spec.md:150`** — *"Vencido el plazo, la patente se elimina o se enmascara"*.
 
-`patente` es `NOT NULL` (`schema.ts:116`), así que **el enmascaramiento que la
-spec promete es imposible sin migración**. Y no existe mecanismo de purga: no hay
-tarea, ni columna de retención, ni job. Es INT-7, bloqueado por
-`{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.
+**No hay mecanismo de purga**: ni tarea, ni columna de retención, ni job, ni AC
+que lo exija. Es INT-7, bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y
+`{{BASE_LICITUD}}`.
+
+**El esquema NO es el bloqueo**, y decir que lo era fue un error de este
+inventario. `patente` es `NOT NULL` (`schema.ts:116`) pero sin CHECK de formato,
+el índice único es parcial sobre las activas (`schema.ts:148`) y ninguna FK
+apunta a `sesion_vehiculo`: un `UPDATE … SET patente='XXXXXX' WHERE estado
+= 'cerrada' AND salida_at < $plazo` cumple la promesa **sin migración**. Ver
+`MR.md` §8.
 
 **Deriva de nivel spec, no de código.** Se registra; no se resuelve acá.
 

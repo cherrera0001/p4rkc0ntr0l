@@ -137,7 +137,13 @@ sería inventar evidencia sobre una persona.
 | **Flujo** | toca *Cerrar sesión* → **si quedan ingresos sin sincronizar, se niega y explica por qué** (`src/app/cerrar-sesion.tsx:36`) → si no, borra la cookie en el servidor y **vacía IndexedDB** (`src/app/cerrar-sesion.tsx:52`) → recarga completa |
 | **Postcondición** | ni cookie ni patentes en el dispositivo |
 | **Implementación** | `src/app/cerrar-sesion.tsx:31` |
-| **Verificado por** | `verificar:endurecimiento` (INT-8: las dos pantallas tienen cierre de sesión) |
+| **Verificado por** | **PARCIALMENTE.** `verificar:endurecimiento` (INT-8) comprueba solo que el botón exista en las dos pantallas |
+
+**Brecha de verificación, no de construcción.** Ningún comando asevera las tres
+partes que importan: la negativa cuando hay pendientes
+(`src/app/cerrar-sesion.tsx:36`), el vaciado de IndexedDB (`:52`) ni la recarga
+completa que descarta el estado en memoria (`:58`). El código está y se lee bien;
+**nadie lo prueba**.
 
 El turno entrante no hereda dato personal del saliente. Y la negativa cuando hay
 pendientes protege AC-OP-1: ese registro existe **solo** ahí hasta que sube.
@@ -239,8 +245,9 @@ antes de persistir es la diferencia entre no tratar el dato y tratarlo mal.
 
 | Caso | Estado |
 |---|---|
-| CU-01 … CU-09 | **construido y verificado con comando** |
-| CU-04 | construido y verificado, con **brecha de especificación** (la asimetría offline no está en `spec.md`) |
+| CU-01, CU-02, CU-03, CU-05, CU-06, CU-08, CU-09 | **construido y verificado con comando** |
+| CU-04 salida | construido y verificado, con **brecha de especificación**: la asimetría offline no está en `spec.md`, y **ningún comando verifica la degradación sin red** — `verificar:salida` es puramente en línea y `verificar:op1` no toca la salida |
+| CU-07 cerrar sesión | construido; **verificado solo a medias** — se comprueba que el botón exista, no lo que hace |
 | CU-10 medir H1 | **BRECHA** — especificado, instrumentado, sin datos ni consulta ni umbral |
 | CU-11 tarifas | **BRECHA** — modelo listo, pantalla no |
 | CU-12 baja de operador | **BRECHA** — falta modelo y pantalla |

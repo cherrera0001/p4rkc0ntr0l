@@ -23,6 +23,7 @@
     "verificar:ui": "node scripts/verificar-ui.mjs",
     "verificar:invariantes": "node --env-file=.env scripts/verificar-invariantes.mjs",
     "verificar:endurecimiento": "node --env-file=.env scripts/verificar-endurecimiento.mjs",
+    "verificar:ac": "node scripts/verificar-ac.mjs",
     "verificar:citas": "node scripts/verificar-citas.mjs",
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"

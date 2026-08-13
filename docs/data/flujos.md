@@ -10,9 +10,14 @@
 
 ## 1. Ciclo de vida de `sesion_vehiculo`
 
-Dos dimensiones ortogonales que conviene no confundir: **`estado`** dice dónde
-está el vehículo, **`sync_estado`** dice dónde está el registro. Una sesión puede
-estar `cerrada` y `local`, o `activa` y `sincronizada`.
+Dos dimensiones que conviene no confundir: **`estado`** dice dónde está el
+vehículo, **`sync_estado`** dice dónde está el registro.
+
+**No son ortogonales en la práctica, y el diagrama lo muestra:** de las cuatro
+combinaciones posibles solo existen tres. `cerrada / local` **no ocurre nunca**,
+porque el cierre pasa siempre por el servidor y el servidor escribe
+`syncEstado: "sincronizada"` (`src/app/api/sesiones/[id]/salida/route.ts:115`),
+igual que al insertar (`src/app/api/sesiones/route.ts:177`).
 
 ```mermaid
 stateDiagram-v2
@@ -28,9 +33,9 @@ stateDiagram-v2
     state "activa / sincronizada" as ActivaSync
     state "cerrada / sincronizada" as Cerrada
 
-    ActivaLocal --> ActivaSync : POST acepta (201)
-    ActivaLocal --> ActivaLocal : sin red - reintenta
-    ActivaLocal --> Descartada : el servidor RECHAZA (4xx)
+    ActivaLocal --> ActivaSync : POST acepta (201 o 200 duplicada)
+    ActivaLocal --> ActivaLocal : sin red, 5xx, 401, 408, 409 o 429<br/>QUEDA en la cola y reintenta
+    ActivaLocal --> Descartada : rechazo DEFINITIVO: solo 400 o 403
 
     ActivaSync --> Cerrada : POST salida (200)<br/>calcula monto con tarifa vigente
     ActivaSync --> ActivaSync : doble toque - misma sesion
@@ -49,8 +54,9 @@ stateDiagram-v2
 | `Tecleando → Rechazada` | patente inválida | `src/lib/patente.ts:53` |
 | `Tecleando → Rechazada` | no es fixture y `OPERACION_REAL_HABILITADA=false` | `src/app/pantalla-operador.tsx:310` |
 | `Tecleando → activa/local` | marca `tecleo_fin_at`, escribe IndexedDB | `src/app/pantalla-operador.tsx:337` |
-| `activa/local → activa/sincronizada` | el servidor acepta | `src/lib/cola-local.ts:100` |
-| `activa/local → Descartada` | el servidor rechaza (4xx) | `src/app/pantalla-operador.tsx:228` |
+| `activa/local → activa/sincronizada` | el servidor acepta; se marca `syncEstado: "sincronizada"` | `src/lib/cola-local.ts:315` |
+| `activa/local → Descartada` | **solo** 400 o 403 | `src/lib/cola-local.ts:276` |
+| `activa/local → activa/local` | 401, 408, 409, 429, 5xx o sin red: queda en la cola | `src/lib/cola-local.ts:277` |
 | `activa/* → cerrada` | calcula monto con tarifa vigente | `src/app/api/sesiones/[id]/salida/route.ts:84` |
 | `cerrada → cerrada` | idempotente | `src/app/api/sesiones/[id]/salida/route.ts:79` |
 | `cerrada → [*]` | el dispositivo borra la patente | `src/app/pantalla-operador.tsx:360` |
@@ -91,8 +97,8 @@ flowchart TB
     I --> J{"Respuesta"}
     J -- "201 creada" --> K["sync_estado = sincronizada"]
     J -- "200 duplicada" --> K
-    J -- "4xx rechazo" --> L["Se BORRA del dispositivo<br/>y se avisa: hay que registrarlo de nuevo"]
-    J -- "5xx / sin red" --> F
+    J -- "400 o 403: DEFINITIVO" --> L["Se BORRA del dispositivo<br/>y se avisa: hay que registrarlo de nuevo"]
+    J -- "401, 408, 409, 429, 5xx<br/>o sin red: RECUPERABLE" --> F
 
     K --> M["GET /api/sesiones<br/>lista autoritativa del servidor"]
     M --> N{"Guarda de orden:<br/>es la respuesta mas reciente?"}
@@ -111,7 +117,8 @@ flowchart TB
 | escribir disco antes que red | `src/app/pantalla-operador.tsx:337` | es lo que hace que el registro no dependa de la señal |
 | una sincronización a la vez | `src/app/pantalla-operador.tsx:218` | sin la guarda, cada ingreso re-posteaba la cola entera |
 | reintento periódico (30 s) | `src/app/pantalla-operador.tsx:268` | una cola diferida por un 429 se quedaba así hasta que el operador tocara algo |
-| rechazo 4xx borra del dispositivo | `src/app/pantalla-operador.tsx:228` | un registro que el servidor nunca va a aceptar no puede reintentarse para siempre |
+| **solo** 400/403 borran del dispositivo | `src/lib/cola-local.ts:276` | la regla es **asimétrica a propósito**: se borra solo cuando el servidor afirma que ese dato no puede existir. Tratar todo el 4xx como definitivo era pérdida de datos — un 401 por cookie caducada, o el 429 del propio límite de C-1, vaciaba la cola del operador |
+| el aviso al operador lo pinta la pantalla | `src/app/pantalla-operador.tsx:228` | el almacén decide qué se borra; la UI solo informa cuántos |
 | guarda de orden por secuencia | `src/app/pantalla-operador.tsx:171` | un `GET` que sale antes del `INSERT` y vuelve corto dejaba la ocupación en 0 con el estacionamiento lleno |
 | memoria de cierres recientes (30 s) | `src/app/pantalla-operador.tsx:45` | hallazgo INT-9: una respuesta emitida antes del cierre re-escribía una patente ya borrada |
 | `reconciliarActivas()` | `src/lib/cola-local.ts:201` | el dispositivo conserva lo que está adentro y suelta lo demás (M-4) |

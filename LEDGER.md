@@ -2604,3 +2604,296 @@ LOCAL                  122 pruebas · tsc · lint · pwa 13/13 · op1 11/11
                        invariantes 8/8 · esquema 4/4 · verificadores 25/25
                        int12 12/13  <- el FAIL de este registro
 ```
+
+---
+
+### 2026-08-13 · Fundación de datos y auditoría spec-driven · FASES 0–2
+
+Loop de documentación derivada. **No se tocó `src/`.** INT-12 sigue en FAIL y M6
+sigue detenido: este loop no cambia ninguno de esos dos veredictos.
+
+#### FASE 0 · Inventario — `docs/data/inventario.md`
+
+Las 4 entidades y sus 27 campos, cada uno con cita `archivo:línea`.
+
+**Lo que coincide:** `sesion_vehiculo` tiene exactamente los 11 campos de
+`spec.md` §4 — cero de más, cero de menos. Ídem `estacionamiento` (5), `tarifa`
+(6) y `usuario` (5). Las entidades prohibidas por ADR-001 no existen.
+
+**Cuatro derivas reales, registradas:**
+
+1. **Constantes de operación sin lugar en `spec.md`**: vigencia de sesión 12 h
+   (`src/lib/sesion-token.ts:30`), permanencia máxima 30 días
+   (`src/lib/tiempo.ts:48`), desfase ignorable 2 s, redondeo neutro del monto,
+   prefijo `FIXT`. Ninguna se propone incorporar: fijar un umbral es DECISIÓN.
+2. **`spec.md:150` promete algo que el esquema no puede cumplir.** *"Vencido el
+   plazo, la patente se elimina o se enmascara"* — `patente` es `NOT NULL`
+   (`src/db/schema.ts:116`). El enmascaramiento **no es implementable** sin
+   migración, y no existe mecanismo de purga. Es INT-7.
+3. **`spec.md` §8 pide deploy por `git push`** y corre por CLI de Vercel.
+4. **La asimetría offline no está escrita.** El ingreso funciona sin red; la
+   salida no. Vive en el ledger y en AC-UX-3, no en `spec.md` §5.
+
+#### FASE 1 · Modelo derivado
+
+`MER.md`, `MR.md`, `casos-uso.md`, `flujos.md`. Cada entidad, atributo y
+transición trazada al esquema o al código.
+
+Decisiones que conviene no perder:
+
+- **Ninguna relación M:N, y es deliberado.** La candidata natural —una tabla
+  `vehiculo`— se descarta por **minimización**: construiría un historial de
+  movimientos de una persona identificable que ninguna hipótesis necesita y que
+  la Ley 21.719 obligaría a justificar. La patente vive como atributo de la
+  sesión.
+- **`monto_calculado` es derivable y aun así no viola 3NF.** No depende de otro
+  atributo no-clave de su fila —depende de otra relación— y sobre todo **es un
+  hecho histórico**: el monto que se cobró en efectivo ocurrió. Recalcularlo con
+  otra tarifa daría un número distinto del que se cobró.
+- **La desnormalización que NO se hizo, con su costo.** `sesion_vehiculo` no
+  registra con qué tarifa se calculó su monto. Es *inferible* replicando la
+  consulta de `src/lib/contexto.ts:63` con `salida_at`, **mientras nadie inserte
+  una tarifa con `vigente_desde` retroactivo** — que el esquema permite, porque
+  no hay `CHECK` que lo impida. Con una tarifa retroactiva la inferencia devuelve
+  una tarifa que no es la que se usó, y el sistema afirmaría un cálculo falso
+  sobre un cobro real. La maqueta `1e` promete justo lo contrario.
+- **No existe el estado `cerrada/local`.** El cierre requiere red por
+  construcción: sin servidor no hay tarifa vigente y sin tarifa no hay monto. El
+  diagrama lo vuelve estructural en vez de anecdótico.
+- **`Rechazada` no toca disco.** No es un estado de la base: es el camino que
+  garantiza que una patente real nunca se recolecta (A-3).
+
+Dos candidatos **pasan** el gate H1/H2/obligación y quedan como deuda de modelo,
+no como descarte: `sesion_vehiculo.tarifa_id` (H2, auditabilidad del monto) y
+`usuario.estado` (operativa: hoy dar de baja a un operador exige borrar la fila y
+la FK lo impide).
+
+#### FASE 2 · Matriz medida — `docs/data/matriz-trazabilidad.md`
+
+La columna *¿Verificado?* se pobló con **salida real**, capturada antes de
+escribir la matriz:
+
+```
+verificar:esquema        4/4     verificar:endurecimiento  30/30
+verificar:invariantes    8/8     verificar:ui              18/18
+verificar:verificadores 27/27    verificar:pwa             13/13
+verificar:citas         17/17    verificar:op1             11/11
+verificar:salida        11/11    verificar:meas2           10/10
+verificar:meas1        PASS      verificar:int12           13/13 (gate en FAIL)
+```
+
+Gate ADR-001: los tres `Select-String` sin resultados.
+
+**Recuento:** 21 `E+C+V` · 1 `E+C+SV` (INT-12) · 6 `E+NC` (deuda) · 7 `C+NE`
+(huérfanos) · 6 maquetas bloqueadas por multisitio · 2 habilitadas y bloqueadas
+(`1i`/`1j`).
+
+#### El hallazgo de fondo: H1 nunca se midió
+
+Consultado contra la base, no razonado:
+
+```
+sesiones totales: 0 · cerradas: 0 · fixtures: 0
+H1 · sesiones cerradas NO fixture: 0
+H1 · mediana de tecleo: SIN DATOS
+```
+
+Estado: **ESPECIFICADO · INSTRUMENTADO · SIN DATOS**. Tres causas concurrentes:
+
+1. la barrera de cumplimiento lo impide **por diseño** —y está bien que así sea:
+   medir H1 de verdad exige resolver `{{BASE_LICITUD}}` y
+   `{{PLAZO_RETENCION_PATENTE}}` primero;
+2. los verificadores limpian lo que crean (`scripts/lib/fixtures.mjs`), así que
+   ninguna corrida acumula evidencia;
+3. **no existe la consulta** que agregaría la métrica: es la maqueta `1g`, no
+   construida.
+
+`spec.md` §1 dice que el proyecto existe para probar o refutar H1. No es una nota
+al pie: es el hallazgo de fondo de esta auditoría.
+
+#### Siete huérfanos verificados y sin AC
+
+El endurecimiento completo (INT-2, C-1, A-1, B-2, INT-4, INT-8, INT-11, INT-14),
+las invariantes de base, la capa de presentación, la barrera de datos reales, la
+cota del reloj y los dos guards de verificación **se verifican con comando y
+ninguno tiene AC en `spec.md` §9**. No están mal: están sin anclar, así que un
+refactor podría eliminarlos sin violar ningún criterio escrito.
+
+#### Guard nuevo: `scripts/verificar-citas.mjs`
+
+`npm run verificar:citas` → 17/17. Comprueba que las **128 citas
+`archivo:línea`** resuelvan, que los 5 bloques mermaid estén cerrados y declaren
+tipo, y que ningún `{{placeholder}}` haya quedado con un valor asignado.
+
+**Declara su límite en el propio docstring**: valida que la línea *exista*, no
+que *diga* lo que la cita afirma. Por eso se muestrearon 18 citas a mano — y
+encontraron **3 imprecisas** (`pantalla-operador.tsx:279` en vez de `:280`,
+`:539` en vez de `:573`, `manifest.ts:9` en vez de `:11`), corregidas.
+
+Un documento derivado que nadie revalida se desincroniza en el primer refactor y
+pasa a describir un sistema que ya no existe, con el agravante de que sigue
+*pareciendo* verificable.
+
+#### Estado de este registro
+
+Los artefactos están escritos y sus comandos dan verde. **Los veredictos de la
+matriz y la propuesta de cambios a `spec.md` están en auditoría adversarial y no
+se dan por firmes hasta su PASA.** `spec.md` sigue intacto.
+
+Ningún `{{placeholder}}` se rellenó.
+
+---
+
+### 2026-08-13 · FASE 3 · PASO 0 · **DOS VETOS**, ambos aceptados
+
+`spec.md` no se escribió. Los dos veredictos, textuales en lo esencial, antes de
+tocar nada.
+
+---
+
+#### VETO 1 · Matriz de trazabilidad y documentos derivados
+
+El auditor confirmó primero la procedencia: `git diff --stat 8c28d9a HEAD -- src`
+vacío, así que las 128 citas apuntan a un `src/` que no cambió. Y confirmó lo que
+**sí** se sostiene: la consulta de H1 mide lo que dice medir (`SIN DATOS` es
+correcto), las tres BRECHAS son reales, el gate ADR-001 limpio, INT-12 reflejado
+sin reabrirse, y §8 cierra aritméticamente.
+
+Ocho hallazgos. Los tres bloqueantes:
+
+**(1) Fila con estado falso.** *"Temporizador de permanencia · `verificar:meas2`
+→ 10/10 · E+C+V"*. `verificar-meas2.mjs` tiene 10 comprobaciones y **ninguna toca
+el temporizador**: compara ocupación, ingresos, cerradas, descuadre y separación
+de roles. Nunca lee lo que produce `duracion()` (`src/app/pantalla-operador.tsx:75`).
+Ningún otro comando lo verifica — tres comentarios en scripts, cero aserciones.
+
+> *"Es el defecto exacto que describiste: el comando verifica una capacidad
+> parecida (el panel del dueño, que también muestra números) y se acredita otra."*
+
+**(3) Dos diagramas describen código que no existe.**
+
+- `flujos.md` **se contradice a sí mismo**: el preámbulo dice que una sesión
+  *"puede estar `cerrada` y `local`"* y doce líneas después dice que ese estado
+  **no existe**. El código sostiene la segunda: `src/app/api/sesiones/route.ts:177`
+  y `.../salida/route.ts:115` escriben ambos `syncEstado: "sincronizada"`.
+- El camino `4xx → Descartada` **describe el bug que ya se corrigió**.
+  `src/lib/cola-local.ts:276` define `esRechazoDefinitivo` como
+  `status === 400 || status === 403`, y su docstring dice que tratar todo el 4xx
+  como definitivo *"es pérdida de datos: un 401 por cookie caducada —o el 429 del
+  límite de intentos previsto para C-1— vaciaba la cola del operador"*. Con la
+  ráfaga de C-1 el 429 es un caso vivo.
+
+**(5) Imposibilidad técnica mal atribuida, repetida en tres documentos.**
+`MR.md`, `MER.md` e `inventario.md` afirman que enmascarar la patente *"no es
+implementable sobre este esquema"* / *"exige migración"*. Falso:
+
+> *"`patente` es `text NOT NULL` sin ningún CHECK de formato… el único índice
+> único es parcial sobre `estado='activa'`, así que un centinela compartido en
+> filas cerradas no colisiona. Y ninguna FK apunta a `sesion_vehiculo`.
+> `UPDATE sesion_vehiculo SET patente='XXXXXX' WHERE estado='cerrada' AND
+> salida_at < $plazo` cumple `spec.md:150` sin tocar el esquema."*
+
+**Los tres documentos culpaban al esquema de un bloqueo que es de decisión.**
+Lo que falta es `{{PLAZO_RETENCION_PATENTE}}`, `{{BASE_LICITUD}}` y el mecanismo
+de purga — que es exactamente lo que INT-7 dice.
+
+Los otros cinco: dos citas que resuelven y no sostienen lo que afirman
+(`cola-local.ts:100` es `pendientes()`, no la transición; `pantalla-operador.tsx:228`
+solo pinta el aviso); el argumento 3NF de `MR.md` §3 es **racionalización** —la DF
+`{estacionamiento_id, entrada_at, salida_at} → monto_calculado` se cumple y su
+determinante no es superclave, así que la razón formal es falsa y solo se
+sostiene la razón histórica—; `usuario.estado` **no cierra el agujero con el que
+se lo justifica**, porque la clave es compartida y suspender una fila no impide
+entrar con otro email; `verificar:citas 15/15` en §0 **no reproduce** (hoy 17/17);
+y **falta M-4 entero** en la matriz — 29 aserciones, verificador propio, ningún
+AC, invisible tanto en capacidades como en huérfanos.
+
+---
+
+#### VETO 2 · Propuesta de cambios a `spec.md`
+
+Siete bloqueantes. El primero invalida la evidencia de la propia propuesta.
+
+**V1 · Los comandos de AC-SCOPE-1a/b/c no matchean nada. Nunca. Por sintaxis.**
+
+En regex .NET, `\|` es **un pipe literal**, no alternancia. Reproducido acá:
+
+```
+Select-String -Path package.json -Pattern "next\|react"  ->  0 lineas
+Select-String -Path package.json -Pattern "next|react"   ->  9 lineas
+```
+
+El auditor lo probó end-to-end con la pasarela plantada: un `package.json` con
+`"stripe"` y `"transbank-sdk"`, y los tres paths de 1a importando `Stripe` /
+`WebpayPlus`. Los comandos **verbatim** dieron vacío: **PASA con la pasarela
+adentro**.
+
+> *"Es la lección de AC-PWA-1 en su forma más grave: no un AC que no se puede
+> correr, sino uno que reporta PASS incondicionalmente."*
+
+**V2 · 1a es una lista blanca de 4 archivos.** Fuera de su alcance quedan
+`src/lib/cola-local.ts`, `src/app/page.tsx`, `src/app/dueno/*`, `public/sw.js`
+—el service worker puede cargar un script de pago sin tocar `src/`— y **cualquier
+ruta nueva**: `src/app/api/cobro/route.ts` pasa por construcción. Hoy AC-SCOPE-1
+guarda `package.json` a nivel repo; 1a lo reemplaza por cuatro archivos. **Es un
+aflojamiento neto.**
+
+**V3 · Al adoptar la pasarela la cobertura cae.** 1b se retira y 1c escanea solo
+`src` y solo `webpay|flow|khipu`: pierde `stripe`, `mercadopago`, `transbank`.
+`package.json` deja de estar vigilado por criterio alguno. Viola la condición
+explícita de ADR-004: *"seguir rechazando inequívocamente el pago del conductor"*.
+
+**V4 · `-Exclude suscripcion` no excluye lo que 1c cree.** Con `-Recurse`,
+`-Exclude` saca el directorio del listado pero **igual emite sus archivos**.
+Reproducido: `src\lib\suscripcion\webpay.ts` aparece. **1c falla exactamente en
+el escenario para el que se escribió.**
+
+**V5 · El texto de §5 especifica algo que no existe.** *"el cierre se reintenta"*
+es falso: `src/app/pantalla-operador.tsx` solo hace `setError(...)` en el `catch`,
+y `sincronizar()` únicamente postea los `pendientes()`, que filtra
+`syncEstado === "local"`. Una salida fallida quedó `sincronizada`/`activa` y
+**nunca vuelve a mirarse**. La frase viene de la maqueta. Es `ESPEC+NO_CONSTRUIDO`
+—deuda con otro nombre— y el propio `casos-uso.md` de este loop lo dice bien.
+
+**V6 · La verificación invocada no cubre la mitad offline.** `verificar-salida.mjs`
+es e2e puramente en línea y `verificar-op1.mjs` tiene **cero ocurrencias de
+"salida"**. Ningún comando verifica que la salida sin red degrade como se dice.
+
+**V7 · Deja la spec contradiciéndose sola.** `spec.md:237` (§8) afirma que *"el
+flujo del operador (§5) funciona sin conexión"*. Meter en §5 "la salida requiere
+conexión" sin acotar §8 y §3 deja el documento afirmando A y ¬A.
+
+**AC-DATA-2 · PASA**, y con el criterio que vuelve no-arbitraria la frontera:
+
+> *"AC-DATA-2 restringe el modelo que `spec.md` §4 ya define. INT-2, C-1, A-1,
+> B-2, INT-4, INT-8, INT-11, INT-14 afirman propiedades que `spec.md` nunca
+> enunció. Escribirlas es autorar requisitos nuevos, no formalizar. El criterio
+> es: **¿el AC hace exigible una afirmación que ya está en §1-§8, o introduce una
+> afirmación nueva?**"*
+
+Se acepta y se adopta como la regla del proyecto. Nit incorporado: el texto de
+AC-DATA-2 omitía las invariantes de tarifa y la exigencia de que las
+restricciones estén *declaradas*, que el comando sí verifica.
+
+**AC-DATA-3 · VETO.** No es "discutible": `scripts/verificar-citas.mjs:44` falla
+si `docs/data/` está vacío, así que meterlo en §9 convierte seis documentos
+derivados de anteayer en **criterio de aceptación permanente de la v1**. Es el
+subproducto del loop ascendiendo al contrato que el loop auditaba. El guard se
+queda; el AC no entra.
+
+Fuera de veto, un hallazgo de alcance: `spec.md` §8 y §10 **siguen diciendo
+Neon** cuando ADR-003 movió la base a Railway. Abrir la spec por exactitud y
+dejar el proveedor equivocado es inconsistente en el mismo commit.
+
+---
+
+#### Qué se hace con los dos vetos
+
+La matriz **no es firme**. `spec.md` **sigue intacto**. Se corrigen primero los
+documentos derivados (WIP=1), después se rehace la propuesta según el fallo —sin
+reescribir a mano el criterio vetado— y ambas cosas vuelven a auditoría.
+
+Regla que este loop deja adoptada, del propio veto:
+
+> **Un gate que solo se probó contra un repo limpio no se probó.** Todo comando
+> nuevo se corre **con el fallo plantado** antes de escribirse en `spec.md`.

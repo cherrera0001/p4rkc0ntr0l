@@ -81,29 +81,44 @@
 
 ## 3. Normalización
 
-**El esquema está en 3NF.** Verificación por tabla:
+**Tres de las cuatro tablas están en 3NF. `sesion_vehiculo` no**, y es
+deliberado. Verificación por tabla:
 
 | Tabla | 1NF | 2NF | 3NF |
 |---|---|---|---|
 | `estacionamiento` | atómica | PK simple | ningún atributo depende de otro no-clave |
 | `usuario` | atómica | PK simple | `rol` y `email` son independientes entre sí |
 | `tarifa` | atómica | PK simple | los tres valores son independientes; `vigente_desde` no los determina |
-| `sesion_vehiculo` | atómica | PK simple | ver el análisis de `monto_calculado`, abajo |
+| `sesion_vehiculo` | atómica | PK simple | **NO** — `monto_calculado` es derivable. Desnormalización deliberada, abajo |
 
-### El único candidato a violación de 3NF, y por qué no lo es
+### `monto_calculado` SÍ es una desnormalización, y se conserva a propósito
 
-`monto_calculado` **es derivable** de `entrada_at`, `salida_at` y la tarifa
-vigente. Un dato derivado almacenado suele ser una violación.
+Corrección de una versión anterior de este documento, que afirmaba que no había
+violación de 3NF por un argumento formal falso.
 
-No lo es acá, por dos razones que conviene dejar escritas:
+**La dependencia funcional existe.** Fijado el contenido de `tarifa`, la
+resolución de `obtenerTarifaVigente()` (`src/lib/contexto.ts:57`) es determinista
+sobre `estacionamiento_id` y `salida_at`, y `calcularMonto()`
+(`src/lib/tarificacion.ts:75`) es una función pura. O sea:
 
-1. **No depende de otro atributo no-clave de la misma fila.** Depende de una fila
-   de `tarifa`, que es otra relación. Formalmente no hay dependencia transitiva
-   dentro de `sesion_vehiculo`.
-2. **Es un hecho histórico, no un cálculo.** El monto que se le cobró a alguien
-   en efectivo ocurrió. Recalcularlo después con otra tarifa daría un número
-   distinto del que se cobró, y ese número es lo que el dueño compara contra su
-   caja (`spec.md` §6). Almacenarlo no es redundancia: es el registro del hecho.
+```
+{estacionamiento_id, entrada_at, salida_at} → monto_calculado
+```
+
+Ese determinante **no es superclave** —la PK es `id` sola— y `monto_calculado`
+**no es primo**. Eso es, por definición, un incumplimiento de 3NF.
+
+**Se conserva igual, y la razón es una sola:** el monto es un **hecho histórico,
+no un cálculo**. Lo que se le cobró a alguien en efectivo ocurrió. Recalcularlo
+más tarde con otra tarifa daría un número distinto del que se cobró, y ese número
+es justamente el que el dueño compara contra su caja (`spec.md` §6). La tarifa es
+mutable y admite `vigente_desde` retroactivo, así que la reconstrucción **no es
+confiable** (ver §4).
+
+Almacenarlo es la decisión correcta. Llamarlo "no es una violación de 3NF" era
+agregar un argumento formal que suena riguroso y no lo es — el mismo movimiento
+que este proyecto ya vetó en INT-12. La forma honesta es: **es una
+desnormalización deliberada, y este es su motivo.**
 
 ---
 
@@ -196,11 +211,34 @@ no decisión.
 
 ---
 
-## 8. Lo que este modelo relacional no puede sostener
+## 8. La retención: qué bloquea de verdad
 
-`patente` es `NOT NULL` (`src/db/schema.ts:116`). La promesa de `spec.md:150`
-—*"la patente se elimina o se enmascara"*— **no es implementable sobre este
-esquema**: enmascarar exige `NULL` o un centinela, y ninguno cabe hoy.
+`spec.md:150` promete *"vencido el plazo, la patente se elimina o se enmascara"*.
+Eso **no** está bloqueado por el esquema, y decirlo lo estaba era culpar a la
+estructura de un problema de decisión.
 
-Además no hay columna de retención, ni tarea de purga, ni AC que lo exija.
-Es INT-7, bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.
+Comprobado contra el esquema real:
+
+- `patente` es `text NOT NULL` (`src/db/schema.ts:116`) **sin ningún CHECK de
+  formato**: un centinela como `XXXXXX` es un valor válido.
+- El único índice único es **parcial**, sobre `estado = 'activa'`
+  (`src/db/schema.ts:148`): un centinela repetido en filas cerradas **no
+  colisiona**.
+- **Ninguna FK apunta a `sesion_vehiculo`**, así que borrar la fila tampoco
+  requiere migración.
+
+Es decir, esto cumple `spec.md:150` sin tocar el esquema:
+
+```sql
+UPDATE sesion_vehiculo
+   SET patente = 'XXXXXX'
+ WHERE estado = 'cerrada' AND salida_at < $plazo;
+```
+
+**Lo que falta no es estructura: es la decisión y el mecanismo.**
+`{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}` sin resolver, y ninguna tarea
+de purga que ejecute ese `UPDATE`. Eso es exactamente lo que dice INT-7.
+
+La única salvedad estructural, y es menor: sin una columna que registre que la
+fila **ya** fue enmascarada, la purga tiene que inferirlo del centinela. Es
+elegible al construir el mecanismo, no un bloqueo previo.

@@ -14,16 +14,26 @@
 verificar:esquema        exit=0   4/4    AC-DATA-1: PASS
 verificar:invariantes    exit=0   8/8    INT-15 / INT-16 / INT-17: PASS
 verificar:verificadores  exit=0  27/27   VERIFICADORES: PASS
-verificar:citas          exit=0  15/15   CITAS: PASS
+verificar:citas          exit=0  17/17   CITAS: PASS
 verificar:endurecimiento exit=0  30/30   ENDURECIMIENTO: PASS
 verificar:ui             exit=0  18/18   SPEC-004: PASS
 verificar:pwa            exit=0  13/13   AC-PWA-1: PASS
 verificar:op1            exit=0  11/11   AC-OP-1: PASS
+verificar:a3             exit=0  11/11   A-3: PASS
+verificar:m4             exit=0  29/29   M-4: PASS
 verificar:salida         exit=0  11/11   Ciclo ingreso/salida: PASS
 verificar:meas1          exit=0          AC-MEAS-1: PASS
 verificar:meas2          exit=0  10/10   AC-MEAS-2: PASS
 verificar:int12          exit=0  13/13   INT-12: PASS   <- ver la fila de INT-12
+npm test                 exit=0  122/122
 ```
+
+> **Corrección.** Una versión anterior de esta sección pegaba
+> `verificar:citas 15/15`. Ese número correspondía a un árbol donde `MER.md`
+> todavía no tenía diagrama; hoy son 17/17. En la sección que se titula *"medida,
+> no afirmada"*, la única línea que no reproducía era la del guard escrito en
+> este mismo loop. Corregida, y anotada como recordatorio de que **un conteo
+> deriva y crece**: por eso los AC deben citar el comando, no el número.
 
 Gate de alcance, comandos de `CLAUDE.md` §1:
 
@@ -66,7 +76,7 @@ H1 · mediana de tecleo: SIN DATOS
 | Modelo de datos §4 | `spec.md` §4 · AC-DATA-1 | `src/db/schema.ts:33-184` | `verificar:esquema` → `4/4 · AC-DATA-1: PASS` | **E+C+V** |
 | Registro de patente al ingreso | §2.1, §5 | `src/app/api/sesiones/route.ts:77` | `verificar:salida` → `11/11` | **E+C+V** |
 | Ingreso offline + sync | §3, §5 · AC-OP-1 | `src/lib/cola-local.ts:92` | `verificar:op1` → `11/11 · AC-OP-1: PASS` | **E+C+V** |
-| Temporizador de permanencia | §5 | `src/app/pantalla-operador.tsx:75` | `verificar:meas2` → `10/10` | **E+C+V** |
+| Temporizador de permanencia | `spec.md:177` | `src/app/pantalla-operador.tsx:75` | **NO.** `verificar:meas2` tiene 10 comprobaciones y ninguna lee lo que produce `duracion()`; ningún otro comando lo asevera | **E+C+SV** |
 | Cálculo de precio a la salida | §2.3, §5 · AC-OP-2 | `src/lib/tarificacion.ts:75` | `npm test` → 122 pruebas, 0 fallos | **E+C+V** |
 | Panel del dueño | §2.4, §6 · AC-MEAS-2 | `src/app/dueno/page.tsx:38` | `verificar:meas2` → `10/10 · AC-MEAS-2: PASS` | **E+C+V** |
 | Descuadre visible | §6 | `src/app/dueno/descuadre.tsx:21` | `verificar:meas2` | **E+C+V** |
@@ -90,9 +100,9 @@ Origen: `docs/diseno-2026-08-12-traduccion.md` §1.
 
 | Maqueta | ¿Construido? | ¿Verificado? | Estado |
 |---|---|---|---|
-| `1a` login (mitad no-multisitio) | `src/app/login/page.tsx:16` | `verificar:ui` → `18/18` | **E+C+V** |
-| `1b` operador · lista de permanencia | `src/app/pantalla-operador.tsx:406` | `verificar:op1`, `verificar:ui` | **E+C+V** |
-| `1c` salida · monto a cobrar | `src/app/pantalla-operador.tsx:573` | `verificar:salida` → `11/11` | **E+C+V** |
+| `1a` login (mitad no-multisitio) | `src/app/login/page.tsx:16` | `verificar:meas2` y `verificar:endurecimiento`, que entran **por el formulario**. `verificar:ui` comprueba tokens y capas, no acredita esta maqueta | **E+C+V** |
+| `1b` operador · lista de permanencia | `src/app/pantalla-operador.tsx:406` | `verificar:op1` → `11/11` | **E+C+V** ⚠ el temporizador de la fila no está verificado — ver §2 |
+| `1c` salida · monto a cobrar | `src/app/pantalla-operador.tsx:573` | `verificar:m4` → `29/29`, que incluye *"el operador ve el monto a cobrar en efectivo"*. **No** `verificar:salida`: ese es `fetch` puro y nunca abre navegador | **E+C+V** |
 | `1n` dueño de un solo sitio | `src/app/dueno/page.tsx:78` | `verificar:meas2` → `10/10` | **E+C+V** |
 | descuadre (parte de `1n`) | `src/app/dueno/descuadre.tsx:32` | `verificar:meas2` | **E+C+V** |
 | cerrar sesión (INT-8) | `src/app/cerrar-sesion.tsx:66` | `verificar:endurecimiento` → `30/30` | **E+C+V** |
@@ -209,6 +219,8 @@ Construido, verificado, y **sin AC en `spec.md`** que lo exija.
 | Qué | Dónde | Se verifica con | Por qué es huérfano |
 |---|---|---|---|
 | Invariantes de base (INT-15/16/17) | `src/db/schema.ts:148`, `:161`, `:166`, `:177` | `verificar:invariantes` → `8/8` | AC-DATA-1 verifica **presencia y forma**, no invariantes |
+| **M-4 entero: purga del dispositivo** | `src/lib/cola-local.ts:135`, `:163`, `:201`, `:276` | `verificar:m4` → `29/29` | **Un subsistema completo con verificador propio y ningún AC.** Cubre `purgarNoActivas`, `reconciliarActivas`, `borrarTodo`, la memoria de cierres de INT-9 y el monto en pantalla. Faltaba en esta matriz — tanto en capacidades como en huérfanos — pese a que sus números se citan en CU-04 y CU-09 |
+| Temporizador de permanencia | `src/app/pantalla-operador.tsx:75` | **nada** | `spec.md:177` lo pide y **ningún comando lo asevera**. No es solo huérfano: es la única capacidad del núcleo sin verificación alguna |
 | Endurecimiento completo (INT-2, C-1, A-1, B-2, INT-4, INT-8, INT-11, INT-14) | `src/proxy.ts`, `src/lib/limite-intentos.ts`, `src/lib/sesion-token.ts`, `src/lib/tiempo.ts` | `verificar:endurecimiento` → `30/30` | nace de una revisión de seguridad posterior a `spec.md`; **ningún AC de §9 lo menciona** |
 | Capa de presentación (AC-UI-1..4) | `src/app/globals.css`, pantallas | `verificar:ui` → `18/18` | los AC-UI viven en `docs/diseno-…`, no en `spec.md` §9 |
 | Barrera de datos reales | `src/lib/fixtures.ts:12` | `verificar:a3` → `11/11` | nace de M4/A-3; `spec.md` §4 nombra los placeholders pero no exige la barrera |
@@ -227,10 +239,10 @@ verifican con comando es formalización; el resto es decisión.
 
 | Estado | Cantidad | Detalle |
 |---|---|---|
-| **E+C+V** | 21 | núcleo `spec.md` (14) + maquetas construidas (6) + fuentes autoalojadas |
-| **E+C+SV** | 1 | INT-12 (gate en FAIL) |
+| **E+C+V** | 20 | núcleo `spec.md` (13) + maquetas construidas (6) + fuentes autoalojadas |
+| **E+C+SV** | 2 | INT-12 (gate en FAIL) · **temporizador de permanencia** (ningún comando) |
 | **E+NC** (deuda) | 6 | deploy por `git push`, retención INT-7, `1e`, `1g`, `1l`, mitad de `1f` |
-| **C+NE** (huérfanos) | 7 | ver §7 |
+| **C+NE** (huérfanos) | 9 | ver §7 — se sumaron **M-4 entero** y el temporizador |
 | **Bloqueadas** | 6 maquetas | multisitio (ADR-001 no enmendado en esa fila) |
 | **Habilitadas y bloqueadas** | 2 maquetas | `1i`, `1j` — falta AC-SCOPE-1 y `{{PRECIO_SUSCRIPCION_UF}}` |
 | **Sin datos** | 1 | **H1** — el propósito del proyecto |
