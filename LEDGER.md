@@ -2374,3 +2374,115 @@ justo lo que una CSP con nonce prohíbe.
 `https://estacionamiento-three.vercel.app` sirve el commit `a3a3b6b`:
 endurecimiento completo, INT-12 corregido y la capa de presentación aplicada.
 `OPERACION_REAL_HABILITADA=false`.
+
+---
+
+### 2026-08-13 · INT-12 · ciclo 3 · segundo VETO aceptado
+
+El auditor vetó por segunda vez. **El módulo lo dio por sano** —y lo confirmó con
+evidencia de producción, no con argumento: mismo commit `a3a3b6b`, dos deploys,
+versiones distintas—. El veto fue sobre `scripts/verificar-int12.mjs`, que es
+donde el ciclo 1 ya había mentido.
+
+#### Los tres defectos, todos reales
+
+1. **El veredicto se leía de un booleano.** `transicionVerificada`, en un JSON
+   gitignoreado. El auditor lo invirtió a mano —sin deploy, sin rebuild, sin un
+   solo cambio de código— y obtuvo **12/12 PASS**. Ese booleano era toda la red.
+2. **La huella era circular.** Salía de la lista de NOMBRES de los assets, que
+   son direccionables por contenido y llevan la versión inlineada: la lista
+   cambiaba *porque* cambiaba la versión. El check no podía distinguir "el mismo
+   deploy mirado dos veces" de "dos deploys con versión constante" —que es
+   INT-12 exacto— y resolvía ese empate por la bandera.
+3. **`leerEstado()` confundía ausente con corrupto.** Se tragaba cualquier error
+   de parseo y devolvía `{}`, indistinguible aguas abajo de "primera corrida", y
+   el archivo entero se reescribía. El auditor lo reprodujo sin querer: un BOM de
+   PowerShell 5.1 destruyó la línea base de producción ganada de verdad. En un
+   proyecto cuya historia entera de INT-12 son BOMs y vacío-vs-ausente.
+
+Detectó además un cuarto agujero que era de mi lado: la huella **no veía los
+cambios de componentes de servidor**. `/login` y `/` son de servidor; comprobado,
+cambiar su texto no movía ningún chunk estático y ese deploy era invisible.
+
+#### Lo que se intentó, se midió, y NO se pudo
+
+La corrección pedida era una señal de artefacto independiente de la versión. Se
+intentó: hashear el CONTENIDO de los assets con la versión enmascarada.
+
+**No es posible: el minificador de Turbopack no es determinista.** Dos builds del
+mismo fuente, medidos acá, difieren en el renombrado de variables (carácter 9465
+del mismo chunk):
+
+```
+B: ...D=j[1][e],w=C.slots;(void 0===D||null===w)...let H=D[0],k=w[e]...
+C: ...D=j[1][e],k=C.slots;(void 0===D||null===k)...let w=D[0],H=k[e]...
+```
+
+Se registra el intento fallido porque el resultado negativo es información: no
+hay huella de contenido estable de la que colgar el check.
+
+#### La corrección: cambiar el veredicto, no el insumo
+
+El acoplamiento no se elimina; se hace que **no importe**. El veredicto se deriva
+en cada corrida de un historial de observaciones `{artefacto, version}` que nunca
+se borran:
+
+```
+misma versión, artefactos distintos  -> FAIL   el bypass
+dos deploys con versiones distintas  -> PASS
+cualquier otra cosa                  -> FAIL   "no pude comprobarlo, que no es
+                                                lo mismo que esté bien"
+```
+
+El argumento que lo sostiene, y que queda expuesto para que se pueda atacar:
+**la dirección que detecta el bypass es válida con acoplamiento o sin él, porque
+en esa rama la versión es justamente la que NO cambió y el artefacto sí.**
+
+Además: el texto visible del documento entra a la huella —solo el texto, porque
+el HTML crudo trae el nonce de la CSP (que cambia por petición) y tokens por
+build como `turbopack-1m14ias-r6ul9`—, y se exige determinismo comprobando dos
+peticiones al mismo deploy.
+
+Un historial ilegible se **reporta y no se pisa**. Ya no hay forma de que un
+reintento borre la evidencia de una violación.
+
+#### Controles, ejecutados y no argumentados
+
+```
+mismo deploy mirado dos veces      -> FAIL    (con el flag anterior: PASS)
+versión fijada + código distinto   -> FAIL    "MISMA VERSIÓN CON OTRO ARTEFACTO:
+                                               a3a3b6b-fijo sirvió 11qhgq4
+                                               y también 1ezi8f1"
+dos deploys reales, mismo commit   -> PASS    13/13
+```
+
+#### Verificación contra producción · commit `f77e331`
+
+```
+deploy 1  dpl_3ZWvRFRhycVvN6wYo1sVm5pNFAKk -> f77e331-o1sVm5pNFAKk  (artefacto 1tpidc0)
+deploy 2  dpl_BXaBdNxDgSFiivcbWzcRtmYaY2KP -> f77e331-WzcRtmYaY2KP  (artefacto n3mz98)
+
+npm run verificar:int12 -- https://estacionamiento-three.vercel.app
+PASS · 2 artefactos distintos con 2 versiones distintas, ninguna repetida
+13/13 comprobaciones PASS   INT-12: PASS   exit=0
+
+npm run verificar:endurecimiento -- <url>   30/30 PASS
+npm run verificar:ui            -- <url>   18/18 PASS
+```
+
+Árbol limpio entre los dos deploys: es el escenario del veto original, ejecutado
+contra la URL viva.
+
+#### Regresión completa
+
+```
+122 pruebas · tsc · lint · build
+int12 13/13 · endurecimiento 30/30 · ui 18/18 · pwa 13/13 · op1 11/11
+a3 11/11 · m4 29/29 · salida 11/11 · meas1 PASS · meas2 10/10
+invariantes 8/8 · esquema 4/4 · verificadores 25/25
+```
+
+Gate ADR-001 limpio. `OPERACION_REAL_HABILITADA=false`. Fixtures en 0.
+
+**INT-12 no se declara cerrado: falta el PASA del auditor.** Es el tercer ciclo
+del BoundedLoop, y las dos veces anteriores el veto encontró algo real.

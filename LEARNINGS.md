@@ -574,3 +574,81 @@ Procedimiento, no intuición: **matar todo proceso `next`, borrar `.next`,
 rebuildear, y recién entonces medir.** Y antes de creerle a un FAIL de navegador,
 correrlo aislado: la contención entre instancias de Edge ya produjo tres falsos
 positivos distintos en el proyecto.
+
+---
+
+## Tres ciclos de concilio sobre un solo hallazgo (2026-08-13)
+
+INT-12 costó tres ciclos implementador↔auditor. Vale la pena porque los tres
+vetos fueron a **lugares distintos del mismo error de fondo**, y el tercero
+enseña algo que no sabía al empezar.
+
+| Ciclo | Dónde estaba el defecto | Forma |
+|---|---|---|
+| 1 | el módulo | la versión salía del commit: constante entre deploys |
+| 2 | el verificador | un booleano editable decidía el veredicto |
+| 3 | el insumo del verificador | la huella derivaba de la versión: circular |
+
+### La lección nueva: cuando la propiedad no se puede medir directo
+
+El ciclo 3 pedía una señal de artefacto **independiente de la versión**. Lo
+intenté por el camino obvio —hashear el contenido de los assets con la versión
+enmascarada— y **medí que es imposible**: el minificador de Turbopack no es
+determinista, así que dos builds del mismo fuente difieren en el renombrado de
+variables. No hay huella de contenido estable de la que colgar el check.
+
+Lo que salió de ahí no fue un mejor insumo sino un **mejor veredicto**: si el
+insumo está acoplado a la versión, hay que preguntarse en qué dirección ese
+acoplamiento importa. Resultó que en la que detecta el bypass **no importa**:
+allí la versión es justamente la que no cambió, y el artefacto sí.
+
+Regla: **cuando no se puede desacoplar el insumo, revisá si el acoplamiento
+afecta la dirección que te interesa.** Muchas veces la respuesta es que no, y
+seguir peleando por el insumo perfecto es perder el tiempo. Pero la respuesta hay
+que *derivarla y escribirla*, no suponerla — el argumento queda expuesto en el
+código para que el próximo auditor lo pueda atacar.
+
+Corolario: **el intento fallido se registra.** "Probé X y no se puede, por Y" es
+información con valor; borrarlo invita a que alguien lo reintente.
+
+### Un booleano no es un gate
+
+El veredicto estaba guardado en `transicionVerificada`. El auditor lo invirtió a
+mano y obtuvo 12/12 PASS, sin deploy, sin rebuild, sin un cambio de código.
+
+Ahora el veredicto se **deriva** en cada corrida de las observaciones. Falsificar
+sigue siendo posible —es un archivo local— pero exige fabricar observaciones
+consistentes en vez de invertir una palabra, y el veredicto se recalcula siempre.
+
+Regla: **un resultado se recalcula, no se recuerda.** Lo que se guarda son
+hechos observados; la conclusión se deriva de ellos en cada corrida. Una
+conclusión persistida es una conclusión que ya nadie vuelve a comprobar.
+
+### Ausente y corrupto no son lo mismo
+
+`leerEstado()` se tragaba cualquier error de parseo y devolvía `{}`, que aguas
+abajo era indistinguible de "primera corrida" — así que el archivo entero se
+reescribía. Un BOM de PowerShell destruyó la línea base de producción ganada de
+verdad.
+
+Es el **mismo error que INT-12 en otro plano**: `""` no es `undefined`, y un
+archivo ilegible no es un archivo que no existe. Tratar un fallo como un vacío
+convierte un error ruidoso en un borrón silencioso.
+
+Este proyecto lleva tres apariciones de esta familia en cuatro días: el BOM en
+`DATABASE_URL` (M4), `""` en la versión del build (INT-12 ciclo 1), y ahora un
+JSON ilegible tratado como inexistente. **Cuando un valor puede llegar
+degenerado, el manejo por defecto tiene que ser ruidoso.**
+
+### Lo que ya funciona y conviene no perder
+
+El concilio pagó su costo. Tres vetos, tres defectos reales, ninguno detectado
+por las pruebas ni por mí. Y el patrón del auditor es siempre el mismo: **no lee
+la descripción, ejecuta**. Invirtió el booleano en vez de razonar sobre él;
+reprodujo el BOM en vez de suponerlo; cruzó el estado persistido con el LEDGER en
+vez de creerle al informe.
+
+El costo también hay que decirlo: tres ciclos, dos subagentes colgados, y varias
+mediciones corrompidas por rebuilds concurrentes. La disciplina que faltó de mi
+lado fue de entorno, no de razonamiento: **un árbol de build es un recurso
+exclusivo**, y medir mientras otro proceso construye no es medir.
