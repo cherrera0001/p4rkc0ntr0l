@@ -79,6 +79,43 @@ try {
     tablas: ["estacionamiento", "sesion_vehiculo", "tarifa", "usuario"],
     enums: ["estado_sesion", "estado_sync", "rol_usuario"],
     fks: 4,
+    /**
+     * **Los campos de `spec.md` §4, uno por uno.**
+     *
+     * Antes esta verificación solo contaba tablas, enums y FKs, y las columnas
+     * se imprimían sin compararse. El criterio dice "entidades **y campos**", así
+     * que una columna nueva "por si sirve" —el caso que §4 y §7 prohíben por
+     * minimización, Ley 21.719— daba PASS.
+     *
+     * Es exactamente lo que hace peligroso reapuntar un AC de una revisión
+     * humana a un comando: la persona miraba los campos, el comando no. Se
+     * corrige el comando, no el criterio.
+     */
+    columnas: {
+      estacionamiento: ["capacidad_total", "created_at", "id", "nombre", "zona_horaria"],
+      usuario: ["created_at", "email", "estacionamiento_id", "id", "rol"],
+      tarifa: [
+        "estacionamiento_id",
+        "fraccion_minutos",
+        "id",
+        "monto_minimo",
+        "valor_hora",
+        "vigente_desde",
+      ],
+      sesion_vehiculo: [
+        "entrada_at",
+        "estacionamiento_id",
+        "estado",
+        "id",
+        "monto_calculado",
+        "operador_id",
+        "patente",
+        "salida_at",
+        "sync_estado",
+        "tecleo_fin_at",
+        "tecleo_inicio_at",
+      ],
+    },
   };
 
   const resultados = [];
@@ -102,6 +139,29 @@ try {
     nombresEnums.join(", "),
   );
   comprobar("AC-DATA-1 · están las cuatro claves foráneas", fks.length === esperado.fks, `${fks.length} FKs`);
+
+  // Campo por campo: ni de más ni de menos. Un campo de más es una violación de
+  // minimización (spec.md §4 y §7); uno de menos rompe el modelo.
+  for (const [tabla, columnasEsperadas] of Object.entries(esperado.columnas)) {
+    const reales = (
+      await sql`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ${tabla}
+        ORDER BY column_name
+      `
+    ).map((c) => c.column_name);
+
+    const deMas = reales.filter((c) => !columnasEsperadas.includes(c));
+    const deMenos = columnasEsperadas.filter((c) => !reales.includes(c));
+
+    comprobar(
+      `AC-DATA-1 · ${tabla} tiene exactamente los campos de spec.md §4`,
+      deMas.length === 0 && deMenos.length === 0,
+      deMas.length || deMenos.length
+        ? `${deMas.length ? `de más: ${deMas.join(", ")}` : ""}${deMas.length && deMenos.length ? " · " : ""}${deMenos.length ? `faltan: ${deMenos.join(", ")}` : ""}`
+        : `${reales.length} campos`,
+    );
+  }
 
   // AC-MEAS-1 depende de que estas dos columnas no aflojen: si se vuelven
   // nullable, la medición de H1 pierde su piso sin que nada falle.

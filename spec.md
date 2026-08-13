@@ -170,8 +170,7 @@ Un solo operador, un solo estacionamiento, en una pantalla.
 
 **AC-OP-1 (ingreso offline).** Con el navegador en modo sin conexión, un ingreso
 se registra y persiste en IndexedDB; al reconectar, `sync_estado` pasa a
-`sincronizada`. *Verificación: prueba manual en DevTools (offline) + inspección
-de IndexedDB.*
+`sincronizada`. *Verificación: `npm run verificar:op1`* (§9).
 
 ### Permanencia
 - El temporizador muestra el tiempo transcurrido por cada sesión activa.
@@ -188,8 +187,19 @@ de IndexedDB.*
 > efectivo es peor que pedir señal un momento.
 >
 > Sin conexión el vehículo **queda `activa` y la salida no se registra**. No hay
-> reintento automático: el operador vuelve a tocar *Salida* al reconectar, y el
-> monto no cambia porque el cierre es idempotente.
+> reintento automático: el operador vuelve a tocar *Salida* al reconectar.
+>
+> **Y ahí el monto SÍ cambia: crece con la duración del corte.** El cierre calcula
+> `salida_at = ahora` en el servidor, así que una sesión que no se pudo cerrar
+> durante veinte minutos sin señal se factura veinte minutos más cara. La
+> idempotencia del cierre cubre otro caso —volver a tocar *Salida* sobre una
+> sesión **ya cerrada**, cuando la respuesta se perdió— y no éste.
+>
+> **Consecuencia de negocio, declarada y sin resolver: el conductor paga la
+> falta de señal.** Es una decisión pendiente, no un defecto de implementación:
+> corregirlo exige elegir qué instante es el facturable —cuándo el operador tocó
+> *Salida*, o cuándo el servidor lo registró— y esa elección es del decisor. Ver
+> la lista de decisiones abiertas.
 >
 > Esta asimetría existe desde M2 y vivía solo en `LEDGER.md`. Se escribe acá
 > porque una restricción de producto que no está en la spec es una restricción
@@ -197,7 +207,7 @@ de IndexedDB.*
 
 **AC-OP-2 (cálculo correcto).** Dada una tarifa y una duración conocidas, el
 `monto_calculado` coincide con el valor esperado, incluido el `monto_minimo` y
-el redondeo por `fraccion_minutos`. *Verificación: prueba unitaria del cálculo.*
+el redondeo por `fraccion_minutos`. *Verificación: `npm test`* (§9).
 
 ---
 
@@ -211,7 +221,7 @@ la app pero no la evidencia sobre H1/H2.
 - La duración del tecleo = `tecleo_fin_at − tecleo_inicio_at` es la métrica de H1.
 
 **AC-MEAS-1.** Toda sesión cerrada tiene ambos timestamps de tecleo no nulos.
-*Verificación: consulta que cuente sesiones cerradas con timestamps nulos → debe ser 0.*
+*Verificación: `npm run verificar:meas1`* (§9).
 
 ### H2 — visibilidad que el dueño valora
 El panel del dueño (§ siguiente) se alimenta de datos ya registrados; no requiere
@@ -227,8 +237,7 @@ tabla adicional. Se derivan de `SesionVehiculo`:
 - Indicador de descuadre.
 
 **AC-MEAS-2.** El panel refleja exactamente las sesiones registradas por el
-operador en el hito anterior. *Verificación: registrar N sesiones y confirmar
-que los agregados del panel corresponden.*
+operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 
 ---
 

@@ -124,22 +124,70 @@ try {
     );
   }
 
-  // --- Pero el flujo del estacionamiento no puede importarla -----------------
+  // --- Los tres bypasses que un veto reprodujo -------------------------------
+  // Los tres daban 7/7 PASS con la versión anterior del gate. Van acá para que
+  // no puedan volver: son la razón por la que la enumeración se invirtió.
+
+  const conFrontera = {
+    "package.json": JSON.stringify(
+      { name: "x", dependencies: { next: "16.3.0", "transbank-sdk": "^4.0.0" } },
+      null,
+      2,
+    ),
+    // Nombre neutro a propósito: si el archivo se llamara `webpay.ts`, el
+    // hallazgo saltaría por la ruta del import y no por la regla.
+    "src/lib/suscripcion/cliente.ts": 'import { WebpayPlus } from "transbank-sdk";\nexport const cobrar = (m) => WebpayPlus.create(m);\n',
+  };
+
+  {
+    const { codigo, salida } = correrGate(
+      con({
+        ...conFrontera,
+        // Ruta NUEVA, nombre neutro, fuera de cualquier lista blanca.
+        "src/app/api/cobro-salida/route.ts":
+          'import { cobrar } from "@/lib/suscripcion/cliente";\nexport async function POST() { return cobrar(1500); }\n',
+      }),
+    );
+    comprobar(
+      "BYPASS 1 · una RUTA NUEVA de nombre neutro que importa la frontera es rechazada",
+      codigo === 1 && /solo la superficie de suscripción declarada/.test(salida),
+      `exit=${codigo}`,
+    );
+  }
+
+  {
+    const { codigo, salida } = correrGate(
+      con({
+        ...conFrontera,
+        "src/app/formulario-salida.tsx":
+          'import { cobrar } from "@/lib/suscripcion/cliente";\nexport default function F() { return cobrar(1500); }\n',
+      }),
+    );
+    comprobar(
+      "BYPASS 2 · un componente de UI del operador que importa la frontera es rechazado",
+      codigo === 1 && /solo la superficie de suscripción declarada/.test(salida),
+      `exit=${codigo}`,
+    );
+  }
+
   {
     const { codigo, salida } = correrGate(
       con({
         "package.json": JSON.stringify(
-          { name: "x", dependencies: { next: "16.3.0", "transbank-sdk": "^4.0.0" } },
+          { name: "x", dependencies: { next: "16.3.0", stripe: "^18.0.0" } },
           null,
           2,
         ),
-        "src/lib/suscripcion/webpay.ts": 'export const w = 1;\n',
-        "src/app/api/sesiones/route.ts": 'import { w } from "@/lib/suscripcion/webpay";\nexport const x = w;\n',
+        // El cobro del CONDUCTOR escondido DENTRO de la frontera. Antes pasaba
+        // porque la frontera estaba exceptuada entera y nada decía qué puede
+        // vivir adentro.
+        "src/lib/suscripcion/cobro-conductor.ts":
+          'import Stripe from "stripe";\nimport { sesionVehiculo } from "@/db/schema";\nexport const cobrarEstacionamiento = (m) => new Stripe("").charge(m, sesionVehiculo);\n',
       }),
     );
     comprobar(
-      "el flujo del estacionamiento NO puede importar la frontera de suscripción",
-      codigo === 1 && /no importa la frontera/.test(salida),
+      "BYPASS 3 · el cobro del CONDUCTOR escondido dentro de la frontera es rechazado",
+      codigo === 1 && /no toca el dominio del estacionamiento/.test(salida),
       `exit=${codigo}`,
     );
   }
@@ -154,6 +202,41 @@ try {
       codigo === 1 && /AC-SCOPE-2/.test(salida),
       `exit=${codigo}`,
     );
+  }
+  {
+    // `_` es carácter de palabra: `\bpago\b` NO matchea `pagos_estacionamiento`.
+    const { codigo } = correrGate(
+      con({ "src/db/schema.ts": 'export const t = pgTable("pagos_estacionamiento", {});\n' }),
+    );
+    comprobar("una entidad en snake_case (pagos_estacionamiento) es rechazada", codigo === 1, `exit=${codigo}`);
+  }
+  {
+    const { codigo } = correrGate(
+      con({ "drizzle/0002_x.sql": 'CREATE TABLE "pago" ("id" uuid PRIMARY KEY);\n' }),
+    );
+    comprobar("una entidad prohibida creada en una MIGRACIÓN es rechazada", codigo === 1, `exit=${codigo}`);
+  }
+  {
+    const { codigo } = correrGate(
+      con({ "src/app/selector-sucursal.tsx": "export default function S() { return null; }\n" }),
+    );
+    comprobar("un selector de sucursal en la interfaz es rechazado (ADR-001)", codigo === 1, `exit=${codigo}`);
+  }
+  {
+    // `.jsx` es extensión de primera clase del App Router y no se escaneaba.
+    const { codigo } = correrGate(
+      con({ "src/app/cobro.jsx": 'import Stripe from "stripe";\nexport default () => new Stripe("");\n' }),
+    );
+    comprobar("una pasarela en un archivo .jsx es rechazada", codigo === 1, `exit=${codigo}`);
+  }
+  {
+    const { codigo } = correrGate(
+      con({
+        "src/app/api/cobro/route.ts":
+          'import paypal from "@paypal/checkout-server-sdk";\nexport const p = paypal;\n',
+      }),
+    );
+    comprobar("una pasarela fuera de la lista original (PayPal) es rechazada", codigo === 1, `exit=${codigo}`);
   }
   {
     const { codigo, salida } = correrGate(

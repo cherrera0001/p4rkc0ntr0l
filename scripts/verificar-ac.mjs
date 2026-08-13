@@ -182,7 +182,16 @@ comprobar(
  * contrato que estaba auditando. Queda dicho acá para que la exclusión sea una
  * decisión visible y no un olvido.
  */
-const META_GUARDS = new Set(["verificar:citas", "verificar:verificadores", "verificar:ac"]);
+const META_GUARDS = new Set([
+  "verificar:citas",
+  "verificar:verificadores",
+  "verificar:ac",
+  // La prueba del gate de alcance no es un verificador de producto: es lo que
+  // demuestra que `verificar:alcance` funciona. Sin esta línea aparecía en la
+  // lista de huérfanos, y un refactor podía borrarla sin violar nada — llevándose
+  // la única evidencia de que el gate no es decorativo.
+  "verificar:alcance:prueba",
+]);
 
 const verificadores = Object.keys(scripts)
   .filter((s) => s.startsWith("verificar:"))

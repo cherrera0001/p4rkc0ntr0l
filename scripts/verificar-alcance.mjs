@@ -44,19 +44,65 @@ const RAIZ = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const FRONTERA_SUSCRIPCION = "src/lib/suscripcion";
 
 /**
+ * **Quién puede importar la frontera. Enumerado a propósito, y al revés.**
+ *
+ * Un veto reprodujo el bypass que hace falta cerrar: exceptuar la frontera
+ * entera de la búsqueda de pasarelas, y además comprobar la importación solo en
+ * dos archivos enumerados, dejaba dos caminos abiertos:
+ *
+ *   1. `src/app/api/cobro-salida/route.ts` —ruta nueva, nombre neutro— importa
+ *      la frontera y le cobra al conductor. **7/7 PASS.**
+ *   2. `src/lib/suscripcion/cobro-conductor.ts` con Stripe: el cobro del
+ *      conductor **dentro** de la frontera. También PASS, porque nada decía qué
+ *      puede vivir adentro.
+ *
+ * La corrección invierte la enumeración: se enumera **lo permitido**, que es
+ * chico y está respaldado por un ADR, y **todo lo demás se escanea por
+ * exclusión**. Agregar una ruta nueva no abre nada; agregarla a esta lista es
+ * una línea en el diff que alguien tiene que justificar.
+ *
+ * Hoy está **vacía**: no existe ninguna pantalla de suscripción. La suscripción
+ * la paga el dueño desde su panel, nunca el conductor desde la vía.
+ */
+const SUPERFICIE_SUSCRIPCION = [];
+
+/**
+ * El dominio del estacionamiento. Si la frontera de suscripción importa esto,
+ * está cobrando por estacionar — que es justo lo que ADR-004 **no** movió.
+ */
+const DOMINIO_ESTACIONAMIENTO = /from\s+["'][^"']*(tarificacion|sesion-?vehiculo|\/db)["']|sesionVehiculo|sesion_vehiculo/;
+
+/**
  * Marcas de pasarela. Se listan las seis del mercado local más las globales que
  * ya aparecían en ADR-001. `\b…\b` importa: sin los límites, `flow` matchea
  * dentro de `overflow-hidden` y el gate se vuelve ruido.
  */
-const PASARELAS = /\b(stripe|mercadopago|mercado[_-]?pago|webpay|transbank|flow|khipu)\b/i;
+const PASARELAS =
+  /\b(stripe|mercadopago|mercado[_-]?pago|webpay|transbank|flow|khipu|paypal|braintree|adyen|payku|kushki|dlocal|getnet|redelcom)\b/i;
 
-/** Entidades que el modelo no puede tener (AC-SCOPE-2). */
-const ENTIDADES_PROHIBIDAS = /\b(pago|pagos|transaccion|transacciones|sucursal|sucursales|reserva|reservas)\b/i;
+/**
+ * Entidades que el modelo no puede tener (AC-SCOPE-2).
+ *
+ * `_` es carácter de palabra, así que `\bpago\b` **no** matchea
+ * `pagos_estacionamiento`. Se agregan límites que traten al guion bajo como
+ * separador: medido, una tabla con ese nombre pasaba el gate.
+ */
+const ENTIDADES_PROHIBIDAS =
+  /(^|[^A-Za-z0-9])(pago|pagos|transaccion|transacciones|sucursal|sucursales|reserva|reservas)([^A-Za-z0-9]|$)/i;
 
 /** Captura de imagen y lectura de patente (AC-SCOPE-3). */
 const LPR = /\b(getUserMedia|MediaDevices|ImageCapture|tesseract|\bLPR\b|\bOCR\b)\b/;
 
-const EXTENSIONES = [".ts", ".tsx", ".js", ".mjs", ".css", ".json", ".sql"];
+/**
+ * ADR-001 prohíbe además el **selector de sucursal** en la interfaz, no solo la
+ * entidad en el esquema. Un `src/app/selector-sucursal.tsx` pasaba con un PASS
+ * explícito, que es peor que no mirarlo.
+ */
+const MULTISITIO_UI = /(selector|conmutador|switcher)[-_]?(de[-_]?)?(sucursal|sitio|empresa|tenant)/i;
+
+// `.jsx`, `.cjs` y `.mts` son extensiones de primera clase del App Router y
+// faltaban: medido, `src/app/cobro.jsx` con `import Stripe` daba 7/7 PASS.
+const EXTENSIONES = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".css", ".json", ".sql"];
 
 const resultados = [];
 const comprobar = (nombre, ok, detalle = "") => {
@@ -137,16 +183,38 @@ comprobar(
     : `${fueraDeFrontera.length} archivos limpios${dentroDeFrontera.length ? ` · ${dentroDeFrontera.length} en la frontera` : ""}`,
 );
 
-// El flujo del estacionamiento tampoco puede IMPORTAR desde la frontera: la
-// suscripción la paga el dueño desde su panel, nunca el conductor desde la vía.
-const importaSuscripcion = coincidencias(
-  fueraDeFrontera.filter((r) => r.startsWith("src/app/api/sesiones") || r === "src/app/pantalla-operador.tsx"),
-  new RegExp(`from ["'].*${FRONTERA_SUSCRIPCION.replace("src/", "@/").replace(/\//g, "\\/")}`),
+// **Nadie importa la frontera salvo la superficie declarada.** Se escanea TODO
+// lo que está fuera de ella, no una lista de archivos: enumerar el flujo del
+// estacionamiento dejaba pasar cualquier ruta nueva de nombre neutro.
+const IMPORTA_FRONTERA = new RegExp(
+  `from\\s+["'][^"']*(@/lib/suscripcion|${FRONTERA_SUSCRIPCION})`,
+);
+const importadores = coincidencias(
+  fueraDeFrontera.filter((r) => !SUPERFICIE_SUSCRIPCION.includes(r)),
+  IMPORTA_FRONTERA,
 );
 comprobar(
-  "AC-SCOPE-1a · el flujo del estacionamiento no importa la frontera de suscripción",
-  importaSuscripcion.length === 0,
-  importaSuscripcion.join(" | "),
+  "AC-SCOPE-1a · solo la superficie de suscripción declarada importa la frontera",
+  importadores.length === 0,
+  importadores.length
+    ? `${importadores.length} · ${importadores.slice(0, 3).join(" | ")} · agregalo a SUPERFICIE_SUSCRIPCION si es legítimo`
+    : SUPERFICIE_SUSCRIPCION.length
+      ? `superficie declarada: ${SUPERFICIE_SUSCRIPCION.join(", ")}`
+      : "superficie declarada vacía: nadie debe importarla todavía",
+);
+
+// Y al revés: la frontera no puede tocar el dominio del estacionamiento. Si
+// importa la tarifa o la sesión del vehículo, está cobrando por estacionar —
+// que es exactamente la línea que ADR-004 NO movió.
+const fronteraTocaEstacionamiento = coincidencias(dentroDeFrontera, DOMINIO_ESTACIONAMIENTO);
+comprobar(
+  "AC-SCOPE-1a · la frontera de suscripción no toca el dominio del estacionamiento",
+  fronteraTocaEstacionamiento.length === 0,
+  fronteraTocaEstacionamiento.length
+    ? `${fronteraTocaEstacionamiento.slice(0, 3).join(" | ")} · eso es cobrarle al conductor`
+    : dentroDeFrontera.length
+      ? `${dentroDeFrontera.length} archivos en la frontera, ninguno toca el estacionamiento`
+      : "la frontera no existe todavía",
 );
 
 // --- AC-SCOPE-1b · el manifiesto ----------------------------------------------
@@ -178,12 +246,29 @@ comprobar(
 );
 
 // --- AC-SCOPE-2 · el esquema no define entidades prohibidas -------------------
+// Se miran también las MIGRACIONES: `CREATE TABLE "pago"` en un `.sql` pasaba
+// sin que nadie lo viera, y AC-DATA-2 en esta misma spec eleva la migración a
+// superficie verificable. Sería incoherente mirarla para una cosa y no la otra.
 
-const entidades = coincidencias(archivos("src/db"), ENTIDADES_PROHIBIDAS);
+const entidades = coincidencias([...archivos("src/db"), ...archivos("drizzle")], ENTIDADES_PROHIBIDAS);
 comprobar(
-  "AC-SCOPE-2 · el esquema no define Pago/Transaccion/Sucursal/Reserva",
+  "AC-SCOPE-2 · ni el esquema ni las migraciones definen Pago/Transaccion/Sucursal/Reserva",
   entidades.length === 0,
   entidades.slice(0, 3).join(" | "),
+);
+
+// ADR-001 prohíbe el selector de sucursal en la interfaz, no solo la entidad.
+// Se mira el CONTENIDO y también el NOMBRE DEL ARCHIVO: `selector-sucursal.tsx`
+// puede tener un cuerpo perfectamente neutro y ser exactamente lo prohibido.
+// Medido: escaneando solo contenido, ese archivo pasaba.
+const selector = [
+  ...coincidencias(superficie, MULTISITIO_UI),
+  ...superficie.filter((r) => MULTISITIO_UI.test(r)).map((r) => `${r} (nombre de archivo)`),
+];
+comprobar(
+  "AC-SCOPE-2 · no hay selector de sucursal ni conmutador de empresa en la interfaz",
+  selector.length === 0,
+  selector.slice(0, 3).join(" | "),
 );
 
 // --- AC-SCOPE-3 · sin LPR ni captura de imagen --------------------------------
