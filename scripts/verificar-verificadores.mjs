@@ -30,8 +30,14 @@ const DIR = dirname(fileURLToPath(import.meta.url));
 
 // Los que comprueban propiedades de la app corriendo. Los de operación
 // (sembrar, limpiar, rotar) no reportan comprobaciones y no aplican.
+//
+// `evidencia*.mjs` entra por nombre propio: el filtro miraba solo el prefijo
+// `verificar-` y dejaba **fuera de todos los guards** al único script que
+// produce el texto que otros leen como evidencia. Nada de la regresión lo
+// tocaba. Un generador de evidencia sin vigilancia es peor que un verificador
+// sin vigilancia: miente en el resumen, que es lo que la gente lee.
 const VERIFICADORES = readdirSync(DIR)
-  .filter((f) => f.startsWith("verificar-") && f.endsWith(".mjs"))
+  .filter((f) => (f.startsWith("verificar-") || f.startsWith("evidencia")) && f.endsWith(".mjs"))
   .filter((f) => f !== "verificar-verificadores.mjs");
 
 const resultados = [];

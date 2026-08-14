@@ -3080,3 +3080,419 @@ cerrado hace que `{{PLAZO_RETENCION_PATENTE}}` deje de bloquear la *construcció
 y bloquee solo el *encendido*.
 
 Ningún `{{placeholder}}` se rellenó.
+
+---
+
+### 2026-08-14 · CONCILIO sobre FASE A/B · **DOS VETOS**, y el gate de evidencia en BoundedLoop
+
+Se aplicó el concilio a mi propio trabajo, que es donde no se había aplicado:
+`scripts/evidencia.mjs` lo escribí yo y **lo declaré PASS sin auditoría**. La
+regla del proyecto dice que el implementador no cierra su propio trabajo, y la
+había incumplido en el commit anterior.
+
+Dos auditores en paralelo: uno contra el código del gate, otro contra las
+premisas sobre las que se apoyan las fases C, D y E.
+
+---
+
+#### VETO · el gate de evidencia · 9 hallazgos, 5 bloqueantes, todos reproducidos
+
+El resumen incómodo, y es el defecto que el módulo existe para matar:
+**`EVIDENCIA: PASS` con exit 0 sobre verificadores que salieron exit 1
+imprimiendo FAIL.**
+
+El auditor copió `evidencia.mjs` byte por byte (`Get-FileHash` idéntico) a un
+harness aislado fuera del repo, con talones por script. El código auditado fue el
+real, sin modificar.
+
+| | |
+|---|---|
+| **H1** | un `verificar:*` ausente del CATALOGO **desaparece del bloque**, ni como NO CORRIDO, y la cobertura sigue publicando "de 19" como si fuera el total. `verificar-ac.mjs` **sí** lo ve; el gate no |
+| **H2** | `interpretar` fabrica un PASS que ningún script imprimió. Tres vectores: `stdout + stderr` concatenados hacen que `.at(-1)` elija una línea de stderr por orden de concatenación y no cronológico; el lookahead solo miraba columna 0 mientras la clase admitía espacios, así que **una línea de detalle indentada terminada en `: PASS` se volvía veredicto**; y `rojas` no incluía el caso, así que el generador salía verde |
+| **H3** | desbordar `maxBuffer` convierte FAIL en PASS: `r.error` nunca se inspeccionaba, la cola truncada parseaba bien |
+| **H4** | un `git` que falla se estampa como **"árbol limpio"** sobre un repo realmente sucio. `?? ""` por cuarta vez en este proyecto |
+| **H5** | `--actualizar` usa el `indexOf` de la primera ocurrencia: con el marcador citado en prosa, inyecta el bloque dentro de la frase, deja el real viejo, y **imprime `PASS · bloque regenerado`** |
+| **H6–H9** | PASS vacuo con `--grupo=` vacío; sin timeout; `evidencia.mjs` **fuera de todos los guards** porque no empieza con `verificar-`; y nadie verificaba la frescura del bloque |
+
+**H8 merece su propia línea:** el nombre del archivo decidió su cobertura.
+`verificar-verificadores.mjs` filtraba `startsWith("verificar-")`,
+`verificar-ac.mjs` filtraba `startsWith("verificar:")`, y ningún AC lo citaba. El
+único script que produce texto que otros leen **como evidencia** era invisible
+para toda la regresión.
+
+---
+
+#### VETO · las premisas de la estrategia · las centrales aguantan, el alcance de FASE C no
+
+Las dos premisas de las que dependen las fases D y E se verificaron **empírica­
+mente**, no por lectura:
+
+- **`AC-MEAS-1` da PASS con cero filas — CIERTA y DEMOSTRADA.** Replicando sus 4
+  consultas dentro de una transacción con `DELETE` y ROLLBACK forzado:
+  `sesiones totales: 0 … veredicto que imprimiría meas1: AC-MEAS-1: PASS`. Y es
+  más fuerte de lo que yo había escrito: **no puede fallar por ausencia de
+  datos** — su primera guarda es vacuamente verdadera sobre el conjunto vacío y
+  la segunda se lee de `information_schema`, que no depende de las filas.
+- **El esquema no bloquea el enmascaramiento — CIERTA.** `UPDATE` corrido en
+  transacción revertida: 3 filas al mismo centinela, sin colisión. Sin CHECK de
+  formato sobre `patente`, índice único parcial sobre `activa`, ninguna FK
+  entrante.
+
+**Pero incompleta para construir FASE E**, y esto es lo que la vuelve útil: el
+centinela **rompe la discriminación fixture/real** (`LIKE 'FIXT%'`), volviendo la
+fila imborrable y haciéndola contar como *"sesión cerrada NO fixture"* — el
+numerador exacto con el que se afirma que H1 está en cero; las sesiones `activa`
+vencidas **nunca se enmascaran** y no existe mecanismo que las cierre; extender
+el enmascarado a `activa` **viola INT-15**; y `'XXXXXX'` **no pasa
+`validarPatente`**. Los cuatro quedaron escritos en `STATE.md` como precondición
+de FASE E.
+
+**Lo que motivó el veto: el alcance de FASE C era falso.**
+
+*"9 huérfanos"* es **8**. `f98a652` creó **AC-DATA-2** exactamente para las
+invariantes de base, que la tabla seguía listando como huérfanas con una
+justificación que era cierta **hasta ese commit**. Lo delata el propio comando
+que la matriz cita: `verificar:ac` lista 6 sin AC y `verificar:invariantes` **no
+está entre ellos**. El 6 se midió; el 9 se contó a mano. **FASE C habría
+arrancado con un ítem de alcance ya cerrado.**
+
+Y dos más de la misma familia: `27/27` tecleado en §7 mientras el §0 generado del
+**mismo archivo** decía 37/37; y `8/8` tecleado en `spec.md` **dentro del párrafo
+que argumenta que un criterio debe citar el comando y no el número** (hoy 15/15).
+
+Corrección de método aceptada: mi `grep "FASE A"` buscaba **la etiqueta que yo le
+puse al trabajo**. El auditor confirmó la conclusión buscando **artefactos**
+—`verificar-alcance`, `27 campos`, `SUPERFICIE`, `fallo plantado`—, que existen
+independientemente de cómo alguien titule la entrada.
+
+Tercera corrección: *"toda tanda termina en cero"* es **falsa**, y se refuta
+corriendo `verificar:meas1` (3 filas ahora). `limpiarFixtures()` corre **al
+iniciar**, en **5 de 8** verificadores de navegador. La conclusión de fondo
+sobrevive —ninguna corrida acumula— pero **FASE D iba a construir sobre un modelo
+del purgado que no es el que corre**.
+
+---
+
+#### Ciclo 2 · el gate corregido · **VETO otra vez**, y los tres bloqueantes son el mismo
+
+El implementador cerró los 9. El auditor confirmó que **H2c aguanta** —no
+encontró forma de rendir PASS con exit≠0: exit=0 imprimiendo FAIL da
+`⚠ CONTRADICTORIO`, los veredictos en minúsculas o solo en stderr dan SIN
+VEREDICTO y quedan rojos— y que `SIN VEREDICTO` y `falloEjecucion` **hacen
+fallar** al generador, no solo aparecen en la tabla.
+
+Pero H9 —la comprobación de frescura, la única que yo pedí de cero— no ata nada:
+
+> el nombre afirma *"el bloque estampado corresponde a HEAD"*, pero verifica
+> *"existe alguna revisión resolvible y ningún archivo fuera de los destinos
+> cambió"*. **El contenido del bloque no está atado a ninguna corrida.**
+
+- **B-1**: un bloque tecleado a mano que estampa la cadena literal `` `HEAD` ``
+  hace `git diff HEAD HEAD` vacío **siempre**. Fixture publicando
+  `verificar:endurecimiento 30/30 PASS` sin haber corrido nada: verde, para
+  siempre.
+- **B-2**: la comprobación **exime a los destinos**, y el bloque vive dentro de
+  los destinos. Regenerar, commitear, editar el bloque a mano, commitear: verde.
+  El fixture terminó publicando `verificar:int12 … PASS` — la trampa exacta que
+  el docstring del módulo cita como razón de ser de la columna *Nota*.
+- **B-3**: y falla ruidoso donde no importa: cualquier archivo suelto sin
+  commitear tumba la corrida. **Rojo permanente en desarrollo normal, verde ante
+  un bloque fabricado.**
+
+**M-1 · la evidencia diferencial que yo cité no medía nada.** El implementador
+reportó "3/14 contra el generador de HEAD". El generador de HEAD **no tiene
+`--raiz`**: nunca miró el fixture, fallaba con ENOENT, y ese 3/14 era el harness
+colapsando. El auditor back-porteó solo `--raiz` y midió el diferencial honesto:
+**5/16 contra HEAD, 16/16 con la corrección — 11 de 16 discriminan.** La
+corrección de fondo es real; el número que la sostenía, no lo era. *Un número
+afirmado, no medido* — el pecado que este módulo existe para castigar.
+
+**M-2 · la forma de fallo plantada no es la que el repo produce.** Los talones
+cerraban con `VERIFICADOR REAL: FAIL` en columna 0, y **ninguno de los 16
+verificadores reales cierra así**: hacen `N/M comprobaciones PASS` + `FALLARON:`
++ exit 1, sin línea de veredicto. Con la forma real el generador dice `SIN
+VEREDICTO`, no `FAIL`: la columna **nunca podría decir FAIL para 15 de los 16**, y
+el `contradictorio` de H2c es código muerto para ellos. Decisión tomada:
+**`FALLARON:` es un veredicto FAIL** — el script sí resumió, en el idioma real del
+repo; `SIN VEREDICTO` queda para el que no resumió nada.
+
+**Rediseño ordenado para el ciclo 3**, en vez de un tercer parche: se borra la
+procedencia por git-diff y se compara **contenido** —la fila publicada contra la
+recién generada, por comando medido— más una sola comprobación de procedencia
+barata (el sello tiene que ser un SHA que `git rev-parse --verify` resuelva, lo
+que mata B-1). Se elimina la regla de archivos sin commitear (B-3), que era lo
+que volvía el criterio insatisfacible.
+
+**Queda un ciclo.** Si el ciclo 3 no obtiene PASA, se registra FAIL y se detiene,
+como manda la regla.
+
+---
+
+### 2026-08-14 · FASE C · anclaje de verificadores huérfanos · **medido**
+
+La regla que decide qué sube a §9 la fijó un veto anterior y es del proyecto:
+*¿el AC hace exigible una afirmación que ya está en §1–§8, o introduce una
+afirmación nueva?*
+
+Suben **tres**. **Dos ya son fila de la tabla de §9**, porque su comando existe:
+
+- **AC-OP-4** ← §5 + §7: el ciclo de salida contra la API real con la tarifa
+  vigente, más la validación de frontera. Comando: `verificar:salida`.
+- **AC-PDP-1** ← §4 + §7, *"base de licitud definida antes de operar con datos
+  reales"*. Comando: `verificar:a3`.
+
+El tercero, **AC-OP-3** ← §5 (`spec.md:176`), *"El temporizador muestra el tiempo
+transcurrido por cada sesión activa"*, está **nombrado en la enmienda y todavía
+NO es fila de la tabla**: su verificador se está construyendo. Escribirlo como
+criterio antes de que exista el comando lo dejaría citando algo inejecutable, que
+es el defecto de AC-PWA-1 que `verificar:ac` existe para impedir. Era **la única
+capacidad del núcleo sin una sola aserción en todo el repo**.
+
+**No suben, y queda escrito para que la omisión sea decisión y no olvido:**
+endurecimiento, M-4, capa de presentación, cota del reloj e INT-12 — los cinco
+verifican propiedades que §1–§8 **nunca enunció**. Escribirlas sería autorar
+requisitos con forma de formalización. Si se quieren exigibles, va por ADR.
+
+Evidencia del efecto, no afirmación:
+
+```
+antes:  INFO · 6 verificador(es) sin AC en §9: verificar:a3, verificar:m4,
+        verificar:salida, verificar:int12, verificar:ui, verificar:endurecimiento
+después: INFO · 4 verificador(es) sin AC en §9: verificar:m4, verificar:int12,
+        verificar:ui, verificar:endurecimiento
+        5/5 comprobaciones PASS · 13 AC · AC EJECUTABLES: PASS
+```
+
+`AC-OP-3` queda pendiente de su verificador, que es el único de los tres que no
+tenía comando. Ningún `{{placeholder}}` se rellenó.
+
+---
+
+### 2026-08-14 · Gate de evidencia · **FAIL** · BoundedLoop agotado (3 ciclos, 3 vetos)
+
+Tres ciclos implementador↔auditor, tres vetos, ninguno trivial. La regla del
+concilio manda **registrar FAIL y detener**. No hay ciclo 4, y la tentación de
+hacer una excepción —el auditor dejó una salida chica y concreta— es exactamente
+lo que la regla existe para impedir. **La decisión de seguir o no es humana.**
+
+#### El veredicto del ciclo 3, en una línea
+
+**B-2 sobrevive acotado: un bloque fabricado sale verde si el forjador solo
+miente en las filas que la corrida habitual no mide.**
+
+Reproducido end-to-end en un árbol falso: corrida honesta con `--actualizar`,
+commit, edición a mano de las 11 filas del grupo `navegador`, commit, y
+
+```
+=== corrida por defecto sobre bloque FORJADO   exit: 0
+PASS · STATE.md · lo publicado coincide con lo que esta corrida midió
+       · 10 fila(s) comparadas contra lo medido, 11 saltada(s)
+EVIDENCIA: PASS
+```
+
+El documento comiteado quedó publicando `verificar:endurecimiento 30/30 PASS`,
+`verificar:a3 30/30 PASS`, `verificar:int12 30/30 PASS` **con su nota borrada**, y
+`Cobertura: 21 de 21 comandos`. Costo del forjado: 11 líneas.
+
+**El detalle "N comparadas, M saltadas" no es mitigación.** Vive en el stderr de
+la corrida, que se evapora; la mentira vive en el archivo comiteado, que persiste
+y publica su propia línea de cobertura forjada.
+
+Y el argumento que lo vuelve bloqueante y no deuda: **no es un límite inherente.**
+El docstring dice que las filas no corridas *"no se pueden juzgar"*, y es falso —
+para una fila no corrida la celda esperada está **completamente determinada**
+(`NO CORRIDO · grupo x` / `—`). El generador sabe qué debería decir esa fila y
+elige no mirarla. Publicar PASS de algo que la corrida sabe que no corrió es una
+mentira **detectable**.
+
+**Segunda puerta (C6):** la comprobación de "exactamente un par de marcadores"
+vive **dentro** de `if (bandera("actualizar"))`. En la ruta de lectura —la que
+corre en regresión— se toma el primer bloque y no se mira si hay más, así que un
+**segundo bloque forjado** agregado al final del archivo pasa invisible.
+
+#### Y está ocurriendo en el repo real, hoy
+
+El bloque comiteado en `STATE.md` publica **19 filas**; el catálogo tiene **21**.
+Falta `verificar:temporizador` entero, y el gate **no dice una palabra**: es grupo
+`navegador` y cae entre las saltadas. Solo caza las dos que sí midió.
+
+#### Lo que el ciclo 3 SÍ dejó verificado, y que no se pierde
+
+El rediseño es **netamente mejor** que lo vetado, y está medido con mutantes de un
+solo punto sobre la versión nueva: nueve mutaciones, **cada una cazada** por al
+menos un caso de `evidencia:prueba` (21-22/23 según la mutación). Las 23
+comprobaciones ejercitan camino corregido y ninguna pasa por el motivo
+equivocado.
+
+Cerrados y confirmados por el auditor:
+
+- **la tabla malformada no pasa vacuamente** — tabla borrada, sin pipe inicial,
+  pipe de más, sin backticks: los cuatro dan `exit=1`. Falla cerrado;
+- **`/^FALLARON:/m ⇒ FAIL` sin falsos positivos** — los 34 `FALLARON` del repo
+  están todos dentro de `if (fallidos.length) { … exit(1) }`;
+- **la detección ampliada no rompe nada** — `dev`, `start`, `lint`, `db:generate`,
+  `db:migrate`, `sembrar`, `limpiar:fixtures`, `rotar-password`: ninguno dispara;
+- **el rojo de hoy es real, no artefacto**, y tras `--actualizar` queda verde de
+  forma **estable**: nada del bloque se retroalimenta con los guards.
+
+#### Corrección de un número que yo mismo cité
+
+Reporté *"6/23 contra HEAD"* como diferencial. El auditor midió **3/23**, y las 3
+son ruido: la versión de HEAD no acepta `--raiz`, el catálogo se enumera en 0
+comandos y los fixtures quedan sin scripts. Para obtener 6/23 hay que dejar la
+copia vieja **dentro de `scripts/`**, y entonces `RAIZ` es el repo real y los
+casos con `--actualizar` **reescriben `STATE.md` y la matriz de verdad**.
+
+Es la segunda vez en este mismo hallazgo que el diferencial contra HEAD resulta
+ser un harness colapsando en vez de una medición. **La lección ya está escrita y
+la volví a pagar: un número afirmado no es un número medido.** El diferencial que
+sí vale es el de mutantes, porque no depende de que una versión vieja sepa
+apuntar a un fixture.
+
+#### Deuda declarada que NO justifica agotar el loop
+
+El propio auditor la separó: el sello resoluble no es sello atribuible (una rama
+hexadecimal o un commit no-ancestro pasan); fila duplicada last-wins (forjado
+visible en la tabla renderizada); la columna **Nota no se compara** —y es la nota
+que desactiva la trampa de INT-12—; el vocabulario de detección es solo castellano
+(`qa`, `ci`, `check:` siguen evadiendo); y la conjunción del exit code es vacua en
+los 8 casos que corren sin `--actualizar`.
+
+#### El patrón, que es lo que hay que llevarse
+
+**Es el segundo meta-gate que agota el BoundedLoop**, después de INT-12. Los dos
+verifican **la verificación misma** —INT-12 la invalidación de caché del deploy,
+éste el bloque de evidencia— y los dos caen por lo mismo: **falsificabilidad**. En
+INT-12 el historial se podía forjar y borrar; acá el bloque se puede forjar en las
+filas que nadie mide.
+
+No es coincidencia: un artefacto que **afirma** el resultado de una verificación
+puede ser reescrito, y protegerlo exige una raíz de confianza que el propio
+artefacto no puede proveer. Cada vuelta de tuerca mueve la falsificación un nivel
+más arriba en vez de eliminarla.
+
+**El valor entregado no depende de cerrar esto**, y conviene decirlo explícito
+para que la decisión humana no se tome contra un fantasma:
+
+| Entregado y verificado | Abierto |
+|---|---|
+| el bloque **se genera**, no se teclea | un bloque forjado en las filas no medidas pasa |
+| `NO CORRIDO` no se lee como PASS | un segundo bloque agregado pasa invisible |
+| un exit≠0 **no puede** rendir PASS | el sello prueba "es un commit", no "es *este* commit" |
+| lo truncado se descarta, no se parsea | |
+| procedencia desconocida ≠ árbol limpio | |
+
+Decisión escalada al humano en `STATE.md`. **No se reabre.**
+
+---
+
+### 2026-08-14 · DOS DECISIONES HUMANAS · el meta-gate y el discriminador de H1
+
+Ambas escaladas por el loop y resueltas por el decisor. Se registran acá porque
+las dos fijan restricciones sobre lo que se construye después.
+
+#### 1 · Gate de evidencia · **riesgo aceptado**, no reabierto
+
+El BoundedLoop agotado se resuelve como INT-12: **se acepta el riesgo por escrito
+y se pivotea a FASE D.** El FAIL registrado queda; el hallazgo **no se reabre**.
+
+La salida técnica del auditor —comparar también las filas `NO CORRIDO` contra su
+celda esperada, que el generador ya conoce, y sacar la comprobación de marcadores
+únicos de la rama `--actualizar`— queda **documentada y no implementada**,
+exactamente como la de INT-12.
+
+Fundamento de la asignación, y es lo que hay que poder defender dentro de un mes:
+el costo de oportunidad de seguir endureciendo **el instrumento que vigila
+instrumentos**, contra un propósito —H1— que **no tiene un solo dato**. Es el
+segundo meta-gate que agota el loop y los dos caen por falsificabilidad; la
+tercera vuelta de tuerca movería la falsificación un nivel más arriba en vez de
+eliminarla.
+
+**Riesgo vivo, escrito para que nadie lo lea de menos:** el bloque §0 de
+`STATE.md` y de la matriz **se puede forjar en las filas que la corrida habitual
+no mide** —todo el grupo `navegador`— y el gate saldría verde. Regla de lectura
+mientras el riesgo esté abierto: una fila de `navegador` en `PASS` solo vale si esa
+corrida usó `--todos`.
+
+#### 2 · Discriminador fixture/real · **la retención excluye fixtures**
+
+El mecanismo de INT-7 llevará `AND patente NOT LIKE 'FIXT%'`.
+
+No es el atajo barato: **una patente `FIXT01` no es dato personal**, así que nunca
+estuvo en el alcance de la Ley 21.719 y enmascararla no fue nunca el objetivo. El
+fundamento va escrito junto al `WHERE`; sin él, el próximo lector lo toma por
+filtro conveniente y lo borra.
+
+Lo que esta decisión evita, medido y no supuesto: la alternativa —columna
+`es_fixture` explícita— **rompe `AC-DATA-1`**, que desde `b933ccb` compara los 27
+campos de §4 *ni de más ni de menos*. Exigía enmendar la fuente de verdad más
+migración, contra el principio de minimización que §4 declara.
+
+**Riesgo aceptado:** el discriminador sigue siendo una convención sobre el
+contenido de un campo, sostenida por `src/lib/fixtures.ts` —regla de aplicación,
+no del esquema—. Moverlo al esquema es enmienda de §4 y va por ADR.
+
+Con esto **FASE E queda desbloqueada en su diseño**, y sigue yendo **después de
+D** por la restricción de orden que este loop encontró midiendo.
+
+---
+
+### 2026-08-14 · FASE C · temporizador · ciclo 1 · **VETO**
+
+El verificador discrimina el fallo que se le plantó, y aun así el auditor lo vetó
+por algo más fino y peor:
+
+**La aserción central tolera ±1 minuto sobre un display cuya granularidad es un
+minuto.** Con `Math.floor(ms / 60_000) - 1` plantado en `duracion()`:
+
+```
+PASS · FIXT50 · el transcurrido se corresponde con su entrada_at · pantalla "2 min" · entrada_at implica "3 min"
+PASS · FIXT51 · el transcurrido se corresponde con su entrada_at · pantalla "2 h 19 min" · entrada_at implica "2 h 20 min"
+15/15 comprobaciones PASS · TEMPORIZADOR (spec.md §5): PASS
+```
+
+**El verificador imprime su propia contradicción y la declara PASS.** Un criterio
+sobre un display de granularidad de un minuto que tolera un minuto no afirma nada.
+
+La causa no es un descuido: el fixture se envejece a 3 min 45 s y 2 h 20 min 40 s
+para que el avance se vea rápido, lo que deja el cruce de minuto a 15/20 s de la
+lectura. **Dos objetivos en tensión —avance rápido y correspondencia exacta— se
+resolvieron debilitando la aserción.** Y como la correspondencia es la única
+comprobación que caza atribución y velocidad, su resolución era el techo del
+verificador entero.
+
+**Segundo bloqueante: el denominador se encoge al fallar.** Sano 15
+comprobaciones, congelado 13: las dos de "el valor nuevo sigue correspondiendo"
+viven dentro de un `if` y **desaparecen en vez de fallar**. `11/13` (84,6 %) se lee
+mejor que el honesto `11/15` (73,3 %). Es la lección de
+`verificar-verificadores.mjs:10` —*lo que no alcanzó a correr no aparece como
+FAIL, aparece como nada*— violada por una vía que ese guard no detecta: rama
+condicional en vez de excepción.
+
+**Tercero, y es el que más enseña: una comprobación pasó por el motivo
+equivocado.** Con la vecina plantada, cada fila mostró literalmente el tiempo de
+la otra, y
+
+```
+FAIL · FIXT50 · el transcurrido se corresponde con su entrada_at · pantalla "2 h 20 min" · entrada_at implica "3 min"
+PASS · con dos activas, cada fila muestra su propio tiempo y no el de la otra
+```
+
+La comprobación que **se llama** "no el de la otra" pasó en el caso exacto en que
+cada fila muestra el de la otra: es un `!==` con nombre de atribución. Solo exige
+que difieran.
+
+Lo que el auditor confirmó que **sí** aguanta: la copia de `duracion()` en el
+verificador **falla ruidoso** ante un cambio de formato (`formatear(parsear(x)) === x`
+es false para `"0 h 5 min"` y `"1 h 75 min"`, así que no es tautológica); no toca
+el flujo offline ni AC-OP-1; `verificar:alcance` 9/9 y `verificar:verificadores`
+39/39; y el control negativo del implementador era honesto.
+
+**Límite que el AC no podrá reclamar, y que es hallazgo de producto, no del
+verificador:** `duracion()` **no tiene la cota de INT-14** que sí tiene el camino
+del dinero (`src/lib/tiempo.ts:48,101,124`). Con un reloj adelantado, el display
+pinta `"-4 min"` al operador. Queda anotado, sin corregir, fuera del alcance de
+FASE C.
+
+Vuelve al implementador. `AC-OP-3` **no se escribe** hasta que el comando sostenga
+lo que el criterio va a afirmar.

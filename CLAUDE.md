@@ -43,30 +43,47 @@ haciendo cumplir:
 
 | | Permitido | Prohibido |
 |---|---|---|
-| Pago de **suscripción** (dueño → C4A) | sí, tras reescribir AC-SCOPE-1 | — |
+| Pago de **suscripción** (dueño → C4A) | sí, dentro de `src/lib/suscripcion/` | — |
 | Pago del **estacionamiento** (conductor → local) | — | **sí, sin excepción.** Sigue siendo efectivo, fuera del sistema |
 
-**Hasta que AC-SCOPE-1 se reescriba en `spec.md` §9, la tabla de arriba manda tal
-cual y no entra ninguna dependencia de pasarela al `package.json`.** Hoy el
-criterio es un `grep` de `webpay|flow` que empezaría a dar positivo por diseño;
-un gate más fino es un gate más frágil, y se reescribe antes de necesitarlo, no
-después.
+**AC-SCOPE-1 ya se reescribió** (2026-08-13, commit `f98a652`). El criterio dejó
+de ser un `grep` de marcas de pasarela —que habría dado positivo por diseño en
+cuanto entrara una de suscripción— y pasa a describir **la propiedad**: *el
+conductor no paga dentro del sistema*.
+
+La frontera declarada es `src/lib/suscripcion/`, **hoy vacía**. Lo que el gate
+hace cumplir, y que costó tres bypasses reproducidos descubrir:
+
+- fuera de la frontera, ninguna superficie del producto cobra ni importa pasarela
+  —**por exclusión**, no por lista blanca: una ruta de nombre neutro como
+  `api/cobro-salida/` evadía la versión enumerada—;
+- **dentro** de la frontera tampoco puede vivir el cobro del conductor: no puede
+  importar el dominio del estacionamiento (tarifa, sesión), porque eso *es*
+  cobrarle al conductor.
 
 ### Verificación del gate (AC-SCOPE-1/2/3)
 
 ```
-# AC-SCOPE-1 — sin SDK de pasarela en el manifiesto
-grep -iE "stripe|mercadopago|webpay|transbank|flow" package.json     # → sin resultados
-
-# AC-SCOPE-2 — sin entidades prohibidas en el esquema
-grep -riE "pago|transaccion|sucursal|reserva" src/db/                 # → sin entidades
-
-# AC-SCOPE-3 — sin módulo LPR/cámara
-# inspección de estructura del repo
+npm run verificar:alcance          # los tres criterios, por exclusión
+npm run verificar:alcance:prueba   # el gate corrido CON EL FALLO PLANTADO
 ```
 
-En PowerShell, el equivalente de `grep -iE` es
-`Select-String -Pattern "stripe|mercadopago|webpay|transbank|flow" -Path package.json`.
+**Los tres `grep` que esta sección publicaba se retiraron el 2026-08-14.** No por
+estilo: en PowerShell la traducción con el pipe escapado —`"next\|react"`— es un
+pipe **literal** en regex .NET y **nunca matchea**. Medido: `\|` → 0 líneas,
+`|` → 9. El gate reportaba PASS incondicionalmente, incluso con `stripe` y
+`transbank-sdk` plantados en `package.json`. *Un criterio que siempre pasa es
+peor que no tener criterio.*
+
+Además enumeraban archivos, y una ruta nueva —`src/app/api/cobro/route.ts`—
+evade cualquier lista blanca. `verificar:alcance` escanea **por exclusión**: toda
+la superficie del producto salvo la frontera declarada `src/lib/suscripcion/`,
+que además no puede importar el dominio del estacionamiento (tarifa, sesión),
+porque eso *es* cobrarle al conductor.
+
+**No lo edites a mano para "actualizarlo".** El criterio vive en `spec.md` §9 y
+la propiedad la hace cumplir el script. Si necesitás cambiar el alcance, va por
+ADR.
 
 ---
 
@@ -97,12 +114,15 @@ un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 y la capa de presentación.** Medido contra la URL viva:
 `verificar:endurecimiento` da **30/30** (por la mañana daba 10/29).
 
-**INT-12 quedó en FAIL con el BoundedLoop agotado (3 vetos).** La corrección del
-módulo es sana y la propiedad se observó en producción —dos deploys del mismo
-commit, versiones distintas—, pero el **gate** `verificar-int12.mjs` no es
-confiable: su historial se puede inventar y borrar. INT-12 **no se declara
-verificado**. El hito está detenido a la espera de una decisión humana. Detalle y
-salida propuesta en `STATE.md`.
+**INT-12 — RIESGO ACEPTADO por decisión humana (2026-08-14). Ya no detiene el
+hito.** La corrección del módulo es sana y la propiedad se observó en producción
+—dos deploys del mismo commit, versiones distintas—, pero el **gate**
+`verificar-int12.mjs` no es confiable: su historial se puede inventar y borrar.
+INT-12 **no se declara verificado**: se cierra como riesgo aceptado, que no es lo
+mismo. Priorización por riesgo real, el mismo criterio que ordenó M5. La salida
+técnica que dejó el auditor —re-derivar `{artefacto, versión}` de la URL
+inmutable del deployment en vez de creerle al archivo— queda documentada y **no
+implementada**. Detalle en `LEDGER.md` (2026-08-14) y en `STATE.md`.
 
 Único hallazgo del informe integral sin cerrar: **INT-7** (mecanismo de retención
 de patente), bloqueado por `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}`.

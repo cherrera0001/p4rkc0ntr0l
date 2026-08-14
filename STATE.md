@@ -11,10 +11,66 @@
 | | |
 |---|---|
 | **Último hito cerrado** | M5 — Endurecimiento (código y deploy) |
-| **Hito en curso** | M6 — capa de presentación · **FASE B de la estrategia nueva** |
-| **Bloqueo activo** | ninguno técnico. Quedan los **bloqueos humanos** de más abajo |
-| **INT-12** | **riesgo aceptado por decisión humana (2026-08-14)**. Ya no detiene el hito |
-| **Próximo paso** | FASE C — anclar la verificación a la spec (9 huérfanos, 6 verificadores sin AC) |
+| **Hito en curso** | M6 · **FASE C** de la estrategia nueva (B cerrada) |
+| **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
+| **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
+| **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
+
+## DECISIÓN TOMADA (2026-08-14) · el segundo meta-gate que agota el BoundedLoop
+
+**Resuelto: se acepta como riesgo, igual que INT-12, y se pivotea a FASE D.**
+El gate de evidencia queda **FAIL registrado y no reabierto**. La salida técnica
+que dejó el auditor —comparar también las filas `NO CORRIDO` contra su celda
+esperada, que el generador ya conoce, y sacar la comprobación de marcadores
+únicos de la rama `--actualizar`— queda **documentada y no implementada**, igual
+que la de INT-12.
+
+Fundamento de la asignación: el costo de oportunidad de seguir endureciendo el
+instrumento que vigila instrumentos, contra un propósito —H1— que no tiene un
+solo dato.
+
+**Lo que hay que seguir sabiendo mientras el riesgo esté vivo:** el bloque §0 de
+este archivo y de la matriz **se puede forjar en las filas que la corrida habitual
+no mide** (todo el grupo `navegador`), y el gate saldría verde. Al leer un bloque,
+mirar la línea de cobertura: lo que dice `NO CORRIDO` no fue medido hoy, y lo que
+dice `PASS` en una fila de `navegador` solo vale si esa corrida usó `--todos`.
+
+**Es el patrón, no el incidente.** INT-12 y el gate de evidencia son los dos
+únicos hallazgos que agotaron sus tres ciclos, y los dos verifican **la
+verificación misma** —uno la invalidación de caché del deploy, el otro el bloque
+de evidencia—. Los dos caen por **falsificabilidad**: en INT-12 el historial se
+podía forjar y borrar; acá el bloque se puede forjar **en las filas que la corrida
+habitual no mide**.
+
+No es casualidad. Un artefacto que *afirma* el resultado de una verificación se
+puede reescribir, y protegerlo exige una raíz de confianza que el propio artefacto
+no puede proveer. Cada vuelta de tuerca mueve la falsificación un nivel más arriba
+en vez de eliminarla.
+
+**Lo que ya está entregado y no depende de cerrar esto:**
+
+| Verificado | Abierto |
+|---|---|
+| el bloque **se genera**, no se teclea | un bloque forjado en las filas no medidas pasa |
+| `NO CORRIDO` no se lee como PASS | un segundo bloque agregado al archivo pasa invisible |
+| un exit≠0 **no puede** rendir PASS | el sello prueba "es un commit", no "es *este* commit" |
+| lo truncado se descarta, no se parsea | |
+| procedencia desconocida ≠ árbol limpio | |
+
+Respaldo: `evidencia:prueba` 23/23, y **nueve mutantes de un solo punto, cada uno
+cazado** por al menos un caso.
+
+**Recomendación (mía, explícita): aceptarlo como riesgo igual que INT-12 y
+pivotear a FASE D.** El costo de oportunidad es medible: seguir endureciendo el
+instrumento que vigila instrumentos, contra un propósito —H1— que **no tiene un
+solo dato**. La alternativa está costeada y es chica (comparar también las filas
+no corridas contra su celda esperada, que el generador ya conoce; y sacar la
+comprobación de marcadores únicos de la rama `--actualizar`), pero **no la aplico
+sin decisión**: la regla dice que un BoundedLoop agotado no se reabre.
+
+**Defecto vivo, detectado y no corregido:** el bloque comiteado de este archivo
+publica 19 filas y el catálogo tiene 21 — falta `verificar:temporizador` entero, y
+el gate no lo dice porque cae entre las filas saltadas.
 
 ## Base de evidencia — generada, no tecleada
 
@@ -68,11 +124,52 @@ H2 necesitan verificadores que devuelvan **un número**, no un PASS.
 
 | Fase | Qué | Estado |
 |---|---|---|
-| **B** | Reparar el registro: LEDGER al día, STATE al día, `npm run evidencia` | **en curso** |
-| **C** | Anclar la verificación a la spec: 9 huérfanos + 6 verificadores sin AC | siguiente |
-| **D** | **H1: convertir "SIN DATOS" en un número.** Consulta de mediana, banco que acumula, maqueta `1l` | pendiente |
-| **E** | INT-7: mecanismo de retención **parametrizado**, que falla cerrado si el plazo no está definido | pendiente |
-| **F** | INT-12 | **resuelta: riesgo aceptado** |
+| **B** | Reparar el registro: LEDGER, STATE, `npm run evidencia` | **cerrada**, con el gate en FAIL (arriba) |
+| **C** | Anclar la verificación a la spec | **casi**: `AC-OP-4` y `AC-PDP-1` escritos; falta `AC-OP-3` |
+| **D** | **H1: convertir "SIN DATOS" en un número** | **SPEC-D escrita** → `docs/SPEC-D-medicion-de-H1.md`. Es el próximo hito |
+| **E** | INT-7: retención parametrizada | pendiente, y **va DESPUÉS de D** — ver abajo |
+| **F** | INT-12 | resuelta: riesgo aceptado |
+
+### FASE C — qué se ancló y qué se soltó, a propósito
+
+Regla aplicada, fijada por un veto anterior: *¿el AC hace exigible una afirmación
+que ya está en §1–§8, o introduce una nueva?* Lo primero es formalizar; lo segundo
+es autorar requisitos, y eso va por ADR.
+
+Suben tres: **AC-OP-3** (temporizador, §5), **AC-OP-4** (ciclo de salida contra la
+API real + validación de frontera, §5+§7) y **AC-PDP-1** (barrera de datos reales,
+§4+§7). Los dos últimos ya son fila de §9.
+
+**No suben** `verificar:m4`, `verificar:int12`, `verificar:ui` ni
+`verificar:endurecimiento`: verifican propiedades que §1–§8 **nunca enunció**.
+Queda escrito para que la omisión sea decisión y no olvido.
+
+Medido: `verificar:ac` pasó de **6 verificadores sin AC a 4**, con 13 AC.
+
+### D antes que E — restricción encontrada midiendo, no razonando
+
+El centinela de enmascarado de E **rompe la discriminación fixture/real** de la
+que depende H1: `limpiar-fixtures.mjs:22` y `scripts/lib/fixtures.mjs:59` deciden
+qué es fixture con un `LIKE 'FIXT%'` **sobre la patente**, así que una fila
+enmascarada deja de reconocerse como fixture y **pasa a contar como "cerrada NO
+fixture"** — el numerador exacto de H1. Si E corre antes que D, contamina la
+métrica con ruido indistinguible de operación real, y el dato original ya no está.
+
+**✅ DECIDIDO (2026-08-14): la retención excluye fixtures.** El mecanismo de INT-7
+llevará `AND patente NOT LIKE 'FIXT%'`. No es el atajo barato: una patente
+`FIXT01` **no es dato personal**, así que nunca estuvo en el alcance de la Ley
+21.719 — y hay que escribir ese fundamento junto al `WHERE`, o el próximo lector
+lo va a leer como filtro conveniente.
+
+Con eso **§4 no se enmienda y `AC-DATA-1` no se toca**. La alternativa descartada
+—columna `es_fixture` explícita— rompía `AC-DATA-1`, que desde `b933ccb` compara
+los 27 campos *ni de más ni de menos*: exigía enmendar la fuente de verdad más
+migración, contra el principio de minimización.
+
+Riesgo aceptado y anotado: el discriminador sigue siendo una **convención sobre
+el contenido de un campo**, sostenida por `src/lib/fixtures.ts`, que es regla de
+aplicación y no del esquema. Moverlo al esquema sería enmienda de §4, por ADR.
+Detalle y costeo en `docs/SPEC-D-medicion-de-H1.md` §2.
 
 ### Por qué FASE E se puede construir hoy
 
@@ -87,6 +184,29 @@ Tres documentos culpaban al esquema de un bloqueo que es de decisión. Construir
 el mecanismo leyendo el plazo de una variable que **falla cerrado** si no está
 definida hace que `{{PLAZO_RETENCION_PATENTE}}` deje de bloquear la
 *construcción* y bloquee solo el *encendido*.
+
+**La premisa se verificó empíricamente** (auditoría 2026-08-14, `UPDATE` corrido
+en transacción revertida: 3 filas enmascaradas al mismo centinela, sin colisión).
+Pero la misma auditoría encontró **cuatro cosas que hay que decidir antes de
+escribir una línea de FASE E**:
+
+1. **El centinela rompe la discriminación fixture/real de la que depende FASE D.**
+   `limpiar-fixtures.mjs:22` y `scripts/lib/fixtures.mjs:59` borran por
+   `patente LIKE 'FIXT%'`. Una fila enmascarada deja de ser reconocible como
+   fixture: se vuelve imborrable **y pasa a contar como "sesión cerrada NO
+   fixture"**, que es exactamente el numerador con el que hoy se afirma que H1
+   está en cero. Enmascarar contaminaría la métrica de H1 con ruido
+   indistinguible de operación real.
+2. **Las sesiones `activa` vencidas nunca se enmascaran.** El `WHERE
+   estado='cerrada'` las excluye por construcción, y **no existe mecanismo que
+   las cierre**: no hay cron, no hay `vercel.json`, y `PERMANENCIA_MAXIMA_MS`
+   (`src/lib/tiempo.ts:48`) solo satura el monto. Una patente en una sesión que
+   quedó activa se retiene **indefinidamente** y `spec.md:150` no se cumple.
+3. **Si el enmascarado se extendiera a `activa`, INT-15 lo rechaza**: dos activas
+   con el mismo centinela violan `sesion_vehiculo_activa_unica`. Medido.
+4. **`'XXXXXX'` no pasa `validarPatente`** (`src/lib/patente.ts:75` exige al menos
+   un dígito). Sería un valor que el sistema rechaza en toda frontera de entrada
+   y acepta en base. No rompe nada hoy, pero elegirlo tiene que ser a propósito.
 
 ## INT-12 — cerrado como riesgo aceptado (2026-08-14)
 
@@ -222,10 +342,16 @@ Requieren `DATABASE_URL`, `CLAVE_ACCESO` y `SESSION_SECRET`. Sin `[url]` corren
 contra `localhost:3000`. **Todos los scripts que tocan la base ya traen
 `--env-file=.env`**.
 
-Los cinco verificadores de navegador llaman `limpiarFixtures()` al iniciar
-(`scripts/lib/fixtures.mjs`) — mecanizado el 2026-08-12, porque era una
-precondición que dependía de que alguien se acordara y produjo dos FAIL falsos.
-Eso mismo es lo que impide acumular datos de H1: ver FASE D.
+**5 de los 8** verificadores de navegador llaman `limpiarFixtures()` **al
+iniciar** (`a3`, `m4`, `meas2`, `op1`, `endurecimiento`; no `pwa`, `ui` ni
+`int12`) — mecanizado el 2026-08-12, porque era una precondición que dependía de
+que alguien se acordara y produjo dos FAIL falsos. `verificar-salida.mjs:10`
+declara que a propósito no limpia al inicio.
+
+**No confundir con "la base queda en cero".** Limpian al **iniciar**: cada tanda
+borra las filas de la anterior y deja las suyas puestas. Hoy la base tiene 3
+sesiones cerradas (`FIXT01/02/03`). Ninguna corrida acumula, que es lo que
+impide medir H1 — pero el mecanismo no es el que la matriz describía hasta hoy.
 
 Los scripts de navegador conviene espaciarlos unos segundos: en corridas seguidas
 se observa contención entre instancias de Edge. Un FAIL aislado en una tanda

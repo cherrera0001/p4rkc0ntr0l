@@ -19,6 +19,7 @@
     "verificar:salida": "node --env-file=.env scripts/verificar-salida.mjs",
     "verificar:meas1": "node --env-file=.env scripts/verificar-meas1.mjs",
     "verificar:meas2": "node --env-file=.env scripts/verificar-meas2.mjs",
+    "verificar:temporizador": "node --env-file=.env scripts/verificar-temporizador.mjs",
     "verificar:int12": "node scripts/verificar-int12.mjs",
     "verificar:ui": "node scripts/verificar-ui.mjs",
     "verificar:invariantes": "node --env-file=.env scripts/verificar-invariantes.mjs",
@@ -29,6 +30,7 @@
     "verificar:citas": "node scripts/verificar-citas.mjs",
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "evidencia": "node scripts/evidencia.mjs",
+    "evidencia:prueba": "node scripts/evidencia.prueba.mjs",
     "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"
   },
   "dependencies": {

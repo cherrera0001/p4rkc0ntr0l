@@ -283,6 +283,8 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-DATA-2 | Las invariantes del modelo §4 se hacen cumplir **en la base**, declaradas en la migración y no solo en la aplicación: un vehículo no está dos veces adentro del mismo estacionamiento; `salida_at ≥ entrada_at`; `tecleo_fin_at ≥ tecleo_inicio_at`; `monto_calculado ≥ 0`; `capacidad_total > 0`; `valor_hora ≥ 0`; `fraccion_minutos > 0`; `monto_minimo ≥ 0`. | `npm run verificar:invariantes` → todas las comprobaciones PASS |
 | AC-OP-1 | Ingreso offline persiste y sincroniza. | `npm run verificar:op1` → todas las comprobaciones PASS |
 | AC-OP-2 | Cálculo de precio correcto (mínimo + fracción). | `npm test` → 0 fallos |
+| AC-OP-4 | El ciclo de §5 se cumple **contra la API real**, no solo en la fórmula aislada: el ingreso crea la sesión, la salida la cierra, y el `monto_calculado` se computa con la **tarifa vigente de la base** y se persiste. Y la frontera valida: una patente inválida se rechaza y una inyección no altera el esquema (§7). | `npm run verificar:salida` → todas las comprobaciones PASS |
+| AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS |
 | AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS |
 | AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS |
 | AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS |
@@ -328,13 +330,54 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 > 2. **Enumerar archivos deja agujeros por construcción.** Una ruta nueva
 >    —`src/app/api/cobro/route.ts`— evade cualquier lista blanca.
 >
-> El gate se prueba **con el fallo plantado** (`npm run verificar:alcance:prueba`,
-> 8/8): ruta nueva que le cobra al conductor, dependencia sin frontera, pasarela
-> dentro de su frontera (que debe **pasar**), importación cruzada, entidad
-> prohibida, captura de imagen, y dos falsos positivos que no deben disparar.
-> Esa prueba encontró un defecto real del gate antes de escribirlo acá.
+> El gate se prueba **con el fallo plantado** (`npm run verificar:alcance:prueba`):
+> ruta nueva que le cobra al conductor, dependencia sin frontera, pasarela dentro
+> de su frontera (que debe **pasar**), importación cruzada, entidad prohibida,
+> captura de imagen, y falsos positivos que no deben disparar. Esa prueba
+> encontró un defecto real del gate antes de escribirlo acá, y después encontró
+> tres bypasses más que la primera versión del gate tenía.
+>
+> *(Esta enmienda decía `8/8`. Hoy son 15/15. **El número quedó desfasado dentro
+> del párrafo que argumenta que un criterio debe citar el comando y no el
+> número** — corregido el 2026-08-14 quitándolo, que es lo que el propio
+> argumento exige.)*
 >
 > **Un gate que solo se probó contra un repo limpio no se probó.**
+
+> **Anclaje de verificadores huérfanos (FASE C, 2026-08-14).** El repo tenía
+> verificadores que comprueban propiedades reales y **ningún criterio escrito que
+> los exija**: un refactor podía borrarlos sin violar nada. La regla que decide
+> cuáles suben a §9 la fijó un veto anterior y es la del proyecto:
+>
+> > **¿el AC hace exigible una afirmación que ya está en §1–§8, o introduce una
+> > afirmación nueva?** Lo primero es formalizar. Lo segundo es autorar
+> > requisitos, y eso no lo hace un loop: lo decide el humano, por ADR.
+>
+> Suben **tres**, porque los tres hacen exigible texto que ya estaba escrito:
+>
+> - **AC-OP-3** ← §5, *"El temporizador muestra el tiempo transcurrido por cada
+>   sesión activa"*. Era **la única capacidad del núcleo sin una sola aserción en
+>   todo el repo**: `duracion()` no se exporta, ningún test la importa, y
+>   `verificar-m4.mjs` dice explícitamente que no prueba el temporizador.
+> - **AC-OP-4** ← §5, el ciclo de salida y el cálculo con la tarifa vigente, más
+>   la validación de frontera de §7.
+> - **AC-PDP-1** ← §4 y §7, *"base de licitud definida antes de operar con datos
+>   reales"*. La barrera existía y se verificaba; lo que faltaba era el criterio
+>   que la vuelve obligatoria.
+>
+> **No suben**, y queda dicho para que la omisión sea una decisión visible y no un
+> olvido: el endurecimiento completo, la purga del dispositivo (M-4), la capa de
+> presentación, la cota del reloj del cliente e INT-12. Los cinco verifican
+> propiedades que `spec.md` §1–§8 **nunca enunció**: nacen de la revisión de
+> seguridad y de la traducción de diseño, ambas posteriores a este documento.
+> Escribirlas acá sería inventar requisitos con forma de formalización. Si se
+> quieren exigibles, va por ADR.
+>
+> Tampoco suben los guards de proceso (`verificar:citas`,
+> `verificar:verificadores`, `verificar:ac`, `evidencia:prueba`,
+> `verificar:alcance:prueba`): meter un guard de documentación en §9 convertiría
+> documentos derivados en criterio permanente de la v1 — el subproducto
+> ascendiendo al contrato que audita. Ya está declarado en `verificar-ac.mjs`.
 
 > **Enmienda de la columna de verificación (2026-08-13).** Seis de los diez
 > criterios citaban prosa —*"prueba unitaria"*, *"revisión del esquema Drizzle"*,

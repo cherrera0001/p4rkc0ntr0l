@@ -722,3 +722,278 @@ Vale distinguir dos cosas que es cómodo confundir:
 Registrar eso separado —"la propiedad se cumple, pero no tengo con qué seguir
 comprobándolo"— es más honesto que cerrar el hallazgo por la evidencia puntual, y
 más útil que declararlo roto.
+
+---
+
+## El generador de evidencia cayó en los modos de falla que vigilaba (2026-08-14)
+
+Escribí `scripts/evidencia.mjs` para que los bloques de evidencia dejaran de
+tecleárse y desfasarse. Su docstring prometía tres propiedades, todas contra el
+mismo enemigo: *resolver la duda hacia el lado optimista.* Un auditor lo vetó con
+**nueve hallazgos reproducidos**. El resumen incómodo: el generador producía
+`EVIDENCIA: PASS` con exit 0 sobre verificadores que habían salido exit 1
+imprimiendo FAIL.
+
+### La lección de fondo: la herramienta que reporta sobre la verificación es ella misma un verificador
+
+No es una utilidad de formato. Produce el texto que otros van a leer **como
+evidencia**, así que hereda entera la responsabilidad de un verificador y todos
+sus modos de falla. La escribí tratándola como plomería —parsear, formatear,
+escribir— y por eso no le apliqué ninguna de las reglas que el proyecto ya tenía
+para los verificadores.
+
+La prueba de que la trataba como otra cosa: quedó **fuera de todos los guards**.
+`verificar-verificadores.mjs` filtraba `startsWith("verificar-")` y no la veía;
+`verificar-ac.mjs` filtraba `startsWith("verificar:")` y no la contaba ni como
+huérfana; ningún AC la citaba. **El nombre del archivo decidió su cobertura.**
+
+Regla: **si un artefacto produce texto que alguien va a leer como evidencia, va
+bajo los mismos guards que un verificador — y la pertenencia no se decide por el
+prefijo del nombre.**
+
+### Cuando dos señales del mismo hecho discrepan, la falla es resolver
+
+El hallazgo más caro fue este: un script imprimía `FAIL` y salía con exit 1, y el
+generador lo reportaba PASS. Había tres bugs distintos habilitándolo, pero
+ninguno habría importado con la regla que faltaba:
+
+> **Un exit≠0 no puede rendir veredicto PASS.**
+
+Lo tentador es resolver la contradicción hacia algún lado —"el exit code es más
+confiable", "el texto es más específico"—. Las dos opciones están mal. La
+contradicción **es** el hallazgo: se marca `CONTRADICTORIO` y hace fallar. Un
+verificador comprometido, o simplemente roto, necesita exactamente que
+resolvamos la duda por él.
+
+Generalizable más allá de este script: **dos señales independientes del mismo
+hecho que discrepan no se promedian ni se jerarquizan; se reportan como
+discrepancia.**
+
+### Tres formas de que "la última línea" no sea la última
+
+Los tres bugs que habilitaban el PASS falso valen por separado, porque los tres
+son de familias que reaparecen:
+
+1. **`stdout + "\n" + stderr` destruye el orden cronológico.** El veredicto real
+   iba en stdout y una línea posterior de stderr ganaba por orden de
+   concatenación. *Concatenar dos flujos no los ordena: los apila.*
+2. **Un regex que admite espacios iniciales convierte un detalle en veredicto.**
+   Una línea indentada terminada en `: PASS` matcheaba entera. *Anclar a columna
+   0 no es cosmético cuando la columna 0 es lo que distingue un título de un
+   detalle.*
+3. **`maxBuffer` desbordado devuelve salida truncada, y la cola truncada parsea
+   bien.** `r.error` de `spawnSync` no se inspeccionaba. *Truncada no es
+   evidencia: si el comando no se ejecutó completo, la salida se descarta entera,
+   no se parsea el pedazo que llegó.*
+
+### `?? ""` volvió a convertir un fallo en una afirmación positiva
+
+Cuarta vez en este proyecto. `git status --porcelain` con git ausente del PATH
+devolvía `undefined`, el `?? ""` lo hacía cadena vacía, y `length > 0` daba
+`false` → el bloque estampaba **"árbol limpio"** sobre un repo realmente sucio.
+
+Lo que hace a este caso peor que los anteriores: no degradaba a "no sé", degradaba
+a una **afirmación positiva y falsa**. Regla, ya en su cuarta encarnación:
+**procedencia desconocida no es procedencia limpia.** Un valor por defecto que
+coincide con el caso feliz es un valor por defecto mal elegido.
+
+### Un criterio insatisfacible se termina apagando
+
+Pedí que el bloque de evidencia comiteado correspondiera **a HEAD**. El
+implementador lo construyó, mostró que es insatisfacible en régimen —regenerar
+ensucia el árbol, commitear mueve HEAD, así que el bloque recién comiteado ya
+estampa el commit anterior— y propuso una versión satisfacible que detecta lo que
+importa: que el **código** no haya cambiado desde que se midió.
+
+Tenía razón, y la lección es de diseño de criterios, no de este chequeo:
+**un criterio que no puede estar verde en operación normal no se cumple: se
+desactiva.** Y un criterio desactivado es peor que ninguno, porque figura.
+
+---
+
+## Mecanizar una parte crea la ilusión de haber mecanizado el todo (2026-08-14)
+
+El commit que introdujo `npm run evidencia` para que los conteos dejaran de
+tecleárse **dejó `27/27` tecleado en §7 del mismo archivo**, mientras el bloque
+generado 215 líneas más arriba decía `37/37`. Un documento contradiciéndose
+consigo mismo, en el commit cuyo mensaje explica que eso no puede pasar.
+
+Y en el mismo día, la misma familia en la fuente de verdad: `spec.md` tenía
+`8/8` **dentro del párrafo que argumenta que un criterio debe citar el comando y
+no el número.** Hoy son 15/15.
+
+La lección no es "faltó revisar". Es que **el mecanismo cubrió el ejemplo que
+motivó el mecanismo**, y todos —yo incluido— leímos eso como si cubriera la
+clase. Regla: **cuando mecanices algo, buscá los otros lugares donde vive el
+mismo defecto antes de dar la lección por aprendida.** El generador reescribe
+entre marcadores; §2, §3, §4 y §7 nunca estuvieron entre marcadores.
+
+### El corolario que sí es barato
+
+Donde no llega el mecanismo, **la cita al comando reemplaza al número**: las
+celdas ahora dicen `→ ver §0`. No es tan bueno como generar, y es infinitamente
+mejor que un número que envejece solo.
+
+---
+
+## Cuando dos cifras del mismo hecho conviven, la que no tiene comando está mal (2026-08-14)
+
+`STATE.md` y la matriz decían **"9 huérfanos y 6 verificadores sin AC"**. El 6 lo
+imprime `verificar:ac`. El 9 se contó a mano. Era 8: `f98a652` había creado
+`AC-DATA-2` exactamente para las invariantes de base, que la tabla seguía
+listando como huérfanas con la justificación *"AC-DATA-1 verifica presencia y
+forma, no invariantes"* — cierta hasta ese commit.
+
+Lo que lo vuelve una lección y no un descuido: **las dos cifras salían del mismo
+comando.** `verificar:invariantes` no aparece en la lista de 6 precisamente
+porque ya tiene AC. La contradicción estaba disponible, gratis, en la salida que
+el propio documento cita.
+
+Heurística: **si dos números describen el mismo conjunto y solo uno es
+reproducible, el otro se corrige — no se defiende.** Y el costo de no hacerlo era
+concreto: FASE C iba a arrancar con un ítem de alcance ya cerrado.
+
+### Un grep por la etiqueta que yo mismo puse no prueba ausencia
+
+Afirmé que FASE A no estaba en el ledger con `grep "FASE A"`. La conclusión era
+correcta, el método no: buscaba **el nombre que yo le había dado al trabajo**. El
+auditor la confirmó bien, buscando por **artefactos** —`verificar-alcance`,
+`27 campos`, `SUPERFICIE`, `fallo plantado`— que existen independientemente de
+cómo alguien haya decidido titular la entrada.
+
+Regla: **para probar que algo no está registrado, buscá los artefactos, no las
+etiquetas.** Las etiquetas las elige quien escribe; los artefactos no.
+
+---
+
+## Un criterio que pasa sobre el conjunto vacío no puede refutar nada (2026-08-14)
+
+`AC-MEAS-1` exige que toda sesión cerrada tenga los dos timestamps de tecleo. Da
+PASS. La base tiene cero sesiones de operación real, y el proyecto entero existe
+para probar o refutar H1, que se mide con esos timestamps.
+
+Verificado en el código, no razonado: los dos únicos `exit(1)` de
+`verificar-meas1.mjs` son `nulos !== 0` —un `count(*)` sobre un `WHERE`, que
+sobre tabla vacía da 0— y `obligatorias !== 2`, que se lee de
+`information_schema` y **no depende de las filas**. Demostrado además con un
+`DELETE` dentro de una transacción revertida: con la tabla vacía imprime
+`AC-MEAS-1: PASS`.
+
+Es más fuerte de lo que parecía: **`meas1` no puede fallar por ausencia de
+datos.** Su primera guarda es vacuamente verdadera sobre el conjunto vacío y la
+segunda es una propiedad del catálogo.
+
+La lección general: **un criterio universal ("todo X cumple P") es
+automáticamente verdadero si no hay ningún X.** Cuando lo que importa es que
+existan X —y acá importa: X es la evidencia de H1— el criterio universal no
+alcanza y hace falta uno existencial que devuelva **un número**, no un PASS.
+
+Es el salto que separa verificar **propiedades del artefacto** —¿compila?,
+¿existe el campo?, ¿el navegador computa 12px?— de verificar **propiedades del
+propósito**: que el sistema produzca la evidencia por la que existe.
+
+---
+
+## Limpiar al iniciar no es limpiar al terminar (2026-08-14)
+
+La matriz explicaba que H1 no acumula datos porque *"cada verificador de
+navegador llama `limpiarFixtures()` al iniciar, así que toda tanda termina en
+cero"*. Dos errores en una frase: son **5 de 8**, y "termina en cero" confunde el
+momento. Limpian **al iniciar**: cada tanda borra lo de la anterior y deja lo
+suyo. La base tiene 3 filas ahora mismo, y `verificar:meas1` lo imprime.
+
+La conclusión de fondo sobrevivió —ninguna corrida acumula— pero el modelo
+mecánico era falso, y **FASE D dice construir "un banco que acumula en vez de
+purgar"**: iba a partir de un modelo del purgado que no es el que corre.
+
+Regla: **una conclusión correcta sostenida por un mecanismo mal descrito es
+deuda, no verdad.** Sobrevive hasta que alguien construye sobre el mecanismo.
+
+---
+
+## El patrón meta-gate: dos BoundedLoops agotados, la misma causa (2026-08-14)
+
+INT-12 y el gate de evidencia son los **únicos dos hallazgos que agotaron sus tres
+ciclos** en la historia del proyecto. No se parecen en el dominio —uno es
+invalidación de caché de un service worker, el otro un bloque de markdown— y caen
+por lo mismo.
+
+**Los dos verifican la verificación misma. Los dos se caen por falsificabilidad.**
+
+- INT-12: el historial de artefactos se puede **inventar y borrar**. Dos objetos
+  JSON a mano daban 13/13 PASS sobre versiones que nunca existieron.
+- Evidencia: el bloque se puede **forjar en las filas que la corrida no mide**. 11
+  líneas editadas a mano y el gate dice `EVIDENCIA: PASS`.
+
+La generalización, que es lo que hay que llevarse:
+
+> **Un artefacto que *afirma* el resultado de una verificación se puede reescribir.
+> Protegerlo exige una raíz de confianza que el propio artefacto no puede
+> proveer.** Cada vuelta de tuerca mueve la falsificación un nivel más arriba en
+> vez de eliminarla: del booleano al historial JSON, del historial al sello de
+> commit, del sello a las filas que nadie compara.
+
+### El corolario práctico, que no es "no lo hagas"
+
+Los dos meta-gates **entregaron valor real antes de agotarse**, y confundir eso
+con el fracaso sería el error caro. El generador hoy: el bloque se genera en vez
+de tecleárse, `NO CORRIDO` no se lee como PASS, un exit≠0 no puede rendir PASS, lo
+truncado se descarta en vez de parsearse. Nada de eso depende de que el bloque sea
+infalsificable.
+
+Regla de asignación: **separá "el mecanismo hace lo que promete en uso honesto" de
+"el mecanismo resiste a alguien que lo quiere engañar".** Lo primero se cierra y
+rinde. Lo segundo, en un meta-gate, es un pozo: exige una raíz de confianza
+externa, y si no la hay, se acepta como riesgo **por escrito** y se sigue. Que es
+lo que se hizo con INT-12 y lo que se recomendó acá.
+
+### Y un límite honesto del BoundedLoop
+
+La regla dice tres ciclos y detener. Funcionó las dos veces, y las dos veces el
+tercer veto dejó una salida **chica y concreta** sobre la mesa. La tentación de
+hacer "una excepción, esta vez sí" es exactamente lo que la regla existe para
+impedir: si el criterio para reabrir es *"me parece que falta poco"*, no hay
+criterio. **El costo de detener es visible; el de no detener, no** — y por eso
+solo el primero se siente caro.
+
+---
+
+## Deriva a WIP=2, y por qué la disciplina se rompe donde uno se siente cómodo (2026-08-14)
+
+Corrí **dos implementadores en paralelo** —H9 del gate y el verificador del
+temporizador— más un auditor. Eso es WIP=2 con la regla de WIP=1 escrita en
+`CLAUDE.md` §2, en un repo cuyo ledger ya registra que **los rebuilds concurrentes
+corrompen mediciones**.
+
+Nadie lo detectó por un guard: lo detectó una persona leyendo. Y las consecuencias
+fueron reales aunque ninguna llegó a producir un dato falso:
+
+- un agente **mató y reinició el servidor** de otro para poder plantar su control
+  negativo;
+- `verificar:verificadores` quedó en **38/39** por un archivo a medio escribir, y
+  yo reporté ese rojo como estado del repo cuando era un artefacto de la
+  concurrencia;
+- el auditor del gate encontró en su `git status` **dos archivos que no eran de
+  nadie de los que él conocía**, y tuvo que declararlo como incertidumbre.
+
+**Por qué se rompió acá:** no en el código de producto, donde WIP=1 se siente
+obvio, sino en la **orquestación**, donde paralelizar se siente gratis porque los
+agentes "no se pisan los archivos". Se pisan el **estado compartido**: el
+servidor, la base, el árbol de git, y el reloj.
+
+Regla: **WIP=1 aplica a los agentes, no solo a los hitos.** Dos agentes que
+escriben en el mismo repo son dos hitos abiertos, aunque toquen archivos
+distintos. Y el corolario que casi me cuesta una medición: **no se mide con un
+agente escribiendo** — leer un archivo a medio escribir produce un número que
+después se cita.
+
+### El regalo que traía el orden
+
+Serializar tuvo un premio que paralelizar no daba: al aterrizar el gate primero,
+el árbol quedó con un **desfase orgánico real** —los bloques comiteados publicaban
+`verificar:verificadores 33/33` cuando hoy mide 39/39— y eso fue **mejor control
+negativo que cualquier fallo plantado**, porque nadie lo diseñó para ser cazado.
+El gate lo cazó por contenido y salió exit 1.
+
+**Un control negativo que ocurre solo vale más que uno construido**, porque no
+puede estar hecho a medida de la comprobación que lo va a mirar.

@@ -86,6 +86,7 @@ endpoint la calcula. Ver §5, que es el hallazgo de fondo. Construirla es FASE D
 | Capacidad | Origen | ¿Construido? | ¿Verificado? | Estado |
 |---|---|---|---|---|
 | Modelo de datos §4 | `spec.md` §4 · AC-DATA-1 | `src/db/schema.ts:33-184` | `verificar:esquema` → ver §0. Desde `b933ccb` **compara los 27 campos**, no cuenta tablas | **E+C+V** |
+| Invariantes del modelo, **declaradas en la base** | `spec.md` §9 · **AC-DATA-2** (creado por `f98a652`) | `src/db/schema.ts:148`, `:161`, `:166`, `:177` | `verificar:invariantes` → ver §0 | **E+C+V** — dejó de ser huérfano, ver §7 |
 | Registro de patente al ingreso | §2.1, §5 | `src/app/api/sesiones/route.ts:77` | `verificar:salida` → `11/11` | **E+C+V** |
 | Ingreso offline + sync | §3, §5 · AC-OP-1 | `src/lib/cola-local.ts:92` | `verificar:op1` → `11/11 · AC-OP-1: PASS` | **E+C+V** |
 | Temporizador de permanencia | `spec.md:177` | `src/app/pantalla-operador.tsx:75` | **NO.** `verificar:meas2` tiene 10 comprobaciones y ninguna lee lo que produce `duracion()`; ningún otro comando lo asevera | **E+C+SV** |
@@ -192,10 +193,23 @@ Tres razones concurrentes, y ninguna se arregla sola:
    `OPERACION_REAL_HABILITADA=false` solo entran patentes `FIXT`, que no son
    operación real. Medir H1 de verdad exige resolver `{{BASE_LICITUD}}` y
    `{{PLAZO_RETENCION_PATENTE}}` primero — es correcto que sea así.
-2. **Los verificadores limpian lo que crean.** Cada verificador de navegador
-   llama `limpiarFixtures()` al iniciar (`scripts/lib/fixtures.mjs`), así que
-   toda tanda termina en cero. Correcto para las pruebas, y significa que las
-   corridas nunca acumulan evidencia.
+2. **Los verificadores barren lo que encuentran, no lo que dejan.**
+   `limpiarFixtures()` (`scripts/lib/fixtures.mjs`) corre **al iniciar**, y lo
+   llaman **5 de los 8** verificadores de navegador (`a3`, `m4`, `meas2`, `op1`,
+   `endurecimiento`; no `pwa`, `ui` ni `int12`; `verificar-salida.mjs:10`
+   declara en su docstring que a propósito no limpia al inicio). Consecuencia:
+   cada tanda **borra las filas de la tanda anterior** y deja las suyas puestas
+   hasta la siguiente. Ninguna corrida acumula evidencia, que es lo que importa
+   para H1 — pero por un mecanismo distinto del que este documento describía.
+
+   > **Corrección (2026-08-14).** Acá decía *"cada verificador de navegador llama
+   > `limpiarFixtures()` al iniciar, así que toda tanda termina en cero"*, y §9
+   > repetía *"la base queda en cero al terminar"*. **Es falso, y se refuta
+   > corriendo `verificar:meas1`**, que hoy reporta 3 sesiones cerradas
+   > (`FIXT01/02/03`). Dos errores en una frase: *"cada"* son 5 de 8, y *"termina
+   > en cero"* confunde limpiar-al-iniciar con limpiar-al-terminar. Importa
+   > porque **FASE D dice construir un banco que acumula en vez de purgar**, y
+   > estaba partiendo de un modelo del purgado que no es el que corre.
 3. **No existe la consulta.** Aunque hubiera datos, nadie los agregaría: es la
    maqueta `1g`, no construida.
 
@@ -213,6 +227,7 @@ se midió.** No es una nota al pie: es el hallazgo de fondo de esta auditoría.
 | **¿La propiedad se cumple?** | **Sí, observada en producción**, sin depender del verificador: `f77e331` → `f77e331-o1sVm5pNFAKk` y `f77e331-WzcRtmYaY2KP` en dos deploys del mismo commit con árbol limpio |
 | **¿Verificado?** | **NO.** El gate es **FAIL** |
 | **Estado** | **E+C+SV** — el comando da `13/13 · INT-12: PASS` y ese PASS **no es confiable** |
+| **Disposición** | **Riesgo aceptado por decisión humana (2026-08-14)**, `LEDGER.md`. Cerrado como riesgo, **no como verificado**: no es lo mismo, y la distinción es el punto |
 
 Por qué el PASS de la base de evidencia no cuenta: el auditor forjó dos objetos
 en el historial JSON —sin build, sin deploy, sin tocar código— y obtuvo `13/13`.
@@ -230,14 +245,13 @@ Construido, verificado, y **sin AC en `spec.md`** que lo exija.
 
 | Qué | Dónde | Se verifica con | Por qué es huérfano |
 |---|---|---|---|
-| Invariantes de base (INT-15/16/17) | `src/db/schema.ts:148`, `:161`, `:166`, `:177` | `verificar:invariantes` → `8/8` | AC-DATA-1 verifica **presencia y forma**, no invariantes |
 | **M-4 entero: purga del dispositivo** | `src/lib/cola-local.ts:135`, `:163`, `:201`, `:276` | `verificar:m4` → `29/29` | **Un subsistema completo con verificador propio y ningún AC.** Cubre `purgarNoActivas`, `reconciliarActivas`, `borrarTodo`, la memoria de cierres de INT-9 y el monto en pantalla. Faltaba en esta matriz — tanto en capacidades como en huérfanos — pese a que sus números se citan en CU-04 y CU-09 |
-| Temporizador de permanencia | `src/app/pantalla-operador.tsx:75` | **nada** | `spec.md:177` lo pide y **ningún comando lo asevera**. No es solo huérfano: es la única capacidad del núcleo sin verificación alguna |
+| Temporizador de permanencia | `src/app/pantalla-operador.tsx:75` | **nada** | `spec.md:176` lo pide y **ningún comando lo asevera**. No es solo huérfano: es la única capacidad del núcleo sin verificación alguna |
 | Endurecimiento completo (INT-2, C-1, A-1, B-2, INT-4, INT-8, INT-11, INT-14) | `src/proxy.ts`, `src/lib/limite-intentos.ts`, `src/lib/sesion-token.ts`, `src/lib/tiempo.ts` | `verificar:endurecimiento` → `30/30` | nace de una revisión de seguridad posterior a `spec.md`; **ningún AC de §9 lo menciona** |
 | Capa de presentación (AC-UI-1..4) | `src/app/globals.css`, pantallas | `verificar:ui` → `18/18` | los AC-UI viven en `docs/diseno-…`, no en `spec.md` §9 |
 | Barrera de datos reales | `src/lib/fixtures.ts:12` | `verificar:a3` → `11/11` | nace de M4/A-3; `spec.md` §4 nombra los placeholders pero no exige la barrera |
 | Cota del reloj del cliente | `src/lib/tiempo.ts:91` | `verificar:endurecimiento` (INT-14) | INT-14, sin AC |
-| Guard de verificadores | `scripts/verificar-verificadores.mjs` | `verificar:verificadores` → `27/27` | herramienta interna |
+| Guard de verificadores | `scripts/verificar-verificadores.mjs` | `verificar:verificadores` → ver §0 | herramienta interna |
 | Guard de citas | `scripts/verificar-citas.mjs` | `verificar:citas` → ver §0 | creado en este loop |
 
 **Nota importante.** Que algo sea huérfano **no significa que esté mal**:
@@ -245,16 +259,32 @@ significa que su verificación no está anclada a la spec, así que un cambio fu
 podría eliminarlo sin violar ningún criterio escrito. Formalizar los que ya se
 verifican con comando es formalización; el resto es decisión.
 
+> **Corrección (2026-08-14).** Esta tabla listaba **9** huérfanos e incluía
+> *"Invariantes de base (INT-15/16/17)"*, justificado en que *"AC-DATA-1 verifica
+> presencia y forma, no invariantes"*. Era cierto **hasta `f98a652`**, que creó
+> **AC-DATA-2** en `spec.md` §9 exactamente para esas invariantes. Son **8**.
+>
+> Lo delata el propio comando que esta matriz cita: `verificar:ac` lista **6**
+> verificadores sin AC y `verificar:invariantes` **no está entre ellos** —
+> precisamente porque ya tiene AC. El 6 se midió; el 9 se contó a mano sobre una
+> tabla que FASE A dejó vieja. **FASE C habría arrancado con un ítem de alcance
+> ya cerrado.**
+>
+> Y este mismo párrafo pagaba dos veces el mismo defecto: la fila del guard de
+> verificadores decía `27/27` cuando el §0 generado, en este archivo, dice
+> **37/37**. El generador solo reescribe entre marcadores; §2, §3, §4 y §7 siguen
+> teniendo conteos tecleados. Los que quedan ahora citan **`→ ver §0`**.
+
 ---
 
 ## 8. Resumen numérico
 
 | Estado | Cantidad | Detalle |
 |---|---|---|
-| **E+C+V** | 20 | núcleo `spec.md` (13) + maquetas construidas (6) + fuentes autoalojadas |
+| **E+C+V** | 21 | núcleo `spec.md` (14, con las **invariantes** que pasaron de huérfanas a AC-DATA-2) + maquetas construidas (6) + fuentes autoalojadas |
 | **E+C+SV** | 2 | INT-12 (gate en FAIL) · **temporizador de permanencia** (ningún comando) |
 | **E+NC** (deuda) | 6 | deploy por `git push`, retención INT-7, `1e`, `1g`, `1l`, mitad de `1f` |
-| **C+NE** (huérfanos) | 9 | ver §7 — se sumaron **M-4 entero** y el temporizador |
+| **C+NE** (huérfanos) | 8 | ver §7. Eran 9: las **invariantes de base salieron**, porque `f98a652` les creó `AC-DATA-2` |
 | **Bloqueadas** | 6 maquetas | multisitio (ADR-001 no enmendado en esa fila) |
 | **Habilitadas y bloqueadas** | 2 maquetas | `1i`, `1j` — falta AC-SCOPE-1 y `{{PRECIO_SUSCRIPCION_UF}}` |
 | **Sin datos** | 1 | **H1** — el propósito del proyecto |
@@ -275,6 +305,8 @@ corrida generada. Tres advertencias honestas:
    el comando pasa y el gate no es confiable. Desde el 2026-08-14 está registrado
    como **riesgo aceptado por decisión humana** (`LEDGER.md`), no como pendiente.
    La matriz refleja el veredicto, no el número.
-3. **Una corrida verde es válida para el estado en que se tomó.** Los
-   verificadores de navegador limpian fixtures al iniciar, así que la base queda
-   en cero al terminar — que es precisamente por qué H1 no tiene datos.
+3. **Una corrida verde es válida para el estado en que se tomó.** 5 de los 8
+   verificadores de navegador limpian fixtures **al iniciar**, así que cada tanda
+   arrasa con las filas de la anterior y deja las suyas. La base no queda en
+   cero: queda con la última tanda. Ninguna acumula, que es por qué H1 no tiene
+   datos — ver §5.2.
