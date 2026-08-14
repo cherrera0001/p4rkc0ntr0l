@@ -2897,3 +2897,186 @@ Regla que este loop deja adoptada, del propio veto:
 
 > **Un gate que solo se probó contra un repo limpio no se probó.** Todo comando
 > nuevo se corre **con el fallo plantado** antes de escribirse en `spec.md`.
+
+---
+
+### 2026-08-14 · FASE A · registrada con retraso · **hueco en el ledger, reconocido**
+
+**Los dos últimos commits no estaban en este archivo.** `f98a652` y `b933ccb`
+reescribieron `spec.md` §9, crearon el gate de alcance y corrigieron
+`verificar-esquema.mjs`, y `grep "FASE A" LEDGER.md` daba **cero resultados**.
+`STATE.md` tampoco los mencionaba.
+
+La convención N°1 del proyecto —*nada se declara verificado sin comando y salida
+en el ledger*— la incumplió el loop que endureció el gate. Se registra acá, con
+la fecha real de la corrida (2026-08-14) y no con la del commit: fingir que se
+había escrito el 13 sería exactamente la clase de historial inventado por la que
+INT-12 quedó en FAIL.
+
+#### Qué entregó FASE A (commits `f98a652` y `b933ccb`)
+
+**AC-SCOPE-1 reescrito: de regex en una celda de tabla a script.** El VETO probó
+que la forma anterior era **inejecutable**: el pipe va escapado (`\|`) para no
+romper la tabla markdown, y en regex .NET `\|` es un pipe **literal**. Medido:
+`Select-String "next\|react"` → 0 líneas; `"next|react"` → 9. El criterio
+reportaba **PASS incondicionalmente**, incluso con `stripe` y `transbank-sdk`
+plantados en `package.json`. *Un criterio que siempre pasa es peor que no tener
+criterio.*
+
+El reemplazo escanea **por exclusión** —toda la superficie del producto salvo la
+frontera declarada `src/lib/suscripcion/`— en vez de enumerar archivos, porque
+una ruta nueva (`src/app/api/cobro/route.ts`) evade cualquier lista blanca.
+
+**El ciclo 3 cerró tres bypasses que el propio gate tenía**, reproducidos por el
+auditor sobre una versión que yo ya había dado por buena con 7/7 y 8/8:
+
+1. una ruta de nombre neutro (`api/cobro-salida/`) que importa la frontera y le
+   cobra al conductor;
+2. lo mismo desde un componente de UI del operador;
+3. el cobro del conductor **escondido dentro de la frontera de suscripción**,
+   que estaba exceptuada entera y sin ninguna regla sobre qué puede vivir adentro.
+
+Corrección: se invierte la enumeración —se enumera **lo permitido**
+(`SUPERFICIE_SUSCRIPCION`, hoy vacía) y todo lo demás se escanea por exclusión—
+más una regla nueva: la frontera **no puede importar el dominio del
+estacionamiento** (tarifa, sesión), porque eso *es* cobrarle al conductor.
+
+**Y `verificar:esquema` dejó de mentir sobre su alcance.** AC-DATA-1 promete
+*"entidades y campos"*; el comando contaba tablas, enums y FKs, e **imprimía** las
+columnas sin compararlas. Una columna "por si sirve" —lo que §4 y §7 prohíben por
+minimización— daba PASS. Se corrigió **el comando, no el criterio**: hoy compara
+los 27 campos, ni de más ni de menos. Por eso pasó de `4/4` a `8/8`.
+
+Regla adoptada, del propio veto:
+
+> **Un gate que solo se probó contra un repo limpio no se probó.**
+
+---
+
+### 2026-08-14 · INT-12 · **RIESGO ACEPTADO** por decisión humana · deja de bloquear
+
+El BoundedLoop **no se reabrió**: se decidió. Fundamento, sin cambios respecto al
+registro del 2026-08-13:
+
+| | |
+|---|---|
+| La corrección en `src/lib/version-app.ts` | **sana** — aprobada por el auditor en los ciclos 2 y 3 |
+| La propiedad en producción | **observada directamente**, sin depender del verificador |
+| El gate `verificar-int12.mjs` | **no confiable** — historial forjable y borrable |
+| INT-12 como hallazgo | **cerrado como riesgo aceptado**, no como verificado |
+
+Criterio: **priorización por riesgo real**, el mismo que ordenó M5. Un gate de
+invalidación de caché pesa menos que H1, que es la razón de existir del proyecto.
+
+La salida técnica que dejó el auditor —persistir la **URL inmutable del
+deployment** y **re-derivar** `{artefacto, versión}` de ella en cada corrida en
+vez de creerle al archivo, más dejar de gitignorearlo— queda documentada y
+**no implementada**. Es el camino si INT-12 vuelve a doler.
+
+Mecanismo para que la decisión no se lea mal más adelante: `npm run evidencia`
+imprime ese comando con la nota *"su PASS no es evidencia: el historial se puede
+forjar y borrar"*. La decisión viaja pegada al número.
+
+---
+
+### 2026-08-14 · FASE B · el bloque de evidencia se genera, ya no se teclea
+
+#### El defecto
+
+`docs/data/matriz-trazabilidad.md` §0 se titula **"medida, no afirmada"** y pega
+la salida de la suite. Se tecleó a mano, y se desfasó **dos veces**:
+
+1. `verificar:citas 15/15` cuando el comando daba 17/17. Se corrigió dentro del
+   propio documento, con la nota de que *"un conteo deriva y crece"*.
+2. `verificar:esquema 4/4` cuando `b933ccb` lo hizo comparar los 27 campos y pasó
+   a `8/8`. **Ése quedó sin corregir.**
+
+El proyecto ya había sacado la lección correcta —los AC citan el comando, no el
+número— pero la aplicó a `spec.md` §9 y **no** a los bloques de evidencia.
+*La lección que no se vuelve mecanismo se repite*, y ésta se repitió.
+
+#### El mecanismo: `npm run evidencia`
+
+`scripts/evidencia.mjs` corre los comandos del catálogo y emite el bloque entre
+marcadores `EVIDENCIA:INICIO/FIN`, que `--actualizar` reescribe en `STATE.md` y en
+`matriz-trazabilidad.md`. Tres propiedades, cada una por un defecto ya pagado:
+
+1. **Lo que no se corrió dice `NO CORRIDO`, no desaparece.** Misma forma que el
+   defecto de `verificar-endurecimiento` muriendo en la comprobación 15 de 30:
+   *un verificador que se muere miente hacia el lado optimista*, y un informe que
+   calla, también. El bloque cierra con la cobertura explícita: *"9 de 19"*.
+2. **Un comando sin veredicto se reporta `SIN VEREDICTO`**, nunca PASS inferido
+   del exit code. Ausencia de evidencia no es evidencia de ausencia.
+3. **Se estampa el commit y si el árbol estaba sucio.** Una evidencia tomada
+   sobre cambios sin commitear no describe un estado reproducible y lo dice ella
+   misma.
+
+Agregar un verificador exige agregarlo al catálogo: lo que no está enumerado no
+puede reportarse como faltante.
+
+#### El generador falló en su primera corrida, y el defecto era mío
+
+`verificar:meas1` salió `SIN VEREDICTO`. No es un defecto de `meas1`: imprime
+`AC-MEAS-1: PASS` **sin línea de recuento** —sus cuatro líneas son cifras, no
+comprobaciones— y `verificar:verificadores` lo acepta con razón. Mi lector exigía
+el recuento **antes** de mirar el veredicto. Corregido: recuento y veredicto son
+independientes; el recuento ausente se reporta `—` y el veredicto jamás se
+infiere del exit code.
+
+Segundo defecto encontrado de paso: la regex del veredicto solo admitía
+mayúsculas, y `verificar:salida` cierra con `Ciclo ingreso/salida: PASS`. Habría
+marcado SIN VEREDICTO al primer uso del grupo `servidor`.
+
+#### Evidencia · grupos `estatico` y `base`, commit `b933ccb`
+
+```
+npm run test                     exit=0  122/122  PASS
+npm run verificar:alcance        exit=0    9/9    PASS
+npm run verificar:alcance:prueba exit=0   15/15   PASS
+npm run verificar:ac             exit=0    5/5    PASS
+npm run verificar:citas          exit=0   17/17   PASS
+npm run verificar:verificadores  exit=0   33/33   PASS
+npm run verificar:esquema        exit=0    8/8    PASS
+npm run verificar:invariantes    exit=0    8/8    PASS
+npm run verificar:meas1          exit=0     —     PASS
+
+2/2 comprobaciones PASS
+EVIDENCIA: PASS
+```
+
+Los 10 restantes —`build`, `servidor`, `navegador`— **NO CORRIDOS** en esta
+tanda, dicho así en el bloque. Producción responde 200 en `/login`.
+
+---
+
+### 2026-08-14 · Estrategia adoptada · de spec-driven a **evidence-driven**
+
+El diagnóstico que la ordena, y que sale de la propia matriz:
+
+> **AC-MEAS-1 da PASS con cero filas.** Verifica que no haya nulos, no que haya
+> datos. *Un criterio que pasa sobre el conjunto vacío no puede refutar nada.*
+
+Hasta acá el proyecto verificó **propiedades del artefacto** —¿compila?, ¿existe
+el campo?, ¿el navegador computa 12px?— y lo hizo excepcionalmente bien. Lo que
+falta es verificar **propiedades del propósito**: que el sistema produzca la
+evidencia por la que existe. H1 y H2 necesitan verificadores que devuelvan **un
+número**, no un PASS.
+
+| Fase | Qué | Estado |
+|---|---|---|
+| **B** | Reparar el registro: LEDGER, STATE, `npm run evidencia` | **cerrada acá** |
+| **C** | Anclar la verificación a la spec: 9 huérfanos + 6 verificadores sin AC. Caso urgente: el **temporizador de permanencia**, única capacidad del núcleo con cero aserciones | siguiente |
+| **D** | **H1: convertir "SIN DATOS" en un número.** Consulta de mediana de tecleo, banco que acumula en vez de purgar, maqueta `1l`. Medir **no** requiere `{{UMBRAL_H1_SEGUNDOS}}`: comparar sí, medir no | pendiente |
+| **E** | INT-7: mecanismo de retención **parametrizado**, que falla cerrado si el plazo no está definido | pendiente |
+| **F** | INT-12 | resuelta arriba: riesgo aceptado |
+
+**Por qué FASE E se puede construir hoy.** El VETO 1 de FASE 3 probó que el
+esquema **no** bloquea el enmascaramiento: `patente` es `text NOT NULL` sin CHECK
+de formato, el único índice único es parcial sobre `estado='activa'` —un
+centinela compartido en filas cerradas no colisiona— y ninguna FK apunta a
+`sesion_vehiculo`. Tres documentos culpaban al esquema de un bloqueo **que es de
+decisión**. Construir el mecanismo leyendo el plazo de una variable que falla
+cerrado hace que `{{PLAZO_RETENCION_PATENTE}}` deje de bloquear la *construcción*
+y bloquee solo el *encendido*.
+
+Ningún `{{placeholder}}` se rellenó.

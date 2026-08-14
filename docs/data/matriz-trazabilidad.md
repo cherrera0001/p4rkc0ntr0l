@@ -1,8 +1,8 @@
 # Matriz de trazabilidad
 
 > **Medida, no afirmada.** La columna *¿Verificado?* se pobló con la salida real
-> de los comandos, corridos el 2026-08-13 contra el commit `8c28d9a` con el
-> servidor local levantado desde `npm run build && npm start`.
+> de los comandos. El bloque de §0 **ya no se teclea**: lo genera
+> `npm run evidencia` (ver la nota al pie de esta sección).
 >
 > Ningún estado se declara por leer un docstring.
 
@@ -10,51 +10,63 @@
 
 ## 0. Base de evidencia — salida real de la suite
 
-```
-verificar:esquema        exit=0   4/4    AC-DATA-1: PASS
-verificar:invariantes    exit=0   8/8    INT-15 / INT-16 / INT-17: PASS
-verificar:verificadores  exit=0  27/27   VERIFICADORES: PASS
-verificar:citas          exit=0  17/17   CITAS: PASS
-verificar:endurecimiento exit=0  30/30   ENDURECIMIENTO: PASS
-verificar:ui             exit=0  18/18   SPEC-004: PASS
-verificar:pwa            exit=0  13/13   AC-PWA-1: PASS
-verificar:op1            exit=0  11/11   AC-OP-1: PASS
-verificar:a3             exit=0  11/11   A-3: PASS
-verificar:m4             exit=0  29/29   M-4: PASS
-verificar:salida         exit=0  11/11   Ciclo ingreso/salida: PASS
-verificar:meas1          exit=0          AC-MEAS-1: PASS
-verificar:meas2          exit=0  10/10   AC-MEAS-2: PASS
-verificar:int12          exit=0  13/13   INT-12: PASS   <- ver la fila de INT-12
-npm test                 exit=0  122/122
-```
+<!-- EVIDENCIA:INICIO -->
+<!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-> **Corrección.** Una versión anterior de esta sección pegaba
-> `verificar:citas 15/15`. Ese número correspondía a un árbol donde `MER.md`
-> todavía no tenía diagrama; hoy son 17/17. En la sección que se titula *"medida,
-> no afirmada"*, la única línea que no reproducía era la del guard escrito en
-> este mismo loop. Corregida, y anotada como recordatorio de que **un conteo
-> deriva y crece**: por eso los AC deben citar el comando, no el número.
+**Commit:** `b933ccb` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-14 · **grupos:** estatico, base
 
-Gate de alcance, comandos de `CLAUDE.md` §1:
+| Comando | Resultado | Veredicto | Nota |
+|---|---|---|---|
+| `npm run test` | `exit=0` · 122/122 | PASS |  |
+| `npm run verificar:alcance` | `exit=0` · 9/9 | PASS |  |
+| `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
+| `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
+| `npm run verificar:citas` | `exit=0` · 17/17 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 33/33 | PASS |  |
+| `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
+| `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
+| `npm run verificar:meas1` | `exit=0` · — | PASS |  |
+| `npm run build` | **NO CORRIDO** · grupo `build` | — |  |
+| `npm run verificar:salida` | **NO CORRIDO** · grupo `servidor` | — |  |
+| `npm run verificar:pwa` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:op1` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:a3` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:m4` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:meas2` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:endurecimiento` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-```
-Select-String -Path package.json -Pattern "stripe|mercadopago|webpay|transbank|flow"
-  -> sin resultados
+**Cobertura de esta corrida: 9 de 19 comandos.** Los 10 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+<!-- EVIDENCIA:FIN -->
 
-Get-ChildItem -Recurse src\db | Select-String "pago|transaccion|sucursal|reserva"
-  -> sin resultados
+> **Por qué este bloque se genera y ya no se escribe.** Se tecleó a mano y se
+> desfasó dos veces:
+>
+> 1. `verificar:citas 15/15` cuando el comando daba 17/17. Se corrigió acá mismo,
+>    con la nota de que *"un conteo deriva y crece"*.
+> 2. `verificar:esquema 4/4` cuando `b933ccb` lo hizo comparar los 27 campos y
+>    pasó a dar 8/8. **Ése quedó sin corregir**, en la sección que se titula
+>    *"medida, no afirmada"*.
+>
+> El proyecto ya había sacado la lección —los AC citan el comando, no el número—
+> pero la aplicó a `spec.md` §9 y no a los bloques de evidencia. La lección que no
+> se vuelve mecanismo se repite, y ésta se repitió. Ahora el bloque lleva el
+> commit, avisa si el árbol estaba sucio, y **lo que no se corrió dice
+> `NO CORRIDO` en vez de desaparecer**: un informe que omite lo que no corrió se
+> lee como si todo hubiera pasado.
 
-Get-ChildItem -Recurse src,public | Select-String "fonts.googleapis|unpkg|cdn."
-  -> sin resultados
-```
+**Gate de alcance.** Los tres `Select-String` de `CLAUDE.md` §1 que esta sección
+pegaba quedaron superados por `npm run verificar:alcance`, que escanea **por
+exclusión** en vez de enumerar, y que está probado **con el fallo plantado**
+(`verificar:alcance:prueba`). Ambos aparecen en la tabla de arriba. El motivo del
+reemplazo está en `spec.md` §9, enmienda de AC-SCOPE-1.
 
-Estado del dato de H1, consultado contra la base:
-
-```
-sesiones totales: 0 · cerradas: 0 · fixtures: 0
-H1 · sesiones cerradas NO fixture: 0
-H1 · mediana de tecleo: SIN DATOS
-```
+**Estado del dato de H1.** `verificar:meas1` reporta hoy sesiones cerradas con
+tecleo completo, pero **su recuento varía con los fixtures que dejó la última
+corrida** y no distingue fixture de operación real. La mediana de tecleo —la
+métrica de H1— **sigue sin existir como consulta**: ningún script, pantalla ni
+endpoint la calcula. Ver §5, que es el hallazgo de fondo. Construirla es FASE D.
 
 ---
 
@@ -73,7 +85,7 @@ H1 · mediana de tecleo: SIN DATOS
 
 | Capacidad | Origen | ¿Construido? | ¿Verificado? | Estado |
 |---|---|---|---|---|
-| Modelo de datos §4 | `spec.md` §4 · AC-DATA-1 | `src/db/schema.ts:33-184` | `verificar:esquema` → `4/4 · AC-DATA-1: PASS` | **E+C+V** |
+| Modelo de datos §4 | `spec.md` §4 · AC-DATA-1 | `src/db/schema.ts:33-184` | `verificar:esquema` → ver §0. Desde `b933ccb` **compara los 27 campos**, no cuenta tablas | **E+C+V** |
 | Registro de patente al ingreso | §2.1, §5 | `src/app/api/sesiones/route.ts:77` | `verificar:salida` → `11/11` | **E+C+V** |
 | Ingreso offline + sync | §3, §5 · AC-OP-1 | `src/lib/cola-local.ts:92` | `verificar:op1` → `11/11 · AC-OP-1: PASS` | **E+C+V** |
 | Temporizador de permanencia | `spec.md:177` | `src/app/pantalla-operador.tsx:75` | **NO.** `verificar:meas2` tiene 10 comprobaciones y ninguna lee lo que produce `duracion()`; ningún otro comando lo asevera | **E+C+SV** |
@@ -83,9 +95,9 @@ H1 · mediana de tecleo: SIN DATOS
 | Instrumentación de tecleo | §6 · AC-MEAS-1 | `src/db/schema.ts:123` | `verificar:meas1` → `AC-MEAS-1: PASS` | **E+C+V** ⚠ ver §5 |
 | PWA instalable | §8 · AC-PWA-1 | `src/app/manifest.ts:11` | `verificar:pwa` → `13/13` | **E+C+V** |
 | Compila | AC-BUILD-1 | — | `npm run build` → exit=0 | **E+C+V** |
-| Sin pasarela de pago | AC-SCOPE-1 | — | `Select-String` → sin resultados | **E+C+V** |
-| Sin entidades prohibidas | AC-SCOPE-2 | — | `Select-String` sobre `src/db` → sin resultados | **E+C+V** |
-| Sin módulo LPR/cámara | AC-SCOPE-3 | — | `Select-String` sobre `src,public` → sin resultados | **E+C+V** |
+| **El conductor no paga dentro del sistema** | AC-SCOPE-1 (reescrito, `f98a652`) | — | `verificar:alcance` → ver §0, **por exclusión**; y `verificar:alcance:prueba`, que lo corre **con el fallo plantado**. El `Select-String` anterior daba PASS incondicionalmente | **E+C+V** |
+| Sin entidades prohibidas | AC-SCOPE-2 | — | `verificar:alcance` → ver §0 | **E+C+V** |
+| Sin módulo LPR/cámara | AC-SCOPE-3 | — | `verificar:alcance` → ver §0 | **E+C+V** |
 | Auth mínima de dos roles | §3 | `src/lib/auth.ts:104` | `verificar:meas2` (separación en ambas direcciones) | **E+C+V** |
 | **Deploy por `git push`** | §8 | **NO** — corre por CLI de Vercel | — | **E+NC** |
 | **Retención / enmascarado de patente** | §4, §7 (`spec.md:150`) | **NO** — `patente` es `NOT NULL` | — | **E+NC** · INT-7 |
@@ -226,7 +238,7 @@ Construido, verificado, y **sin AC en `spec.md`** que lo exija.
 | Barrera de datos reales | `src/lib/fixtures.ts:12` | `verificar:a3` → `11/11` | nace de M4/A-3; `spec.md` §4 nombra los placeholders pero no exige la barrera |
 | Cota del reloj del cliente | `src/lib/tiempo.ts:91` | `verificar:endurecimiento` (INT-14) | INT-14, sin AC |
 | Guard de verificadores | `scripts/verificar-verificadores.mjs` | `verificar:verificadores` → `27/27` | herramienta interna |
-| Guard de citas | `scripts/verificar-citas.mjs` | `verificar:citas` → `15/15` | creado en este loop |
+| Guard de citas | `scripts/verificar-citas.mjs` | `verificar:citas` → ver §0 | creado en este loop |
 
 **Nota importante.** Que algo sea huérfano **no significa que esté mal**:
 significa que su verificación no está anclada a la spec, así que un cambio futuro
@@ -251,12 +263,18 @@ verifican con comando es formalización; el resto es decisión.
 
 ## 9. Límite declarado de esta matriz
 
-La columna *¿Verificado?* cita comandos que **acabo de correr**, con su salida
-pegada en §0. Dos advertencias honestas:
+La columna *¿Verificado?* cita comandos, y §0 pega la salida real de la última
+corrida generada. Tres advertencias honestas:
 
-1. **`verificar:int12` aparece con `13/13 PASS` en la base de evidencia y su fila
-   dice FAIL.** No es contradicción: el comando pasa y el gate no es confiable.
+1. **§0 no siempre corre la suite entera.** Los grupos `navegador`, `servidor` y
+   `build` exigen la app levantada; cuando no se corrieron, la tabla lo dice
+   `NO CORRIDO` y esta matriz sigue citando el veredicto vigente registrado en
+   `LEDGER.md`. Un `NO CORRIDO` **no es un PASS viejo**: es la ausencia de una
+   medición de hoy.
+2. **`verificar:int12` imprime `PASS` y su fila dice FAIL.** No es contradicción:
+   el comando pasa y el gate no es confiable. Desde el 2026-08-14 está registrado
+   como **riesgo aceptado por decisión humana** (`LEDGER.md`), no como pendiente.
    La matriz refleja el veredicto, no el número.
-2. **Una corrida verde es válida para el estado en que se tomó.** Los
-   verificadores de navegador limpian fixtures al iniciar, así que la base quedó
+3. **Una corrida verde es válida para el estado en que se tomó.** Los
+   verificadores de navegador limpian fixtures al iniciar, así que la base queda
    en cero al terminar — que es precisamente por qué H1 no tiene datos.

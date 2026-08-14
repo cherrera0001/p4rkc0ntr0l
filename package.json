@@ -28,6 +28,7 @@
     "verificar:alcance:prueba": "node scripts/verificar-alcance.prueba.mjs",
     "verificar:citas": "node scripts/verificar-citas.mjs",
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
+    "evidencia": "node scripts/evidencia.mjs",
     "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"
   },
   "dependencies": {
