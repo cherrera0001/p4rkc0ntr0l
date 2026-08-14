@@ -68,25 +68,28 @@ no corridas contra su celda esperada, que el generador ya conoce; y sacar la
 comprobación de marcadores únicos de la rama `--actualizar`), pero **no la aplico
 sin decisión**: la regla dice que un BoundedLoop agotado no se reabre.
 
-**Defecto vivo, detectado y no corregido:** el bloque comiteado de este archivo
-publica 19 filas y el catálogo tiene 21 — falta `verificar:temporizador` entero, y
-el gate no lo dice porque cae entre las filas saltadas.
+**Defecto que esto ya cerró:** el bloque comiteado publicaba 19 filas contra un
+catálogo de 21 —faltaba `verificar:temporizador` entero— y el gate no lo decía,
+porque caía entre las filas saltadas. Al regenerar sobre `09fcf87` el bloque pasó
+a publicar las 21. **Se cerró regenerando, no verificando:** el agujero que lo
+permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 
 ## Base de evidencia — generada, no tecleada
 
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `b933ccb` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-14 · **grupos:** estatico, base
+**Commit:** `09fcf87` · árbol limpio · **corrido:** 2026-08-14 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
 | `npm run test` | `exit=0` · 122/122 | PASS |  |
 | `npm run verificar:alcance` | `exit=0` · 9/9 | PASS |  |
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
+| `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
 | `npm run verificar:citas` | `exit=0` · 17/17 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 33/33 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 39/39 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
@@ -97,11 +100,14 @@ el gate no lo dice porque cae entre las filas saltadas.
 | `npm run verificar:a3` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:m4` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:meas2` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:temporizador` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:endurecimiento` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 9 de 19 comandos.** Los 10 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 10 de 21 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+
+**Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->
 
 Los grupos `build`, `servidor` y `navegador` exigen la app levantada. Para la

@@ -13,16 +13,17 @@
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `b933ccb` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-14 · **grupos:** estatico, base
+**Commit:** `09fcf87` · árbol limpio · **corrido:** 2026-08-14 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
 | `npm run test` | `exit=0` · 122/122 | PASS |  |
 | `npm run verificar:alcance` | `exit=0` · 9/9 | PASS |  |
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
+| `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
 | `npm run verificar:citas` | `exit=0` · 17/17 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 33/33 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 39/39 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
@@ -33,11 +34,14 @@
 | `npm run verificar:a3` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:m4` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:meas2` | **NO CORRIDO** · grupo `navegador` | — |  |
+| `npm run verificar:temporizador` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:endurecimiento` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 9 de 19 comandos.** Los 10 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 10 de 21 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+
+**Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->
 
 > **Por qué este bloque se genera y ya no se escribe.** Se tecleó a mano y se
@@ -89,7 +93,7 @@ endpoint la calcula. Ver §5, que es el hallazgo de fondo. Construirla es FASE D
 | Invariantes del modelo, **declaradas en la base** | `spec.md` §9 · **AC-DATA-2** (creado por `f98a652`) | `src/db/schema.ts:148`, `:161`, `:166`, `:177` | `verificar:invariantes` → ver §0 | **E+C+V** — dejó de ser huérfano, ver §7 |
 | Registro de patente al ingreso | §2.1, §5 | `src/app/api/sesiones/route.ts:77` | `verificar:salida` → `11/11` | **E+C+V** |
 | Ingreso offline + sync | §3, §5 · AC-OP-1 | `src/lib/cola-local.ts:92` | `verificar:op1` → `11/11 · AC-OP-1: PASS` | **E+C+V** |
-| Temporizador de permanencia | `spec.md:177` | `src/app/pantalla-operador.tsx:75` | **NO.** `verificar:meas2` tiene 10 comprobaciones y ninguna lee lo que produce `duracion()`; ningún otro comando lo asevera | **E+C+SV** |
+| Temporizador de permanencia | `spec.md:176` | `src/app/pantalla-operador.tsx:75` | **TODAVÍA NO.** Existe `verificar:temporizador`, pero está **VETADO** (2026-08-14): toleraba ±1 min sobre un display de granularidad de un minuto, así que un error sistemático daba 15/15 PASS. `AC-OP-3` **no se escribe** hasta que el comando sostenga lo que el criterio afirmaría | **E+C+SV** |
 | Cálculo de precio a la salida | §2.3, §5 · AC-OP-2 | `src/lib/tarificacion.ts:75` | `npm test` → 122 pruebas, 0 fallos | **E+C+V** |
 | Panel del dueño | §2.4, §6 · AC-MEAS-2 | `src/app/dueno/page.tsx:38` | `verificar:meas2` → `10/10 · AC-MEAS-2: PASS` | **E+C+V** |
 | Descuadre visible | §6 | `src/app/dueno/descuadre.tsx:21` | `verificar:meas2` | **E+C+V** |
