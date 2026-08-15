@@ -3828,3 +3828,140 @@ docs/data/flujos.md · aperturas = 3
 `core.autocrlf=true` y no hay `.gitattributes`: **un clon nuevo vuelve a CRLF y el
 guard vuelve a fallar**, arrastrando el *«PASS · 0 diagramas»* sobre el conjunto
 vacío. Sigue siendo decisión humana, y ahora con el matiz de que hoy no se ve.
+
+---
+
+## 2026-08-15 · Documentación T01 · entregable 4 (I2) · **VETO y después PASA**
+
+Selección priorizada para el prototipo — Ítem 3 del Trabajo 01. Archivo nuevo
+`docs/data/seleccion-prototipo.md`. **No se tocó `src/`, `scripts/`, `spec.md` ni
+migraciones**; comprobado con `git diff --stat` sobre esas rutas: vacío.
+
+### Entregado
+
+Se seleccionan **tres de las diez** historias: **H-01** (ingreso sin señal),
+**H-03** (salida y monto), **H-05** (ocupación ahora). Cada una contra los tres
+ejes —velocidad, importancia, complejidad—, y **las siete descartadas también se
+puntúan**: una priorización que solo muestra a los ganadores no es una
+priorización.
+
+El criterio se fija **antes** de la lista, a propósito, y se ancla en `spec.md`
+§1 (*«el riesgo central es adopción, no escala»*). Tres reglas de desempate: gana
+lo que mueve una hipótesis · la complejidad alta no descarta cuando la
+complejidad **es** la hipótesis · el prototipo cierra un ciclo, no exhibe
+pantallas.
+
+**La regla 2 se escribió sabiendo que parecería hecha a medida de H-01, y el
+auditor la atacó por eso. Sobrevivió:** es corolario de la regla 1, está anclada
+fuera del documento (`spec.md` §3 *«offline-first (no opcional)»*, §11) y no
+rescata ni hunde a ninguna otra historia — H-04 tiene complejidad ALTA y queda
+fuera igual, por importancia MEDIA.
+
+### El hallazgo que la selección produce
+
+**El prototipo está completo como producto y vacío como instrumento.** Las tres
+historias seleccionadas están construidas y desplegadas; la hipótesis que las
+justifica **nunca se midió**. Bajo la propia regla 1, el siguiente incremento no
+es una historia de la lista: es el instrumento que le falta a H-01 — y **CU-10 no
+tiene ni siquiera historia, porque no tiene actor**.
+
+### Ciclo 1 · **VETO** · cuatro hallazgos terminales
+
+**1. El bloque «medido HOY» no reproducía.** El documento publicaba, bajo prompt
+`$` y el rótulo *«Lo medido hoy, en esta corrida»*:
+
+```
+$ npm run verificar:citas
+21/21 comprobaciones PASS · CITAS: PASS   exit=0
+```
+
+El `21/21` es de la iteración anterior —`LEDGER.md` y `STATE.md`, **antes de que
+el archivo existiera**—. Al escanearse a sí mismo el documento agrega dos
+comprobaciones: el número real es **23/23**. Se copió del ledger y se lo presentó
+como transcripción de una corrida.
+
+**Y ocurrió dentro de la sección que declara que *«un PASS viejo no es una
+medición de hoy»*.** El defecto no es el número: es haber escrito una
+transcripción sin correrla. Es la misma familia que INT-12 y que el gate de
+evidencia — un artefacto que *afirma* el resultado de una verificación.
+
+**2. La razón de descarte de H-07 era falsa contra el árbol.** Decía que el
+descuadre *«no se puede demostrar sin datos de varios días»*. No acumula nada:
+
+```
+src/app/dueno/descuadre.tsx:30  const diferencia = valido ? valor - ocupacionRegistrada : null;
+src/app/dueno/descuadre.tsx:12  * decisión correcta en minimización: es una comparación puntual
+scripts/verificar-meas2.mjs:231 asevera el descuadre DESPUÉS de limpiar fixtures
+```
+
+Una razón inventada que llega a la conclusión correcta sigue siendo inventada. Se
+reemplazó por la verdadera, que ya estaba escrita una fila más arriba para H-06.
+
+**3. La revelación del estado construido era selectiva.** El documento declaraba
+construidas *las tres seleccionadas*. Son **siete de diez** (H-01..H-07). Y
+atribuía `verificar:meas2` 10/10 **solo a H-05**, cuando el mismo verificador
+asierta H-06 (`scripts/verificar-meas2.mjs:211`) y H-07 (`:232`): le regalaba la
+evidencia al ganador y se la escondía a los descartados. Además el lenguaje de
+los descartes —*«se agrega apenas haya salidas reales»*, *«entra en la primera
+iteración post-prototipo»*— daba a entender que eran cosas por construir.
+
+**§3 no descarta cosas por construir: descarta cosas ya desplegadas.** Corregido
+con una tabla de las diez.
+
+**4. H-03 violaba la escala del propio documento.** El eje dice *dato personal →
+ALTA*; la fila decía MEDIA puntuando solo la aritmética de fracción y mínimo.
+H-03 es la única de las tres seleccionadas que **devuelve una patente**
+(`src/app/api/sesiones/[id]/salida/route.ts:31`). Corregida a **ALTA**. La
+selección no cambió; el riesgo declarado sí, que era el punto del eje.
+
+Más cinco menores, los cinco corregidos: `{{INSTANTE_FACTURABLE}}` marcado
+**propuesto** —no está en `spec.md` §12, grepeado: 0 ocurrencias—; dos citas que
+resolvían al encabezado en vez de al hecho (`casos-uso.md:515`→`:522`,
+`contexto.ts:52`→`:53`); el argumento de H-02, que ahora cita el `setInterval`
+(`src/app/pantalla-operador.tsx:268`) y **declara que H-02 entra sin verificador**;
+y dos conteos de precisión falsa.
+
+### Ciclo 2 · **PASA**
+
+Los cuatro cerrados con las líneas abiertas por el auditor, no con descripciones.
+Los errores del ciclo 1 **quedan escritos dentro del documento** como notas de
+corrección —qué decía, por qué era falso, quién lo encontró—, no borrados.
+
+### Evidencia de comando · corrida del ciclo 2
+
+```
+$ npm test
+ℹ tests 122 · ℹ suites 30 · ℹ pass 122 · ℹ fail 0        exit=0
+
+$ npm run verificar:citas
+PASS · docs/data/seleccion-prototipo.md · todas las citas archivo:línea
+       resuelven · 31 citas
+23/23 comprobaciones PASS · CITAS: PASS                   exit=0
+
+$ npm run verificar:alcance
+9/9 comprobaciones PASS · ALCANCE: PASS                   exit=0
+```
+
+Registrado y **no re-corrido hoy** —exige app levantada y base—: `verificar:op1`
+11/11, `verificar:salida` 11/11, `verificar:meas2` 10/10. Los tres números
+existen en este ledger; comprobado con `git grep -c`.
+
+### Nota de proceso — el commit se adelantó al veredicto
+
+El commit `6c8754e` incluye la **versión vetada** de `seleccion-prototipo.md`: se
+commiteó a pedido humano mientras el ciclo 1 estaba corriendo, declarándolo punto
+de guardado y no entregable cerrado. La corrección va en el commit siguiente.
+Se registra porque es una desviación de WIP=1, igual que la de M6, y no se
+disimula.
+
+### Delta de puntaje
+
+| Ítem | Antes | Después | Por qué |
+|---|---|---|---|
+| 1 | 10/10 | 10/10 | sin cambio |
+| 2 | 80/80 | 80/80 | sin cambio |
+| 3 | **3/10** | **10/10** | selección de 1–3 historias, justificada contra los tres ejes y anclada a `spec.md` §1, con las descartadas puntuadas |
+| **Total** | **93/100** | **100/100** | estimado |
+
+**El total es una estimación propia, no una nota puesta por el evaluador.** Se
+escribe como estimación y no como hecho.

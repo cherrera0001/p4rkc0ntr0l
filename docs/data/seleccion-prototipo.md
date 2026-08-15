@@ -69,7 +69,15 @@ Si se pudiera construir una sola historia, sería ésta.
 **H-02 viaja adentro y no se contabiliza aparte.** El temporizador se renderiza en
 la misma fila de la misma lista (`src/app/pantalla-operador.tsx:555`, con
 `duracion()` en `src/app/pantalla-operador.tsx:75`): no es una decisión de
-construcción separable, es una columna. Sacarla no ahorra trabajo.
+construcción separable, es una columna. Y el intervalo que la hace avanzar sola
+(`src/app/pantalla-operador.tsx:268`) **ya lo necesita H-01** para el refetch
+periódico y el reintento de la cola. Sacarla no ahorra trabajo.
+
+> **Lo que entra con ella, y hay que decirlo:** H-02 **no tiene verificador**.
+> `verificar:temporizador` está vetado y AC-OP-3 no existe
+> (`docs/data/historias-usuario.md:65`). Meterla dentro de H-01 importa a la
+> historia insignia del prototipo un requisito que ningún comando sostiene. Se
+> acepta a propósito, no en silencio.
 
 ### 1.2 · H-03 — Registrar la salida y ver el monto a cobrar
 
@@ -77,9 +85,15 @@ construcción separable, es una columna. Sacarla no ahorra trabajo.
 
 | Eje | Valor | Por qué |
 |---|---|---|
-| Velocidad | **MEDIA** | una ruta, una función pura de tarificación y su render |
+| Velocidad | **MEDIA** | una ruta y una función pura de tarificación — más lo que la ruta realmente lleva: pertenencia (`src/app/api/sesiones/[id]/salida/route.ts:66`), idempotencia (`:79`) y el acotado del reloj del cliente (`:99`) |
 | Importancia | **ALTA** | cierra el ciclo. Sin salida no hay `monto_calculado`, y sin eso H2 no tiene insumo |
-| Complejidad | **MEDIA** | la aritmética de fracción y mínimo es sutil, pero es una función pura y probable |
+| Complejidad | **ALTA** | **por la propia escala: toca dato personal.** La ruta devuelve la patente al cliente (`src/app/api/sesiones/[id]/salida/route.ts:31`) y la historia exige borrarla del dispositivo en el acto |
+
+> **Corrección del ciclo 1 de auditoría, registrada acá y no escondida:** esta
+> fila decía **MEDIA**, puntuando solo la aritmética de fracción y mínimo. Contra
+> la escala de §1 —*dato personal → ALTA*— era insostenible: H-03 es la única de
+> las tres seleccionadas que **devuelve una patente**. La selección no cambia; lo
+> que cambia es el riesgo declarado, que era justamente el punto del eje.
 
 Es la mitad que la regla 3 vuelve obligatoria. Y es donde el prototipo entrega su
 valor visible más barato: **el operador deja de calcular de cabeza.** El cobro
@@ -140,7 +154,7 @@ La rebanada es **vertical y completa**, no tres pantallas sueltas:
 
 **La auth aparece en la tabla y no es una de las tres historias seleccionadas.**
 Es precondición, no capacidad: `spec.md` §5 arranca con el operador *«ya
-autenticado»*. Es el mismo hueco que `docs/data/casos-uso.md:515` declara para
+autenticado»*. Es el mismo hueco que `docs/data/casos-uso.md:522` declara para
 CU-01 — hay caso de uso y no hay historia, y escribirla sería autorar un
 requisito.
 
@@ -151,10 +165,10 @@ requisito.
 | Historia | Vel. | Imp. | Compl. | Por qué queda fuera |
 |---|---|---|---|---|
 | **H-02** temporizador (`docs/data/historias-usuario.md:47`) | ALTA | MEDIA | BAJA | **No se descarta: viaja dentro de H-01.** No es separable — es una columna de la misma lista |
-| **H-04** entregar el turno (`docs/data/historias-usuario.md:108`) | MEDIA | MEDIA | ALTA | Es exigencia de la Ley 21.719 en dispositivo compartido, no de una hipótesis. **Imprescindible para operar de verdad; no para probar H1.** Entra en la primera iteración post-prototipo |
-| **H-06** ingresos del día (`docs/data/historias-usuario.md:159`) | ALTA | MEDIA | BAJA | Es H-05 más una suma y un corte por zona horaria. Barata, pero **redundante como evidencia**: si el dueño ya reacciona a la ocupación, H2 ya se movió. Se agrega apenas haya salidas reales |
-| **H-07** descuadre (`docs/data/historias-usuario.md:184`) | ALTA | MEDIA | BAJA | Es el argumento comercial más fuerte del panel, y **no se puede demostrar sin datos de varios días**. Exhibirlo en un prototipo vacío lo desperdicia |
-| **H-08** cambiar tarifa (`docs/data/historias-usuario.md:213`) | MEDIA | BAJA | MEDIA | Producto, no hipótesis: el versionado ya existe (`src/lib/contexto.ts:52`), falta la pantalla. Además su maqueta **contradice AC-OP-2** (`docs/data/casos-uso.md:453`), así que construirla mal es peor que no construirla |
+| **H-04** entregar el turno (`docs/data/historias-usuario.md:108`) | MEDIA | MEDIA | ALTA | Es exigencia de la Ley 21.719 en dispositivo compartido, no de una hipótesis. **Imprescindible para operar de verdad; no para probar H1.** Fuera del recorte mínimo — aunque **ya está construida**: ver §4 |
+| **H-06** ingresos del día (`docs/data/historias-usuario.md:159`) | ALTA | MEDIA | BAJA | Es H-05 más una suma y un corte por zona horaria. Barata, pero **redundante como evidencia**: si el dueño ya reacciona a la ocupación, H2 ya se movió. **Ya está construida**: ver §4 |
+| **H-07** descuadre (`docs/data/historias-usuario.md:184`) | ALTA | MEDIA | BAJA | Misma razón que H-06, y no otra: H-05 ya mueve H2 y el descuadre **no agrega evidencia nueva sobre la hipótesis**. **Ya está construida**: ver §4 |
+| **H-08** cambiar tarifa (`docs/data/historias-usuario.md:213`) | MEDIA | BAJA | MEDIA | Producto, no hipótesis: el versionado ya existe (`src/lib/contexto.ts:53`), falta la pantalla. Además su maqueta **contradice AC-OP-2** (`docs/data/casos-uso.md:453`), así que construirla mal es peor que no construirla |
 | **H-09** alta de un cliente (`docs/data/historias-usuario.md:247`) | BAJA | BAJA | ALTA | **Bloqueada por alcance**: ADR-004 excluye por nombre la entidad `tenant` y el rol `plataforma`. Requiere ADR-005. Y es escala, que es justo el riesgo que `spec.md` §1 declara *secundario* |
 | **H-10** revocar acceso (`docs/data/historias-usuario.md:278`) | MEDIA | BAJA | MEDIA | Falta la columna de estado (`src/db/schema.ts:50`) y falta decidir a quién le toca el acto — `{{ACTOR_BAJA_USUARIO}}` |
 
@@ -162,27 +176,75 @@ requisito.
 tan baratas como H-05 y quedan fuera igual, porque no agregan evidencia que H-05 no
 dé antes. H-01 es la más cara de las diez y entra primera.
 
+> **Razón de descarte corregida tras el ciclo 1 de auditoría.** Acá decía que
+> H-07 *«no se puede demostrar sin datos de varios días»*. **Es falso contra el
+> árbol**, y el auditor lo refutó **leyendo dos archivos** —no corriéndolos, y la
+> palabra importa en un documento que acaba de aprender esa diferencia—: el
+> descuadre es una
+> comparación puntual que no persiste nada (`src/app/dueno/descuadre.tsx:30`, y
+> su encabezado en `src/app/dueno/descuadre.tsx:12` lo declara decisión de
+> minimización), y `verificar-meas2` lo demuestra **desde tabla vacía** —limpia
+> los fixtures al arrancar y después asevera la diferencia
+> (`scripts/verificar-meas2.mjs:231`)—. Se reemplazó por la razón verdadera, que
+> además ya estaba escrita una fila más arriba para H-06. Una razón inventada que
+> llega a la misma conclusión sigue siendo inventada.
+
 ---
 
 ## 4. Estado medido: la rebanada ya está construida — y la conclusión que eso obliga
 
 Esto no es una selección hipotética, y ocultarlo sería el defecto que este repo
-persigue. Las tres historias seleccionadas **están construidas y desplegadas**.
+persigue. **Siete de las diez historias están construidas** — no solo las tres
+seleccionadas.
 
-Lo medido **hoy**, en esta corrida:
+| Historia | ¿Construida? | Verificada por |
+|---|---|---|
+| H-01 ingreso sin señal | **sí** | `verificar:op1` |
+| H-02 temporizador | **sí** | **ninguno** — `verificar:temporizador` vetado, AC-OP-3 no existe |
+| H-03 salida y monto | **sí** | `verificar:salida`, `npm test` |
+| H-04 entregar el turno | **sí** | **a medias** — solo se comprueba que el botón exista (`docs/data/casos-uso.md:348`) |
+| H-05 ocupación ahora | **sí** | `verificar:meas2` |
+| H-06 ingresos del día | **sí** | `verificar:meas2` |
+| H-07 descuadre | **sí** | `verificar:meas2` |
+| H-08 cambiar tarifa | no | — |
+| H-09 alta de un cliente | no | — |
+| H-10 revocar acceso | no | — |
+
+**`verificar:meas2` cubre tres historias, no una.** Atribuirlo solo a H-05 —como
+hacía la primera versión de esta sección— le regalaba la evidencia al
+seleccionado y se la escondía a los descartados, que es la forma de sesgo más
+barata que puede tener una priorización.
+
+**La consecuencia honesta: §3 no descarta cosas por construir; descarta cosas ya
+desplegadas.** El recorte es de *qué exhibe y qué mide el prototipo*, no de qué
+existe. Tres de las siete construidas —H-04, H-06 y H-07— quedan fuera del
+recorte mínimo; H-02 entra dentro de H-01. Y eso
+sigue siendo una decisión defendible bajo la regla 1 — pero es una decisión
+distinta de la que un lector entendería si esta tabla no estuviera.
+
+Lo medido **hoy**, en esta corrida, sobre el árbol que incluye este archivo:
 
 ```
 $ npm test
 ℹ tests 122 · ℹ suites 30 · ℹ pass 122 · ℹ fail 0     exit=0
 $ npm run verificar:citas
-21/21 comprobaciones PASS · CITAS: PASS               exit=0
+23/23 comprobaciones PASS · CITAS: PASS               exit=0
 $ npm run verificar:alcance
 9/9 comprobaciones PASS · ALCANCE: PASS               exit=0
 ```
 
+> **Este bloque decía `21/21`, y era un número viejo.** El 21/21 es de la
+> iteración anterior, **antes de que este archivo existiera**; al escanearse a sí
+> mismo el documento agrega dos comprobaciones y el total es 23. Se copió del
+> ledger y se lo presentó bajo un prompt `$` como transcripción de hoy — dentro
+> de la misma sección que declara que *«un PASS viejo no es una medición de
+> hoy»*. Lo encontró el auditor re-corriendo el comando. Queda escrito porque el
+> defecto no es el número: es haber escrito una transcripción sin correrla.
+
 Lo **registrado y no re-corrido hoy** —exigen la app levantada y base, y un PASS
 viejo no es una medición de hoy (`STATE.md`)—: `verificar:op1` 11/11 para H-01,
-`verificar:salida` 11/11 para H-03, `verificar:meas2` 10/10 para H-05.
+`verificar:salida` 11/11 para H-03, `verificar:meas2` 10/10 para H-05, H-06 y
+H-07 juntas.
 
 ### La consecuencia incómoda, que es el hallazgo de este entregable
 
@@ -216,10 +278,15 @@ Ningún placeholder se rellena. Los que esta selección toca directamente:
 |---|---|
 | `{{UMBRAL_H1_SEGUNDOS}}` · `{{LINEA_BASE_CUADERNO_SEGUNDOS}}` | H-01 se puede construir y **no se puede evaluar**: sin umbral no hay «validado» |
 | `{{BASE_LICITUD}}` · `{{PLAZO_RETENCION_PATENTE}}` | H-01 y H-03 solo aceptan patentes de prueba. `OPERACION_REAL_HABILITADA=false`, y encenderlo es decisión humana |
-| `{{INSTANTE_FACTURABLE}}` | H-03: quién paga el corte de señal |
+| `{{INSTANTE_FACTURABLE}}` — **propuesto**, no está en `spec.md` §12 | H-03: quién paga el corte de señal. La decisión sí está escrita (`spec.md` §5); lo que no existe es el placeholder con ese nombre |
 | `{{PRECIO_SUSCRIPCION_UF}}` | H-05 alimenta H2, y sin precio no hay nada que cobrar |
 
-**Las tres historias seleccionadas se pueden construir hoy. Dos de las cuatro
-filas de arriba no bloquean la construcción: bloquean el encendido y la
-conclusión.** Es la misma distinción que el proyecto ya aplicó en FASE E — se
-construye el mecanismo parametrizado, y se lo enciende con una decisión.
+**Las tres historias seleccionadas se pueden construir hoy: ninguna de las filas
+de arriba bloquea la construcción. Las cuatro bloquean el encendido o la
+conclusión**, que no es lo mismo. Es la distinción que el proyecto ya aplicó en
+FASE E — se construye el mecanismo parametrizado, y se lo enciende con una
+decisión.
+
+*(Acá decía «dos de las cuatro filas». Era precisión falsa: si las tres historias
+se construyen hoy, entonces ninguna de las cuatro bloquea construir. El número
+sonaba más medido de lo que era.)*

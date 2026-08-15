@@ -15,7 +15,7 @@
 | **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
 | **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
 | **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
-| **Rama paralela de documentación** | T01 · entregables 1–2–3 cerrados el 2026-08-15. En curso: entregable 4 (Ítem 3) |
+| **Rama paralela de documentación** | T01 · entregables 1–2–3–4 cerrados el 2026-08-15. Falta el 5: **ADR-005** |
 
 ## Rama de documentación T01 (2026-08-15) — no toca código
 
@@ -35,11 +35,27 @@ CU-08—, 55 pasos todos citados, traza CU ↔ historia en las dos direcciones y
 H1): no le falta pantalla, le falta el actor.** Tres ciclos de auditoría, ocho
 hallazgos; el ciclo 3 dio PASA. **Ítem 3 sigue en 3/10**: I1 no lo toca.
 
+**Entregable 4 cerrado (I2, 2026-08-15).** `docs/data/seleccion-prototipo.md`:
+se seleccionan **H-01, H-03 y H-05** contra tres ejes, ancladas a `spec.md` §1,
+con las siete descartadas puntuadas. **Ítem 3 sube de 3/10 a 10/10 estimado; total
+93/100 → 100/100 estimado** — estimación propia, no nota del evaluador.
+
+**El hallazgo que produjo hacer la selección: el prototipo está completo como
+producto y vacío como instrumento.** Siete de las diez historias están
+construidas; la hipótesis que las justifica nunca se midió. Bajo la regla 1 del
+propio documento, lo que sigue no es una historia de la lista: es el instrumento
+que le falta a H-01, y **CU-10 no tiene actor**.
+
 **Lección del ciclo, con nombre: U7.** *Toda afirmación sobre el repositorio es
 verificable con un comando* — y su forma operativa, que es la que costó dos
 ciclos: **no alcanza con medir antes de escribir; hay que buscar todas las
 ocurrencias de lo que se acaba de refutar.** Un `grep` del claim, no del dato.
 Dos veces un fix corrigió una mitad y dejó viva la otra.
+
+**Y su corolario, que costó un veto en I2:** una transcripción con prompt `$` que
+no se corrió es peor que no ponerla. El documento publicaba `21/21` como *«medido
+hoy»* siendo un número de la iteración anterior — dentro de la sección que
+declara que un PASS viejo no es una medición de hoy. El real era 23/23.
 
 **Tres hallazgos que sobreviven a esta sesión y valen para el producto:**
 
