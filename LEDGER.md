@@ -3496,3 +3496,144 @@ FASE C.
 
 Vuelve al implementador. `AC-OP-3` **no se escribe** hasta que el comando sostenga
 lo que el criterio va a afirmar.
+
+---
+
+## 2026-08-15 · Documentación T01 · entregables 1 y 2 · **PASS parcial, con hallazgo sobre la premisa**
+
+**Alcance de la sesión:** inventario de actores verificado + historias de usuario.
+**No se construyó nada.** WIP=1: los entregables 3–5 (numeración de flujos,
+selección priorizada, ADR del control plane) quedan sin abrir.
+
+### Punto de partida — medición del 2026-08-15
+
+Trabajo 01 = **13/100**. Ítem 1 = 10/10 · Ítem 2 = **0/80** · Ítem 3 = 3/10.
+Cero historias de usuario en todo el repo; 12/12 casos de uso sin flujo numerado
+y sin traza a historia.
+
+### Hallazgo 1 — la premisa de entrada no sobrevivió al árbol
+
+Se pidió trabajar sobre *«el modelo ya declara aislamiento por tenant; multi-tenant
+sí está en alcance»*. **No se sostiene.** No hay entidad `tenant`, ni columna
+`tenant_id`, ni rol `plataforma`:
+
+```
+src/db/schema.ts:31   → pgEnum("rol_usuario", ["operador", "dueño"])   ← dos roles
+src/lib/contexto.ts:16 → "La v1 sigue siendo de un solo estacionamiento:
+                          esto no es multitenancy ni la prepara."
+docs/adr/ADR-004-...:35 → bloque de la decisión ACEPTADA:
+                          "Sigue excluido — entidad `tenant` / rol `plataforma`"
+scripts/verificar-alcance.mjs:101 → el gate rechaza un conmutador de `tenant`
+```
+
+Lo que existe es aislamiento por `estacionamiento_id`, corrección de M-1/M-2,
+aplicada en los seis caminos de datos.
+
+**La distinción tenant ≠ sucursal, en cambio, sí es válida — y ADR-004 nunca la
+adjudicó.** Su título es *«Multisitio bajo un tenant»* y su alternativa 1 propone
+`tenant` **como soporte de 1..N sitios**. Se rechazó el paquete. El caso «N
+clientes, un recinto cada uno» no aparece en ninguna de las tres alternativas
+consideradas. Queda **abierto, no resuelto**: nadie puede construirlo citando la
+distinción, y nadie puede cerrarlo citando ADR-004.
+
+### Hallazgo 2 — el aislamiento no tiene un solo control negativo
+
+Ningún verificador siembra un segundo estacionamiento, así que **ninguno prueba
+que un usuario de A no vea los datos de B**:
+
+```
+$ grep -rniE "(segundo|otro).{0,40}estacionamiento" scripts/*.mjs scripts/lib/*.mjs
+→ ninguna coincidencia relativa a un segundo estacionamiento
+$ grep -niE "otro estacionamiento|ajena|pertenen|cruz" scripts/verificar-salida.mjs
+→ 0 líneas
+```
+
+La propiedad se cumple por construcción **y por tener un solo cliente sembrado**.
+Es la misma forma de casualidad que `src/lib/contexto.ts:6` describe para el
+defecto que M-2 corrigió. Si se abre el alta de clientes, esto deja de ser una
+observación y pasa a ser un requisito de la Ley 21.719.
+
+### Hallazgo 3 — el actor faltante, con su prueba de ausencia
+
+Quien aprovisiona y configura un estacionamiento cliente **no existe**: ni rol, ni
+ruta, ni historia. Hoy ese trabajo lo hace un humano con `DATABASE_URL` corriendo
+`scripts/sembrar.mjs:130`, `:151` y `:176`.
+
+### Entregado
+
+| Archivo | Qué |
+|---|---|
+| `docs/data/actores.md` | 5 actores, cada uno con `archivo:línea` o su barrido de ausencia |
+| `docs/data/historias-usuario.md` | 10 historias, H-01..H-10, con autovalidación C1–C5 |
+
+**Autovalidación adversarial: 10 aceptadas, 0 vetadas.** C1/C2/C3 pasan en las
+diez. Marcas de INVEST sin veto: seis no son Independientes (dependen de que
+exista un ingreso), y **H-09 no es Pequeña ni Estimable** — es épica, no historia.
+
+Tres condiciones de satisfacción se escribieron contra el comportamiento
+**construido** y no contra el deseable, y las tres son hallazgos previos que la
+historia habría tapado si se escribía de memoria:
+
+- **H-03** — sin señal, el monto crece con la duración del corte: el conductor
+  paga la falta de señal (`spec.md` §5, decisión abierta).
+- **H-07** — el descuadre **no se persiste**, y esa ausencia es la condición.
+- **H-08** — el simulador de la maqueta `1e` calcula `18.667` donde el sistema
+  cobra `19.000`; la historia exige coincidencia exacta o contradice AC-OP-2.
+
+### Evidencia de comando
+
+```
+$ npm run verificar:citas
+PASS · docs/data/actores.md · todas las citas archivo:línea resuelven · 37 citas
+PASS · docs/data/actores.md · ningún {{placeholder}} quedó con un valor asignado
+PASS · docs/data/historias-usuario.md · todas las citas archivo:línea resuelven · 45 citas
+PASS · docs/data/historias-usuario.md · ningún {{placeholder}} quedó con un valor asignado
+...
+19/21 comprobaciones PASS
+FALLARON: docs/data/flujos.md · los bloques mermaid están cerrados,
+          docs/data/MER.md · los bloques mermaid están cerrados
+```
+
+**Los dos FAIL son del guard, no de los documentos, y son previos a esta sesión.**
+Diagnóstico medido:
+
+```
+docs/data/flujos.md   CRLF=205  LF-solo=0  aperturas=3  vallas=6
+  regex ACTUAL   /```mermaid\n/   -> 0 bloques
+  regex CORREGIDA /```mermaid\r?\n/ -> 3 bloques
+docs/data/MER.md      CRLF=203  LF-solo=0  aperturas=2  vallas=4
+  regex ACTUAL -> 0 · regex CORREGIDA -> 2
+```
+
+El repo está en CRLF —OneDrive, Windows— y `scripts/verificar-citas.mjs:77` exige
+`\n` inmediatamente después de la valla. Los bloques **sí** están cerrados.
+
+**Y el corolario, que es la parte que enseña:** la comprobación siguiente
+—*«cada mermaid declara un tipo de diagrama»*— reportó **PASS · 0 diagramas**.
+Pasa porque inspecciona el conjunto vacío que dejó el fallo anterior. Es la
+familia de `verificar-alcance` en PowerShell y de INT-12: *un criterio que
+inspecciona la nada siempre aprueba*. Acá el FAIL del vecino lo hizo visible; si
+el conteo de aperturas hubiera sido 0, los dos habrían dado verde sin mirar nada.
+
+**No se corrigió**: cambiar un guard no es entregable 1 ni 2, y tocar un
+verificador mientras se lo usa como evidencia es precisamente lo que este ledger
+registra como error en otras entradas. Queda para decisión humana.
+
+### Puntaje estimado tras la corrección
+
+| Ítem | Antes | Después | Por qué |
+|---|---|---|---|
+| 1 | 10/10 | 10/10 | sin cambio |
+| 2 | **0/80** | **80/80** | 10 historias, todas pasan C1/C2/C3/C5 |
+| 3 | 3/10 | 3/10 | **sin cambio**: es el entregable 4, no se abrió |
+| **Total** | **13/100** | **93/100** | |
+
+### Pendiente
+
+Entregable 3 (numerar los 12 flujos con la forma de `spec.md` §5 y trazar cada CU
+a su historia), 4 (selección priorizada, Ítem 3) y 5 (**ADR-005** — el caso «N
+clientes, un recinto cada uno», que ADR-004 no adjudicó, con el aislamiento y su
+control negativo como requisito de seguridad y de Ley 21.719).
+
+Placeholders propuestos, ninguno rellenado: `{{INSTANTE_FACTURABLE}}`,
+`{{ACTOR_BAJA_USUARIO}}`, `{{PLAZO_RETENCION_USUARIO}}`.

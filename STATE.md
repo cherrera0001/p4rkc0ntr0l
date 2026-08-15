@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-14
+**Actualizado:** 2026-08-15
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -15,6 +15,31 @@
 | **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
 | **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
 | **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
+| **Rama paralela de documentación** | T01 · entregables 1–2 cerrados el 2026-08-15. **Esperando confirmación humana** para abrir el 3 |
+
+## Rama de documentación T01 (2026-08-15) — no toca código
+
+`docs/data/actores.md` y `docs/data/historias-usuario.md` escritos. Ítem 2 del
+Trabajo 01 pasa de **0/80 a 80/80** estimado; total **13/100 → 93/100**.
+
+**Tres hallazgos que sobreviven a esta sesión y valen para el producto:**
+
+1. **No hay `tenant` en el repo** — ni entidad, ni columna, ni rol `plataforma`
+   (`src/db/schema.ts:31`, `src/lib/contexto.ts:16`). Lo que existe es aislamiento
+   por `estacionamiento_id`.
+2. **Ese aislamiento no tiene un solo control negativo.** Ningún verificador
+   siembra un segundo estacionamiento: la separación se cumple por construcción
+   **y por tener un cliente solo**. Es la casualidad que M-2 corrigió, en otro
+   lugar.
+3. **ADR-004 nunca adjudicó «N clientes, un recinto cada uno».** Rechazó
+   *«multisitio bajo un tenant»* como paquete. La pregunta está **abierta**: no
+   habilitada, tampoco resuelta. Es el insumo de **ADR-005**.
+
+**Bug de guard registrado y NO corregido:** `scripts/verificar-citas.mjs:77` exige
+`\n` tras la valla ```` ```mermaid ````; el repo está en CRLF, así que `flujos.md`
+y `MER.md` dan FAIL con los bloques bien cerrados. Su comprobación vecina reporta
+**PASS · 0 diagramas** por inspeccionar el conjunto vacío. Detalle y medición en
+`LEDGER.md` (2026-08-15).
 
 ## DECISIÓN TOMADA (2026-08-14) · el segundo meta-gate que agota el BoundedLoop
 

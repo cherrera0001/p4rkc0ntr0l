@@ -3,7 +3,12 @@
 Este proyecto documenta **con evidencia de comando**, no con prosa. Si un
 documento afirma un estado, en algún lado está la salida real que lo sostiene.
 
-Son 23 archivos. Este mapa existe para que no haya que abrirlos todos.
+Este mapa existe para que no haya que abrirlos todos.
+
+> *Acá decía «Son 23 archivos». Se quitó el número el 2026-08-15: eran 26 antes de
+> esa sesión y 28 después. Es la misma regla que `spec.md` §9 aplica a los
+> criterios de aceptación —**citar el comando, no el conteo**—, porque un número
+> escrito a mano queda falso al día siguiente y nadie lo nota.*
 
 ---
 
@@ -37,6 +42,8 @@ Leé estos tres, **en este orden**:
 | [`data/MR.md`](data/MR.md) | Tablas, dominios, normalización, y la desnormalización deliberada con su costo |
 | [`data/casos-uso.md`](data/casos-uso.md) | 12 casos de uso; 3 marcados como brecha |
 | [`data/flujos.md`](data/flujos.md) | Tres diagramas: ciclo de vida de la sesión, outbox offline, descuadre |
+| [`data/actores.md`](data/actores.md) | Quién usa el sistema, verificado. **Y el actor que falta:** quien aprovisiona un cliente |
+| [`data/historias-usuario.md`](data/historias-usuario.md) | 10 historias de usuario derivadas de `spec.md` §5/§6; 2 fuera de alcance, a propósito |
 
 **Dónde está lo bueno:** `MER.md` §5 (qué se rechazó y por qué), `MR.md` §4 (la
 tarifa que no se registra y qué se rompe por eso), `flujos.md` §2 (la resolución
