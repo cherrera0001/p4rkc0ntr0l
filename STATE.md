@@ -15,12 +15,31 @@
 | **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
 | **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
 | **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
-| **Rama paralela de documentación** | T01 · entregables 1–2 cerrados el 2026-08-15. **Esperando confirmación humana** para abrir el 3 |
+| **Rama paralela de documentación** | T01 · entregables 1–2–3 cerrados el 2026-08-15. En curso: entregable 4 (Ítem 3) |
 
 ## Rama de documentación T01 (2026-08-15) — no toca código
 
+**Ojo con el árbol: esta rama NO es `main`.** Es
+`agents/medir-documentacion-historias-casos-uso` (`2c396c4`), que tiene a `main`
+(`2c9e286`) por ancestro. `docs/data/actores.md` y `docs/data/historias-usuario.md`
+**no existen en `main`**. Integrar la rama o dejarla paralela es decisión humana
+pendiente.
+
 `docs/data/actores.md` y `docs/data/historias-usuario.md` escritos. Ítem 2 del
 Trabajo 01 pasa de **0/80 a 80/80** estimado; total **13/100 → 93/100**.
+
+**Entregable 3 cerrado (I1, 2026-08-15).** `docs/data/casos-uso.md` reescrito:
+nueve flujos numerados —ocho casos más el flujo de excepción **E1**, que es el ex
+CU-08—, 55 pasos todos citados, traza CU ↔ historia en las dos direcciones y
+**cinco huecos de traza declarados sin rellenar**. El más caro es **CU-10 (medir
+H1): no le falta pantalla, le falta el actor.** Tres ciclos de auditoría, ocho
+hallazgos; el ciclo 3 dio PASA. **Ítem 3 sigue en 3/10**: I1 no lo toca.
+
+**Lección del ciclo, con nombre: U7.** *Toda afirmación sobre el repositorio es
+verificable con un comando* — y su forma operativa, que es la que costó dos
+ciclos: **no alcanza con medir antes de escribir; hay que buscar todas las
+ocurrencias de lo que se acaba de refutar.** Un `grep` del claim, no del dato.
+Dos veces un fix corrigió una mitad y dejó viva la otra.
 
 **Tres hallazgos que sobreviven a esta sesión y valen para el producto:**
 
@@ -35,11 +54,16 @@ Trabajo 01 pasa de **0/80 a 80/80** estimado; total **13/100 → 93/100**.
    *«multisitio bajo un tenant»* como paquete. La pregunta está **abierta**: no
    habilitada, tampoco resuelta. Es el insumo de **ADR-005**.
 
-**Bug de guard registrado y NO corregido:** `scripts/verificar-citas.mjs:77` exige
-`\n` tras la valla ```` ```mermaid ````; el repo está en CRLF, así que `flujos.md`
-y `MER.md` dan FAIL con los bloques bien cerrados. Su comprobación vecina reporta
-**PASS · 0 diagramas** por inspeccionar el conjunto vacío. Detalle y medición en
-`LEDGER.md` (2026-08-15).
+**Bug de guard registrado y NO corregido — pero HOY NO SE VE.**
+`scripts/verificar-citas.mjs:77` exige `\n` tras la valla ```` ```mermaid ````.
+Medido el 2026-08-15: `flujos.md` y `MER.md` están en el árbol de trabajo con
+**LF**, no CRLF, así que `verificar:citas` da **21/21** y reporta 3 y 2 diagramas
+— no el `PASS · 0 diagramas` del conjunto vacío.
+
+**El defecto está dormido, no corregido.** Probado sobre una copia CRLF sin tocar
+el guard: regex actual → **0 bloques**, regex `\r?\n` → 3. Con `core.autocrlf=true`
+y sin `.gitattributes`, **un clon nuevo vuelve a CRLF y el guard vuelve a fallar**.
+Detalle y medición en `LEDGER.md` (2026-08-15).
 
 ## DECISIÓN TOMADA (2026-08-14) · el segundo meta-gate que agota el BoundedLoop
 

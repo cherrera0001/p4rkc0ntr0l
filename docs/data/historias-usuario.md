@@ -62,7 +62,7 @@ escriben igual porque nombrar la brecha es el objetivo — ver §4.
 **Componente:** función `duracion()` + lista de activas.
 **Origen:** `spec.md` §5 «Permanencia» — *«El temporizador muestra el tiempo
 transcurrido por cada sesión activa»*.
-**Verificación existente:** `npm run verificar:temporizador` (AC-OP-3).
+**Verificación:** ninguna vigente — `verificar:temporizador` está **vetado** y AC-OP-3 **no existe** (`docs/data/matriz-trazabilidad.md:96`).
 
 ---
 
@@ -123,11 +123,11 @@ transcurrido por cada sesión activa»*.
   tampoco quedan en pantalla (`src/app/cerrar-sesion.tsx:58`).
 
 **Componente:** `CerrarSesion` + `borrarTodo()` (`src/lib/cola-local.ts:121`).
-**Origen:** `spec.md` §7 (minimización) y CU-07 (`docs/data/casos-uso.md:131`).
+**Origen:** `spec.md` §7 (minimización) y CU-07 (`docs/data/casos-uso.md:339`).
 
 > **Brecha de verificación conocida, no de construcción.** Ningún comando asevera
 > las tres partes: `verificar:endurecimiento` solo comprueba que el botón exista
-> (`docs/data/casos-uso.md:140`). El código está y se lee bien; **nadie lo
+> (`docs/data/casos-uso.md:348`). El código está y se lee bien; **nadie lo
 > prueba.**
 
 ---
@@ -234,12 +234,12 @@ un vehículo se cobre por fuera»*.
 **Componente:** pantalla de tarifas — **no construida**.
 **Origen:** `src/db/schema.ts:65` — *«datos de operación que carga el dueño, NO
 constantes de negocio»*.
-**Estado:** CU-11 (`docs/data/casos-uso.md:209`). El modelo y el versionado
+**Estado:** CU-11 (`docs/data/casos-uso.md:430`). El modelo y el versionado
 existen; la pantalla, no.
 
 > **Riesgo ya medido, por eso la última condición es explícita:** la maqueta `1e`
 > que resolvería esta historia calcula `18.667` donde el sistema cobra `19.000`
-> (`docs/data/casos-uso.md:225`). Construirla sin esa condición metería en el
+> (`docs/data/casos-uso.md:453`). Construirla sin esa condición metería en el
 > producto una cifra que contradice AC-OP-2.
 
 ---
@@ -294,7 +294,7 @@ nuevo, que es el entregable siguiente.
 - **y** la baja no requiere tocar la base a mano.
 
 **Componente:** administración de usuarios — **no construida**.
-**Estado:** CU-12 (`docs/data/casos-uso.md:230`). Falta la columna de estado:
+**Estado:** CU-12 (`docs/data/casos-uso.md:457`). Falta la columna de estado:
 `usuario` no la tiene (`src/db/schema.ts:50`).
 **Decisión abierta:** CU-12 le asigna el acto al **dueño**; esta historia lo
 asigna a plataforma. A quién corresponde es decisión humana —
@@ -353,8 +353,8 @@ Conviene no confundirlas, porque cuestan cosas diferentes:
 
 | Tipo | Cuáles | Qué falta | Remedio |
 |---|---|---|---|
-| **Deuda documental** — construido y verificado, sin historia detrás | H-01, H-02, H-03, H-05, H-06, H-07 | solo la historia | **saldada con este documento**. Falta trazar los CU (entregable #3) |
-| **Deuda documental con verificación incompleta** | H-04 | la historia (saldada) **y** el comando que la pruebe | escribir el verificador de CU-07 |
+| **Deuda documental** — construido y verificado, sin historia detrás | H-01, H-03, H-05, H-06, H-07 | solo la historia | **saldada**, y los CU quedaron trazados en `docs/data/casos-uso.md:483` |
+| **Deuda documental con verificación incompleta** | H-04, **H-02** | la historia (saldada) **y** el comando que la pruebe | H-04: escribir el verificador de CU-07. **H-02: `verificar:temporizador` está vetado y AC-OP-3 no existe** — ver la línea 65 |
 | **Deuda de producto, dentro de alcance** | H-08 | la pantalla; el modelo ya está | construible sin ADR nuevo |
 | **Vacío real, fuera de alcance** | H-09, H-10 | historia (saldada), ADR, spec y código | ADR-005 → SPEC del panel → recién ahí construir |
 

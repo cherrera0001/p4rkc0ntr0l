@@ -40,10 +40,11 @@ Leé estos tres, **en este orden**:
 | [`data/inventario.md`](data/inventario.md) | Lo que existe **hoy** en código, campo por campo, con cita `archivo:línea`. Y las derivas código↔spec |
 | [`data/MER.md`](data/MER.md) | Entidades, relaciones y cardinalidad. **Y qué se descartó, con su razón** |
 | [`data/MR.md`](data/MR.md) | Tablas, dominios, normalización, y la desnormalización deliberada con su costo |
-| [`data/casos-uso.md`](data/casos-uso.md) | 12 casos de uso; 3 marcados como brecha |
+| [`data/casos-uso.md`](data/casos-uso.md) | Flujos numerados paso a paso, cada paso citado, y la traza caso ↔ historia. **Y los cinco huecos de traza**, incluido el peor: medir H1 no tiene actor |
 | [`data/flujos.md`](data/flujos.md) | Tres diagramas: ciclo de vida de la sesión, outbox offline, descuadre |
 | [`data/actores.md`](data/actores.md) | Quién usa el sistema, verificado. **Y el actor que falta:** quien aprovisiona un cliente |
 | [`data/historias-usuario.md`](data/historias-usuario.md) | 10 historias de usuario derivadas de `spec.md` §5/§6; 2 fuera de alcance, a propósito |
+| [`data/seleccion-prototipo.md`](data/seleccion-prototipo.md) | Qué se construye primero y por qué, contra tres ejes. **Y las siete descartadas, con su puntaje** |
 
 **Dónde está lo bueno:** `MER.md` §5 (qué se rechazó y por qué), `MR.md` §4 (la
 tarifa que no se registra y qué se rompe por eso), `flujos.md` §2 (la resolución

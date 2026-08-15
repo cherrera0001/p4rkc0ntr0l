@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | **Operador** | sí — `spec.md` §5 | sí | sí, desde hoy | enum `rol_usuario` (`src/db/schema.ts:31`); `exigirRol("operador")` (`src/app/api/sesiones/route.ts:43`); pantalla (`src/app/pantalla-operador.tsx:294`) |
 | **Dueño** | sí — `spec.md` §6 | sí | sí, desde hoy | mismo enum; redirección de quien no lo es (`src/app/dueno/page.tsx:41`); panel (`src/app/dueno/page.tsx:38`) |
-| **Sistema (sincronización)** | sí — `docs/data/casos-uso.md:16` | sí | no aplica: no es usuario | `src/lib/cola-local.ts:201`, `src/lib/cola-local.ts:286` |
+| **Sistema (sincronización)** | sí — `docs/data/casos-uso.md:54` | sí | no aplica: no es usuario | `src/lib/cola-local.ts:201`, `src/lib/cola-local.ts:286` |
 | **Administrador de plataforma** | **NO** | **NO** | propuesta, bloqueada | ver §2 |
 | **Conductor** | mencionado, **no es actor del sistema** | no, y es deliberado | no corresponde | AC-SCOPE-1 lo nombra como el sujeto que **no** paga dentro del sistema (`spec.md` §9). No tiene cuenta, ni pantalla, ni fila |
 

@@ -3637,3 +3637,194 @@ control negativo como requisito de seguridad y de Ley 21.719).
 
 Placeholders propuestos, ninguno rellenado: `{{INSTANTE_FACTURABLE}}`,
 `{{ACTOR_BAJA_USUARIO}}`, `{{PLAZO_RETENCION_USUARIO}}`.
+
+---
+
+## 2026-08-15 · Documentación T01 · entregable 3 (I1) · **PASA al tercer ciclo**
+
+Numeración de flujos + trazabilidad CU ↔ historia. **No se tocó `src/`, ni
+`scripts/`, ni `spec.md`, ni migraciones.** Archivos modificados: tres, todos en
+`docs/data/`.
+
+### Corrección de la premisa de arranque — el árbol no era el que decía
+
+La instrucción declaraba *«árbol 2c9e286»* y citaba `docs/data/historias-usuario.md`
+y `actores.md` como verificados. **Los dos archivos no existen en `2c9e286`.**
+Existen en `2c396c4`, rama `agents/medir-documentacion-historias-casos-uso`, que
+tiene a `main` por ancestro:
+
+```
+$ git log --oneline -2 agents/medir-documentacion-historias-casos-uso
+2c396c4 T01 - las 10 historias que faltaban, y el actor de plataforma que no existe
+2c9e286 Bloque de evidencia regenerado sobre arbol limpio, sellado en 09fcf87
+$ git diff --stat main..agents/medir-documentacion-historias-casos-uso
+ LEDGER.md 141+ · STATE.md 27± · docs/README.md 9± ·
+ docs/data/actores.md 157+ · docs/data/historias-usuario.md 374+
+```
+
+Se trabajó sobre la rama, porque en `main` I1 es imposible: no hay historias a las
+que trazar. Queda como **decisión humana pendiente** si esta rama se integra a
+`main` o sigue paralela.
+
+### Entregado
+
+`docs/data/casos-uso.md`, reescrito. **Nueve flujos numerados** —ocho casos
+(CU-01, 02, 03, 04, 05, 06, 07, 09) más el flujo de excepción **E1** de CU-02—,
+55 pasos, todos con cita `archivo:línea`. CU-08 dejó de ser caso aparte y pasó a
+ser E1. CU-10/11/12 **no se numeran**: no hay flujo que numerar, y se dejan con su
+fragmento de ausencia.
+
+Campo nuevo `Historia(s)` en cada caso. El campo `Verificado por` **no se tocó**:
+`git diff HEAD` sobre esas filas devuelve un único par `+`/`-` byte-idéntico —E1,
+que solo cambió de posición— y ninguna fila añadida.
+
+### Los cinco huecos de traza, declarados y no rellenados
+
+Trazar en las dos direcciones fue lo que los hizo visibles. Ninguno se cierra acá:
+
+| Hueco | Por qué no se resuelve |
+|---|---|
+| CU-01 sin historia | `spec.md` §5 dice *«ya autenticado»*: la auth es precondición, no capacidad enunciada |
+| E1 sin historia | nace de AC-PDP-1 y del hallazgo A-3, posteriores a §1–§8 |
+| CU-09 con historia parcial | la purga **al abrir** nace de M-4; `spec.md` nunca la enunció |
+| **CU-10 sin historia** | **el actor no existe.** No está en `actores.md` ni en el enum (`src/db/schema.ts:31`). Es H1: el proyecto entero existe para eso |
+| H-02 sin caso | se puede escribir sin decisión humana, y **quedaría sin comando**: AC-OP-3 no existe |
+
+Escribir las tres primeras sería autorar requisitos, y eso va por ADR
+(`spec.md` §9).
+
+### Rúbrica U1–U7 — reconstruida, y hay que decirlo
+
+**«U1–U6» no existe en el repositorio.** Se reconstruyó desde el contrato de la
+iteración y la doctrina del proyecto. El auditor la evaluó primero a ella y la
+halló *«legítima en dirección, sesgada por omisión»*: no cubría el punto 5 del
+contrato ni las afirmaciones que el documento hace **sobre sí mismo** — justo
+donde estaban las dos fallas peores. Agregó **U7**, aceptado:
+
+> **U7 — toda afirmación sobre el repositorio (conteos, «N documentos lo citan»,
+> «el AC X lo exige») es verificable con un comando.**
+
+Y su forma operativa, que es la parte que enseña: *no alcanza con medir antes de
+escribir; hay que buscar todas las ocurrencias de lo que se acaba de refutar.*
+Un `grep` del **claim**, no del dato. Los dos hallazgos del ciclo 2 fueron
+exactamente eso: una afirmación corregida en un lugar y viva en el otro.
+
+U1 numeración sin saltos · U2 cada paso cita y la línea **dice** lo que el paso
+afirma · U3 actor/precondición/postcondición · U4 traza declarada o ausencia
+declarada, `Verificado por` intacto · U5 lo no construido no se numera · U6 sin
+autoría de requisitos · U7 toda afirmación medida.
+
+### Tres ciclos, ocho hallazgos. Los dos que valen registrarse
+
+**Ciclo 1 — VETO, 6 vetantes.** El peor no fue de forma:
+
+```
+casos-uso.md decía:  paso 1 → src/app/pantalla-operador.tsx:327
+:327 es              tecleoInicioAt: tecleoInicioAt.current ?? ahora   (LECTURA)
+la asignación está en :280, dentro de function nuevoIngreso() (279)
+```
+
+Siguiendo la cita, el paso 1 y el paso 5 caían en el mismo instante y
+`tecleo_fin_at − tecleo_inicio_at` daría ≈ 0. **Es la métrica de H1.** Era la peor
+cita del documento para tener mal, y `verificar:citas` la daba por buena: el guard
+comprueba que la línea **exista**, no que **diga**.
+
+**Y una evidencia fabricada, mía.** Escribí *«el identificador se conserva porque
+cinco documentos anteriores lo citan»*. Medido:
+
+```
+$ git grep -l "CU-08" HEAD
+HEAD:docs/data/casos-uso.md        <- un archivo, y es éste mismo
+```
+
+Cero documentos externos. Un número redondo que hacía sonar medida una
+justificación inventada, en el repo cuya doctrina es *«no inventar datos que
+parezcan reales»* (`CLAUDE.md` §3) y que ya pagó este modo de falla con INT-12.
+
+**Ciclo 2 — VETO, 2 hallazgos, los dos por la misma vía.** El fix del ciclo 1 se
+aplicó en §2.2 y no en §0: *«antes el documento estaba consistentemente
+equivocado; ahora está partido, y la mitad que un lector encuentra primero es la
+falsa»*. Ídem con AC-OP-3: corregido en `historias-usuario.md:65` y vivo 291
+líneas más abajo, en la tabla que existe para no confundir esos dos tipos de
+deuda. **El fix movió el problema en vez de resolverlo** — que es el modo de falla
+que U7 pasó a perseguir.
+
+**Ciclo 3 — PASA.** 106 citas volcadas a mano por el auditor, 0 rotas; 55 pasos,
+0 sin cita; secuencias `1-7, 1-8, 1-4, 1-5, 1-10, 1-7, 1-5, 1-6, 1-5`, sin saltos.
+
+### Defecto heredado corregido de oficio
+
+`historias-usuario.md:65` afirmaba *«Verificación existente: `verificar:temporizador`
+(AC-OP-3)»*. **Falso por partida doble:** el verificador está vetado desde el
+2026-08-14 y `AC-OP-3` no está en la tabla de `spec.md` §9. Fuente:
+`docs/data/matriz-trazabilidad.md:96`. Corregido, y H-02 se reclasificó de *«deuda
+documental»* a *«deuda documental con verificación incompleta»*, que es su fila
+verdadera.
+
+### Tensión anterior a I1, que el auditor deja anotada y NO se toca acá
+
+`spec.md:358` anuncia *«Suben tres: **AC-OP-3** …»* y la tabla de §9 no lo
+contiene. `matriz-trazabilidad.md:96` reconcilia. **Cerrar FASE C es hacer que
+`spec.md` §9 y `matriz:96` dejen de discrepar** — no tocar `casos-uso.md`.
+
+### Evidencia de comando · una sola corrida sobre el árbol final
+
+```
+$ npm run verificar:citas
+PASS · docs/data/actores.md · todas las citas archivo:línea resuelven · 37 citas
+PASS · docs/data/casos-uso.md · todas las citas archivo:línea resuelven · 106 citas
+PASS · docs/data/historias-usuario.md · todas las citas archivo:línea resuelven · 47 citas
+21/21 comprobaciones PASS · CITAS: PASS · exit=0
+
+$ npm run verificar:alcance
+9/9 comprobaciones PASS · ALCANCE: PASS · exit=0
+
+$ npm run verificar:ac
+INFO · 5 verificador(es) sin AC en §9: verificar:m4, verificar:temporizador,
+       verificar:int12, verificar:ui, verificar:endurecimiento
+5/5 comprobaciones PASS · AC EJECUTABLES: PASS · exit=0
+
+$ git status --porcelain
+ M docs/data/actores.md
+ M docs/data/casos-uso.md
+ M docs/data/historias-usuario.md
+?? .codex/          <- sin commitear al arrancar; config de otro harness, no del repo
+```
+
+**El PASS de `verificar:citas` se reporta por lo que es:** confirma que las líneas
+existen, no que digan lo que las citas afirman. Las 106 las abrió el auditor a
+mano. La cita de `:327` del ciclo 1 daba PASS estando mal.
+
+### Delta de puntaje
+
+| Ítem | Antes | Después | Por qué |
+|---|---|---|---|
+| 1 | 10/10 | 10/10 | sin cambio |
+| 2 | 80/80 | 80/80 | sin cambio; se corrigió una falsedad heredada en H-02 |
+| 3 | **3/10** | **3/10** | **sin cambio: I1 no es el Ítem 3.** El Ítem 3 es la selección priorizada, que es I2 |
+| **Total** | **93/100** | **93/100** | I1 cierra B-3/B-4/B-5, que no puntúan por sí solos |
+
+### Corrección del corolario del guard de citas — medido hoy
+
+La instrucción de arranque daba por hecho que `flujos.md` y `MER.md` dan FAIL y
+que la comprobación vecina reporta *«PASS · 0 diagramas»*. **Hoy no.** Medido:
+
+```
+docs/data/flujos.md   CRLF=0  LF-solo=205
+docs/data/MER.md      CRLF=0  LF-solo=203
+→ verificar:citas 21/21, con 3 y 2 diagramas reportados
+```
+
+**El defecto no está corregido: está dormido.** El árbol de trabajo quedó en LF
+para esos dos archivos. Probado sobre una copia CRLF, sin tocar el guard:
+
+```
+docs/data/flujos.md · aperturas = 3
+  árbol LF   · regex ACTUAL    -> 3 bloques
+  copia CRLF · regex ACTUAL    -> 0 bloques   <- el defecto
+  copia CRLF · regex CORREGIDA -> 3 bloques
+```
+
+`core.autocrlf=true` y no hay `.gitattributes`: **un clon nuevo vuelve a CRLF y el
+guard vuelve a fallar**, arrastrando el *«PASS · 0 diagramas»* sobre el conjunto
+vacío. Sigue siendo decisión humana, y ahora con el matiz de que hoy no se ve.
