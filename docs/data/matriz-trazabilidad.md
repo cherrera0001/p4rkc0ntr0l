@@ -13,7 +13,7 @@
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `09fcf87` · árbol limpio · **corrido:** 2026-08-14 · **grupos:** estatico, base
+**Commit:** `ab4b1a3` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-16 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
@@ -22,11 +22,12 @@
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
 | `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
-| `npm run verificar:citas` | `exit=0` · 17/17 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 39/39 | PASS |  |
+| `npm run verificar:citas` | `exit=0` · 23/23 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 41/41 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
+| `npm run verificar:h1` | `exit=1` · — | FAIL | **se espera FAIL** mientras el banco esté vacío: es el entregable de FASE D, no una regresión. *«No pude medirlo» no es «está bien»* |
 | `npm run build` | **NO CORRIDO** · grupo `build` | — |  |
 | `npm run verificar:salida` | **NO CORRIDO** · grupo `servidor` | — |  |
 | `npm run verificar:pwa` | **NO CORRIDO** · grupo `navegador` | — |  |
@@ -39,7 +40,7 @@
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 10 de 21 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 11 de 22 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
 
 **Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->
@@ -199,8 +200,9 @@ Tres razones concurrentes, y ninguna se arregla sola:
    `{{PLAZO_RETENCION_PATENTE}}` primero — es correcto que sea así.
 2. **Los verificadores barren lo que encuentran, no lo que dejan.**
    `limpiarFixtures()` (`scripts/lib/fixtures.mjs`) corre **al iniciar**, y lo
-   llaman **5 de los 8** verificadores de navegador (`a3`, `m4`, `meas2`, `op1`,
-   `endurecimiento`; no `pwa`, `ui` ni `int12`; `verificar-salida.mjs:10`
+   llaman **6 de los 9** verificadores de navegador (`a3`, `m4`, `meas2`, `op1`,
+   `endurecimiento` y **`temporizador`**, `scripts/verificar-temporizador.mjs:208`;
+   no `pwa`, `ui` ni `int12`; `verificar-salida.mjs:10`
    declara en su docstring que a propósito no limpia al inicio). Consecuencia:
    cada tanda **borra las filas de la tanda anterior** y deja las suyas puestas
    hasta la siguiente. Ninguna corrida acumula evidencia, que es lo que importa
@@ -309,7 +311,7 @@ corrida generada. Tres advertencias honestas:
    el comando pasa y el gate no es confiable. Desde el 2026-08-14 está registrado
    como **riesgo aceptado por decisión humana** (`LEDGER.md`), no como pendiente.
    La matriz refleja el veredicto, no el número.
-3. **Una corrida verde es válida para el estado en que se tomó.** 5 de los 8
+3. **Una corrida verde es válida para el estado en que se tomó.** 6 de los 9
    verificadores de navegador limpian fixtures **al iniciar**, así que cada tanda
    arrasa con las filas de la anterior y deja las suyas. La base no queda en
    cero: queda con la última tanda. Ninguna acumula, que es por qué H1 no tiene

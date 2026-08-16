@@ -18,6 +18,7 @@
     "verificar:op1": "node --env-file=.env scripts/verificar-op1.mjs",
     "verificar:salida": "node --env-file=.env scripts/verificar-salida.mjs",
     "verificar:meas1": "node --env-file=.env scripts/verificar-meas1.mjs",
+    "verificar:h1": "node --env-file=.env scripts/verificar-h1.mjs",
     "verificar:meas2": "node --env-file=.env scripts/verificar-meas2.mjs",
     "verificar:temporizador": "node --env-file=.env scripts/verificar-temporizador.mjs",
     "verificar:int12": "node scripts/verificar-int12.mjs",
@@ -31,7 +32,7 @@
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "evidencia": "node scripts/evidencia.mjs",
     "evidencia:prueba": "node scripts/evidencia.prueba.mjs",
-    "limpiar:fixtures": "node scripts/limpiar-fixtures.mjs"
+    "limpiar:fixtures": "node --env-file=.env scripts/limpiar-fixtures.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

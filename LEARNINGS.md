@@ -997,3 +997,61 @@ El gate lo cazó por contenido y salió exit 1.
 
 **Un control negativo que ocurre solo vale más que uno construido**, porque no
 puede estar hecho a medida de la comprobación que lo va a mirar.
+
+---
+
+## Un criterio universal no puede refutar nada sobre el conjunto vacío (2026-08-16)
+
+Es la lección de fondo de FASE D, y explica por qué el proyecto pudo pasar meses
+en verde sin una sola medición de la hipótesis por la que existe.
+
+`AC-MEAS-1` dice *«toda sesión cerrada tiene ambos timestamps de tecleo»*. Sus dos
+guardas son un `count(*)` sobre un `WHERE` (`scripts/verificar-meas1.mjs:53`) y una
+lectura de `information_schema` (`:57`). **Con cero filas, la primera es vacuamente
+verdadera y la segunda ni siquiera mira las filas.** Sobre la base vacía imprime
+`AC-MEAS-1: PASS`.
+
+No es un descuido de quien lo escribió: **«todo X cumple P» es lógicamente
+verdadero si no hay ningún X.** El criterio hacía exactamente lo que decía.
+
+> **Cuando lo que importa es que *existan* X, el criterio tiene que ser
+> existencial, y su salida no es un PASS: es un número.**
+
+`AC-H1-1` no pregunta si los datos que hay están completos: pregunta **cuántos
+hay**, y falla si no hay ninguno. Por eso el bloque de evidencia dejó de estar todo
+en verde, y por eso ese FAIL es el entregable y no una regresión.
+
+### Tres corolarios que costaron un veto cada uno
+
+**Publicar un número exige publicar su `n` — y «por disciplina» no alcanza.**
+Afirmé que era «imposible por construcción» y era falso: la mediana circulaba
+suelta en cuatro lugares. La propiedad que quedó es más chica y verdadera: hay un
+solo camino de código que imprime una mediana, y ese camino imprime la fila
+completa. *El defecto grave no es tener la propiedad a medias: es declararla
+cumplida.*
+
+**Un instrumento no puede afirmar lo que no puede observar.** La procedencia de
+una fila no está en la base: un `INSERT` con duraciones a mano entra al banco y da
+PASS, y ninguna columna lo arreglaría. El instrumento pasó de decir *«una persona
+tecleando»* a declarar el límite en su salida. **Declarar la limitación es más
+fuerte que fingir la garantía**, porque lo segundo se cae con un comando.
+
+**Un guard que enumera deja agujeros; uno que absuelve por vecindario, también.**
+El control del banco se escribió enumerando dos archivos y dio PASS mientras el
+banco moría —había tres borrados más—. Reescrito por exclusión, seguía absolviendo
+un borrado peligroso **por lo que tenía al lado**, porque leía 400 caracteres hacia
+adelante. La pregunta correcta no es *¿hay algo cerca que parezca una prueba?* sino
+*¿este borrado prueba que no toca el banco?* — y la prueba tiene que estar **en ese
+borrado**.
+
+### Y el que se repite en este repo hasta que se mecanice
+
+**Un número copiado se republica como si se hubiera medido.** El script decía «5 de
+los 8 verificadores»; medido, eran **6 de 9**. Salía de `STATE.md`, correcto cuando
+se escribió y viejo desde que entró un verificador nuevo. El claim vivía en siete
+lugares.
+
+Es el mismo defecto del `21/21` publicado como *«medido hoy»* y del `6,2 s` de las
+maquetas. La regla operativa que este repo ya nombró **U7** —*medí, y después buscá
+todas las ocurrencias de lo que acabás de refutar*— es la única defensa que
+funcionó, y hay que aplicarla al `grep` del **claim**, no del dato.

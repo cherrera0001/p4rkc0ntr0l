@@ -223,6 +223,26 @@ la app pero no la evidencia sobre H1/H2.
 **AC-MEAS-1.** Toda sesión cerrada tiene ambos timestamps de tecleo no nulos.
 *Verificación: `npm run verificar:meas1`* (§9).
 
+**AC-H1-1 (la métrica, no su ausencia).** El sistema publica la **mediana** del
+tiempo de tecleo con su **tamaño de muestra**, separando las tres poblaciones:
+operación real, banco de prueba, y lo que dejan los verificadores. *Verificación:
+`npm run verificar:h1`* (§9).
+
+> **Por qué AC-MEAS-1 no alcanzaba, y por qué este criterio es de otra especie.**
+> AC-MEAS-1 **no puede fallar por ausencia de datos**: sus dos guardas son un
+> `count(*)` sobre un `WHERE` —vacuamente verdadero sobre el conjunto vacío— y una
+> lectura de `information_schema`, que no depende de las filas. *Un criterio
+> universal —«todo X cumple P»— es automáticamente verdadero si no hay ningún X.*
+>
+> Cuando lo que importa es que **existan** X, el criterio tiene que ser
+> **existencial**, y su salida no es un PASS: es un número. AC-H1-1 **falla con la
+> base vacía**, y eso es lo que hace visible que H1 —la hipótesis por la que este
+> proyecto existe (§1)— nunca se midió.
+>
+> **Medir no requiere umbral; comparar sí.** Por eso este criterio entrega el
+> número y **no** el veredicto sobre H1: `{{UMBRAL_H1_SEGUNDOS}}`,
+> `{{LINEA_BASE_CUADERNO_SEGUNDOS}}` y `{{N_MINIMO_H1}}` siguen sin resolver (§12).
+
 ### H2 — visibilidad que el dueño valora
 El panel del dueño (§ siguiente) se alimenta de datos ya registrados; no requiere
 tabla adicional. Se derivan de `SesionVehiculo`:
@@ -286,6 +306,7 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-OP-4 | El ciclo de §5 se cumple **contra la API real**, no solo en la fórmula aislada: el ingreso crea la sesión, la salida la cierra, y el `monto_calculado` se computa con la **tarifa vigente de la base** y se persiste. Y la frontera valida: una patente inválida se rechaza y una inyección no altera el esquema (§7). | `npm run verificar:salida` → todas las comprobaciones PASS |
 | AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS |
 | AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS |
+| AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real |
 | AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS |
 | AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS |
 | AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores |
@@ -423,6 +444,7 @@ Cada hito cierra con sus criterios de aceptación verificados antes de abrir el 
 |-------------|--------|---------|
 | `{{PRECIO_SUSCRIPCION_UF}}` | Ancla de precio de la suscripción (techo ref. ~0,8 UF/mes) | Validación de H2 |
 | `{{UMBRAL_H1_SEGUNDOS}}` / `{{LINEA_BASE_CUADERNO_SEGUNDOS}}` | Objetivo y línea base de tiempo de registro | Definición de "validado" H1 |
+| `{{N_MINIMO_H1}}` | Tamaño de muestra a partir del cual una mediana de tecleo significa algo | Leer el número de AC-H1-1 como evidencia, no la medición en sí |
 | `{{UMBRAL_H2_DUEÑOS}}` / `{{PLAZO_PILOTO}}` | Nº de dueños pagando y plazo | Definición de "validado" H2 |
 | `{{PLAZO_RETENCION_PATENTE}}` | Ventana de retención de la patente | SPEC-001 / cumplimiento |
 | `{{BASE_LICITUD}}` | Base de licitud del tratamiento de la patente | SPEC-001 / cumplimiento |

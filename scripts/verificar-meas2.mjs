@@ -20,7 +20,12 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
-import { EMAIL_DUENO, EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
+import {
+  EMAIL_DUENO,
+  EMAIL_OPERADOR,
+  limpiarFixtures,
+  PREFIJO_BANCO,
+} from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -73,7 +78,13 @@ async function entrar(page, email) {
 
 let browser;
 try {
-  await sql`DELETE FROM sesion_vehiculo WHERE patente LIKE 'FIXT%'`;
+  // El banco de medición de H1 se excluye: ver `PREFIJO_BANCO`. Este borrado no
+  // pasa por `limpiarFixtures()`, así que necesita su propia guardia.
+  await sql`
+    DELETE FROM sesion_vehiculo
+    WHERE patente LIKE 'FIXT%'
+      AND NOT (patente LIKE ${PREFIJO_BANCO + "%"} AND estado = 'cerrada')
+  `;
 
   browser = await puppeteer.launch({
     executablePath: navegador,
@@ -129,9 +140,21 @@ try {
   // ---- El operador cierra algunas ----------------------------------------
   // Se espera a que la base confirme cada cierre en vez de dormir un rato fijo:
   // con sleeps la prueba mide la latencia de la red, no el comportamiento.
+  // **Acotado a las patentes de ESTA corrida.** Antes contaba `estado='cerrada'`
+  // sobre la tabla entera, y eso no era una cuenta: era una barrera de
+  // sincronización disfrazada de cuenta. Medido el 2026-08-16: con dos filas de
+  // banco ya cerradas, la condición `>= objetivo` se cumplía **antes de tocar un
+  // solo botón**, el bucle seguía de largo y el verificador reportaba
+  // `0 cerradas · 4 activas` contra un panel que mostraba 1 salida.
+  //
+  // Un FAIL así es peor que un FAIL limpio: parece un defecto del panel y es del
+  // reloj de la prueba. Funcionaba sólo porque la tabla se vaciaba antes de cada
+  // corrida. Acotar por `PATENTES` no depende del banco ni de ninguna otra
+  // convención: depende de lo que esta corrida creó, que es lo que quiere contar.
   const contarCerradas = async () => {
     const [{ n }] = await sql`
-      SELECT count(*)::int AS n FROM sesion_vehiculo WHERE estado = 'cerrada'
+      SELECT count(*)::int AS n FROM sesion_vehiculo
+      WHERE estado = 'cerrada' AND patente IN ${sql(PATENTES)}
     `;
     return n;
   };
@@ -165,17 +188,68 @@ try {
     if (!confirmado) break;
   }
 
+  // **Por qué hay dos consultas y no una.**
+  //
+  // Hasta el 2026-08-16 había una sola, que barría la tabla entera: sin filtro de
+  // fecha y sin filtro de estacionamiento, mientras el panel filtra por los dos
+  // (`src/app/dueno/page.tsx:47`, `:55`, `:69`). Las dos mitades coincidían
+  // **porque la tabla se vaciaba antes de cada corrida**, no porque midieran lo
+  // mismo — la misma coincidencia que M-2 corrigió en otro lugar.
+  //
+  // El banco de medición de H1 lo destapó: son sesiones cerradas que sobreviven a
+  // la limpieza, así que la tabla dejó de vaciarse. Medido con dos filas de banco
+  // cerradas hoy: 8/10.
+  //
+  // Ahora son dos preguntas distintas, que antes estaban confundidas en una:
+  // **qué cerró esta corrida** (abajo, acotado a `PATENTES`) y **qué muestra el
+  // panel** (más abajo, con los filtros del panel).
+
+  // Lo que ESTA corrida cerró, acotado a sus propias patentes.
+  const [propias] = await sql`
+    SELECT count(*)::int AS cerradas FROM sesion_vehiculo
+    WHERE estado = 'cerrada' AND patente IN ${sql(PATENTES)}
+  `;
+
+  // Lo que el panel MUESTRA, con los mismos filtros que el panel usa: por el
+  // estacionamiento **de la dueña autenticada** (`src/app/dueno/page.tsx:55`) y,
+  // para las cerradas y los ingresos, desde el inicio del día en la zona de ese
+  // estacionamiento (`src/app/dueno/page.tsx:47`, `:69`). Las activas no llevan
+  // filtro de fecha, igual que en el panel (`src/app/dueno/page.tsx:49`).
+  //
+  // El `WHERE e.id` no es decorativo: sin él el `JOIN` no filtra nada —
+  // `estacionamiento_id` es NOT NULL con FK, así que toda fila tiene su par— y
+  // la consulta agregaría sobre TODOS los estacionamientos, coincidiendo con el
+  // panel solo por haber uno sembrado. Es la coincidencia de M-2, exactamente.
+  //
+  // **Riesgo declarado, no resuelto acá:** el corte del día está implementado dos
+  // veces con semánticas distintas. El panel usa `getTimezoneOffset()` del
+  // servidor (`src/app/dueno/page.tsx:33`), no la zona del estacionamiento; esta
+  // consulta usa `date_trunc(... AT TIME ZONE e.zona_horaria)`. Coinciden cuando
+  // el servidor corre en la zona del estacionamiento. Contra la URL viva —Vercel
+  // en UTC— difieren, y con banco acumulado una fila cerrada de noche en Chile
+  // haría discrepar panel y base. Es un defecto del panel, no de esta consulta.
   const [esperado] = await sql`
     SELECT
-      count(*) FILTER (WHERE estado = 'activa')::int  AS activas,
-      count(*) FILTER (WHERE estado = 'cerrada')::int AS cerradas,
-      COALESCE(sum(monto_calculado) FILTER (WHERE estado = 'cerrada'), 0)::int AS ingresos
-    FROM sesion_vehiculo
+      count(*) FILTER (WHERE s.estado = 'activa')::int AS activas,
+      count(*) FILTER (
+        WHERE s.estado = 'cerrada'
+          AND s.salida_at >= date_trunc('day', now() AT TIME ZONE e.zona_horaria)
+                             AT TIME ZONE e.zona_horaria
+      )::int AS cerradas,
+      COALESCE(sum(s.monto_calculado) FILTER (
+        WHERE s.estado = 'cerrada'
+          AND s.salida_at >= date_trunc('day', now() AT TIME ZONE e.zona_horaria)
+                             AT TIME ZONE e.zona_horaria
+      ), 0)::int AS ingresos
+    FROM sesion_vehiculo s
+    JOIN estacionamiento e ON e.id = s.estacionamiento_id
+    WHERE e.id = (SELECT estacionamiento_id FROM usuario WHERE email = ${EMAIL_DUENO})
   `;
+
   comprobar(
     `quedaron ${A_CERRAR} sesiones cerradas`,
-    esperado.cerradas === A_CERRAR,
-    `${esperado.cerradas} cerradas · ${esperado.activas} activas · $${esperado.ingresos}`,
+    propias.cerradas === A_CERRAR,
+    `${propias.cerradas} cerradas de esta corrida · panel espera ${esperado.cerradas} cerradas · ${esperado.activas} activas · $${esperado.ingresos}`,
   );
 
   // ---- Separación de roles ------------------------------------------------
@@ -242,7 +316,12 @@ try {
   );
 } finally {
   if (browser) await browser.close();
-  await sql`DELETE FROM sesion_vehiculo WHERE patente LIKE 'FIXT%'`;
+  // Ídem: el banco no se barre. Ver `PREFIJO_BANCO`.
+  await sql`
+    DELETE FROM sesion_vehiculo
+    WHERE patente LIKE 'FIXT%'
+      AND NOT (patente LIKE ${PREFIJO_BANCO + "%"} AND estado = 'cerrada')
+  `;
   await sql.end();
 }
 

@@ -140,10 +140,16 @@ maqueta `1g`, no construida.
 
 ### 3.2 El banco que acumula
 
-Hoy **5 de los 8** verificadores de navegador llaman `limpiarFixtures()` **al
-iniciar** (`a3`, `m4`, `meas2`, `op1`, `endurecimiento`; no `pwa`, `ui` ni
-`int12`). Limpian **al iniciar**, no al terminar: cada tanda borra lo de la
-anterior y deja lo suyo. **Ninguna acumula.**
+Hoy **6 de los 9** verificadores de navegador llaman `limpiarFixtures()` **al
+iniciar** (`a3`, `m4`, `meas2`, `op1`, `endurecimiento` y **`temporizador`**; no
+`pwa`, `ui` ni `int12`). Limpian **al iniciar**, no al terminar: cada tanda borra
+lo de la anterior y deja lo suyo. **Ninguna acumula.**
+
+> **Corrección (2026-08-16).** Acá decía *«5 de los 8»*. Re-medido:
+> `scripts/verificar-temporizador.mjs:208` llama `limpiarFixtures()` y no estaba
+> en el inventario. **Importa más que el dígito:** esta sección es la fuente del
+> diseño del banco, y se iba a diseñar contra una lista a la que le faltaba uno
+> de los borradores.
 
 El banco necesita un espacio que la limpieza no barra. Que no se decida por
 descarte: es parte de la propuesta y de lo que hay que revisar antes de

@@ -92,7 +92,12 @@ comprobar("se encontró la sección §9 de spec.md", Boolean(seccion));
 const filas = (seccion ?? "")
   .split("\n")
   .map((l) => l.trim())
-  .filter((l) => /^\|\s*AC-[A-Z]+-\w+/.test(l))
+  // `[A-Z0-9]+` y no `[A-Z]+`: **`AC-H1-1` tiene un dígito en el medio.** Con el
+  // patrón anterior su fila no matcheaba y el guard la **descartaba en silencio**
+  // —§9 declaraba 14 criterios y acá se contaban 13—, así que un AC nuevo podía
+  // entrar a la fuente de verdad y quedar invisible para el guard que existe para
+  // vigilarla. Encontrado al cablear AC-H1-1 el 2026-08-16.
+  .filter((l) => /^\|\s*AC-[A-Z0-9]+-\w+/.test(l))
   .map((l) => {
     // En una tabla markdown un pipe dentro de una celda va escapado como `\|`.
     // Partir en todo `|` rompe justo las celdas que contienen una alternancia de

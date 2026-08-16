@@ -14,9 +14,45 @@
 | **Hito en curso** | M6 · **FASE C** de la estrategia nueva (B cerrada) |
 | **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
 | **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
-| **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
+| **Próximo paso** | **Llenar el banco de H1 tecleando en la app.** El instrumento existe y falla por falta de datos, que es lo que tiene que hacer |
+| **FASE D** | **construida** (2026-08-16). `npm run verificar:h1` publica la mediana con su `n`, separa tres poblaciones y **falla con el banco vacío** |
+| **El bloque de §0 ya NO está todo en verde** | `verificar:h1` sale **FAIL** a propósito. **No lo “arregles”**: mientras el banco esté vacío, ese FAIL *es* la medición |
 | **Rama paralela de documentación** | T01 · **los cinco entregables cerrados** el 2026-08-15. ADR-005 queda **PROPUESTO**: adjudicarlo es decisión humana |
 | **HALLAZGO ABIERTO · alcance** | **el gate no cubre `tenant` ni `plataforma`.** Reproducido: 9/9 PASS con los dos plantados. Ver abajo |
+
+## FASE D (2026-08-16) — «SIN DATOS» dejó de ser una frase y pasó a ser un FAIL
+
+`npm run verificar:h1`. Hasta hoy *«H1 nunca se midió»* vivía en documentos; ahora
+es un comando que falla. `AC-MEAS-1` **no podía** fallar por ausencia de datos —un
+`count(*)` sobre un `WHERE` es vacuamente verdadero sobre el conjunto vacío—.
+`AC-H1-1` es **existencial**: su salida es un número.
+
+**Tres poblaciones que nunca se mezclan:** real (`NOT LIKE 'FIXT%'`, la única que
+vale), banco (`LIKE 'FIXTB%'`), y efímero (el resto de `FIXT%`, que es **tecleo de
+robot**). En su primera corrida el instrumento encontró 4 efímeras con mediana
+**1,53 s** — un número plausible, reproducible y basura. Publicarlo habría sido el
+`6,2 s` inventado otra vez.
+
+**El banco sobrevive a la limpieza, y solo el cerrado.** `FIXTB…` sigue siendo
+fixture para la barrera de A-3, así que `AC-PDP-1` no se tocó: cero migraciones,
+cero campos. Una fila de banco **activa** se barre como cualquier fixture — dejarla
+viva rompía `verificar:op1` (8/11) y `verificar:meas2` la cerraba clickeando a
+ciegas, contaminando la muestra.
+
+**Para vaciar el banco a propósito:** `npm run limpiar:fixtures -- --banco`.
+
+**Lo que el instrumento NO puede saber, y por eso no lo afirma:** la procedencia.
+Un `INSERT` con duraciones a mano entra al banco y da PASS. Está declarado en su
+salida en vez de fingir una garantía.
+
+**Cambio de semántica que conviene mirar:** `verificar-meas2.mjs` comparaba el
+panel contra **la tabla entera**; ahora usa los filtros del panel. Sostengo que
+recién ahora verifica lo que AC-MEAS-2 dice. Detalle en `LEDGER.md` (2026-08-16).
+
+**Defectos del repo corregidos de paso:** `limpiar:fixtures` no tenía
+`--env-file=.env` (nunca funcionó por su puerta documentada); y
+`scripts/verificar-ac.mjs:95` filtraba `AC-[A-Z]+-\w+`, así que **`AC-H1-1`
+desaparecía en silencio** — §9 declaraba 14 criterios y el guard contaba 13.
 
 ## Rama de documentación T01 (2026-08-15) — no toca código
 
@@ -171,7 +207,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `09fcf87` · árbol limpio · **corrido:** 2026-08-14 · **grupos:** estatico, base
+**Commit:** `ab4b1a3` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-16 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
@@ -180,11 +216,12 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
 | `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
-| `npm run verificar:citas` | `exit=0` · 17/17 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 39/39 | PASS |  |
+| `npm run verificar:citas` | `exit=0` · 23/23 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 41/41 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
+| `npm run verificar:h1` | `exit=1` · — | FAIL | **se espera FAIL** mientras el banco esté vacío: es el entregable de FASE D, no una regresión. *«No pude medirlo» no es «está bien»* |
 | `npm run build` | **NO CORRIDO** · grupo `build` | — |  |
 | `npm run verificar:salida` | **NO CORRIDO** · grupo `servidor` | — |  |
 | `npm run verificar:pwa` | **NO CORRIDO** · grupo `navegador` | — |  |
@@ -197,7 +234,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 10 de 21 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 11 de 22 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
 
 **Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->
@@ -440,11 +477,18 @@ Requieren `DATABASE_URL`, `CLAVE_ACCESO` y `SESSION_SECRET`. Sin `[url]` corren
 contra `localhost:3000`. **Todos los scripts que tocan la base ya traen
 `--env-file=.env`**.
 
-**5 de los 8** verificadores de navegador llaman `limpiarFixtures()` **al
-iniciar** (`a3`, `m4`, `meas2`, `op1`, `endurecimiento`; no `pwa`, `ui` ni
-`int12`) — mecanizado el 2026-08-12, porque era una precondición que dependía de
-que alguien se acordara y produjo dos FAIL falsos. `verificar-salida.mjs:10`
-declara que a propósito no limpia al inicio.
+**6 de los 9** verificadores de navegador llaman `limpiarFixtures()` **al
+iniciar** (`a3`, `m4`, `meas2`, `op1`, `endurecimiento` y **`temporizador`**; no
+`pwa`, `ui` ni `int12`) — mecanizado el 2026-08-12, porque era una precondición
+que dependía de que alguien se acordara y produjo dos FAIL falsos.
+`verificar-salida.mjs:10` declara que a propósito no limpia al inicio.
+
+> **Acá decía «5 de los 8», y quedó viejo.** Re-medido el 2026-08-16: importan
+> `puppeteer-core` **nueve** y llaman `limpiarFixtures()` **seis**. El que faltaba
+> en las dos cuentas es `scripts/verificar-temporizador.mjs:208`, que entró
+> después de aquella medición y hace las dos cosas. **No es un dígito: es un
+> borrador de banco que no figuraba en ningún inventario**, y la FASE D se iba a
+> diseñar contra esa lista. Lo encontró la auditoría de FASE D, ciclo 2.
 
 **No confundir con "la base queda en cero".** Limpian al **iniciar**: cada tanda
 borra las filas de la anterior y deja las suyas puestas. Hoy la base tiene 3

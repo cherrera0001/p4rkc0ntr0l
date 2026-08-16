@@ -15,7 +15,7 @@
 import { existsSync } from "node:fs";
 import postgres from "postgres";
 import puppeteer from "puppeteer-core";
-import { EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
+import { EMAIL_OPERADOR, limpiarFixtures, PREFIJO_BANCO } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
@@ -269,7 +269,15 @@ try {
   );
 } finally {
   if (browser) await browser.close();
-  await sql`DELETE FROM sesion_vehiculo WHERE patente LIKE 'FIXT%' OR patente = ${PATENTE_REAL}`;
+  // El banco de medición de H1 se excluye: ver `PREFIJO_BANCO`. Sin esto, este
+  // borrado inline —que no pasa por `limpiarFixtures()`— vacía la muestra de H1
+  // en cada corrida, que es precisamente lo que FASE D vino a arreglar.
+  await sql`
+    DELETE FROM sesion_vehiculo
+    WHERE (patente LIKE 'FIXT%'
+           AND NOT (patente LIKE ${PREFIJO_BANCO + "%"} AND estado = 'cerrada'))
+       OR patente = ${PATENTE_REAL}
+  `;
   await sql.end();
 }
 

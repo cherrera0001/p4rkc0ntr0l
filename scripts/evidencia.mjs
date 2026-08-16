@@ -146,6 +146,11 @@ const CATALOGO = [
   { script: "verificar:esquema", grupo: "base" },
   { script: "verificar:invariantes", grupo: "base" },
   { script: "verificar:meas1", grupo: "base" },
+  {
+    script: "verificar:h1",
+    grupo: "base",
+    nota: "**se espera FAIL** mientras el banco esté vacío: es el entregable de FASE D, no una regresión. *«No pude medirlo» no es «está bien»*",
+  },
   { script: "build", grupo: "build" },
   { script: "verificar:salida", grupo: "servidor", url: true },
   { script: "verificar:pwa", grupo: "navegador", url: true },

@@ -4142,3 +4142,189 @@ información que ADR-004 ya identificó como faltante, y que sigue faltando.
 **Ítem del Trabajo 01: ninguno.** I3 no puntúa — el trabajo eran cinco
 entregables y el quinto es este ADR, que no tiene ítem de rúbrica. El puntaje
 queda como lo dejó I2.
+
+---
+
+## 2026-08-16 · **FASE D** · el instrumento de H1 y el banco que acumula
+
+**Lo que cambia el estado del proyecto:** hasta hoy, *«H1 nunca se midió»* era una
+frase en documentos. Desde hoy es un **comando que falla**.
+
+```
+$ npm run verificar:h1
+población    n   mediana       mín       máx   ¿evidencia de H1?
+real         0         —         —         —   SÍ — la única que vale para H1
+banco        0         —         —         —   no — y su procedencia no se comprueba
+efímero      0         —         —         —   NO — tecleo de un robot, no de una persona
+
+AC-H1-1: FAIL
+exit=1
+```
+
+**El FAIL es el entregable, no una regresión.** `AC-MEAS-1` no puede fallar por
+ausencia de datos: sus dos guardas son un `count(*)` sobre un `WHERE` —vacuamente
+verdadero sobre el conjunto vacío— y una lectura de `information_schema`
+(`scripts/verificar-meas1.mjs:53` y `:57`). *Un criterio universal es
+automáticamente verdadero si no hay ningún X.* `AC-H1-1` es **existencial**: su
+salida es un número, y con la base vacía no puede pasar.
+
+### Las tres poblaciones, y por qué separarlas no es prolijidad
+
+| Población | Filtro | ¿Evidencia de H1? |
+|---|---|---|
+| real | `patente NOT LIKE 'FIXT%'` | **sí, la única** |
+| banco | `patente LIKE 'FIXTB%'` | no — mide la interfaz |
+| efímero | resto de `FIXT%` | **NO — tecleo de un robot** |
+
+El instrumento justificó el diseño en su primera corrida: había **4 sesiones
+efímeras con mediana 1,53 s**. Un número plausible, reproducible y basura — lo
+tecleó Puppeteer. Publicarlo como «mediana del tiempo de tecleo» habría sido el
+`6,2 s` inventado otra vez, con más decimales.
+
+### Lo que el instrumento NO puede saber, y por eso no lo afirma
+
+**La procedencia de una fila no está en la base.** El auditor lo probó insertando
+dos filas `FIXTB` con duraciones elegidas a mano: entraron al banco y dieron
+`AC-H1-1: PASS`. Ninguna columna arreglaría eso —cualquiera con `DATABASE_URL`
+escribe lo que quiera—, así que el archivo dejó de describir al banco como *«una
+persona tecleando»* y lo declara en su salida:
+
+```
+LÍMITE DEL INSTRUMENTO · la procedencia de una fila NO está en la base.
+```
+
+### El banco: `FIXTB`, y solo las cerradas
+
+`esPatenteFixture()` compara contra `FIXT` (`src/lib/fixtures.ts:15`), así que
+`FIXTB…` **sigue siendo fixture para la barrera de datos personales**: `AC-PDP-1`
+no se tocó, cero migraciones, cero campos, `AC-DATA-1` intacto en 8/8.
+
+El predicado quedó `AND NOT (patente LIKE 'FIXTB%' AND estado = 'cerrada')`, y el
+`AND estado = 'cerrada'` lo puso el auditor con una medición: **el banco solo
+crece pasando por `activa`**, y con una fila de banco activa presente
+`verificar:op1` caía a **8/11** —reabriendo el defecto por el que
+`limpiarFixtures()` existe— y `verificar:meas2`, que clickea el primer botón de la
+lista sin mirar la patente, **cerraba filas de banco** y las metía en el universo
+de H1. El universo de H1 son las cerradas: una fila a medio terminar no es
+evidencia, y protegerla rompía dos verificadores.
+
+### Tres ciclos de auditoría, once hallazgos. Los que enseñan
+
+**1 · «Imposible por construcción» era falso, y yo lo había declarado cumplido.**
+El archivo afirmaba que publicar una mediana sin su `n` era imposible; la mediana
+circulaba suelta en cuatro lugares. El auditor lo dijo con la frase exacta: *«el
+defecto grave no es tener la propiedad a medias, es declararla cumplida»*.
+
+**2 · Un número heredado republicado como medido.** El script decía *«5 de los 8
+verificadores de navegador»*, copiado de `STATE.md`. Medido: **6 de 9** — faltaba
+`scripts/verificar-temporizador.mjs:208`, que entró después de aquella medición.
+El claim vivía en **7 lugares**; se corrigieron los cuatro en presente y se dejaron
+intactas las dos narraciones fechadas y la entrada de este ledger, que es
+append-only.
+
+**3 · La premisa del prompt no reproducía.** Decía que el borrado vive en «los dos
+lugares». Vive en **cinco**: tres son `DELETE` inline en `verificar-a3.mjs` y
+`verificar-meas2.mjs` que no pasan por `limpiarFixtures()`. Se descubrió midiendo:
+puse las sondas, corrí la regresión, y la base quedó en **0**.
+
+**4 · El control negativo dio PASS mientras el banco moría.** Enumeraba dos
+archivos. Reescrito **por exclusión** —la lección del gate de alcance—, pasó de
+ver 7 borrados a **13**.
+
+**5 · Y volvió a fallar, de otra forma.** Tomaba 400 caracteres hacia adelante, así
+que un borrado quedaba absuelto por su **vecindario**. El auditor lo desarmó con
+tres archivos que difieren solo en lo que tienen al lado:
+`DELETE ... WHERE estado = 'cerrada'` —que borra el banco entero— pasaba por tener
+debajo un borrado guardado, **que es la forma de los bloques `finally` de a3 y
+meas2**. Con el corte en el cierre del literal, las tres caen.
+
+**6 · Y el control vivo era una copia.** Re-tecleaba el `WHERE` de
+`limpiarFixtures()` diciendo *«el mismo predicado»*. El auditor borró la guardia
+del original y el control siguió en PASS. Ahora **extrae el `WHERE` del fuente y
+lo ejecuta**; si la extracción falla, la comprobación falla.
+
+**7 · `verificar:meas2` usaba «toda la tabla» como «los datos de esta corrida»,
+en dos lugares.** Uno era `contarCerradas()`, que es la **barrera de
+sincronización** que espera los cierres: con dos filas de banco ya cerradas, la
+condición se cumplía **antes de tocar un botón** y el verificador reportaba
+`0 cerradas · 4 activas` contra un panel con 1 salida. Un FAIL que parece del
+producto y es del reloj de la prueba. Funcionaba solo porque la tabla se vaciaba
+antes de cada corrida — la coincidencia de M-2, otra vez.
+
+### Defectos del repo encontrados de paso, y corregidos
+
+- **`limpiar:fixtures` nunca funcionó por su puerta documentada.** Era el único
+  script que toca la base **sin `--env-file=.env`**, contra lo que afirmaba
+  `STATE.md`. Es el mismo defecto que el ledger ya registró para `npm run sembrar`
+  el 2026-08-13.
+- **`verificar-ac.mjs` descartaba en silencio los AC con dígito en el medio.**
+  `scripts/verificar-ac.mjs:95` filtraba con `AC-[A-Z]+-\w+`, así que la fila de
+  **`AC-H1-1` no matcheaba y desaparecía**: §9 declaraba 14 criterios y el guard
+  contaba 13. Un AC podía entrar a la fuente de verdad y quedar invisible para el
+  guard que existe para vigilarla.
+- **El veredicto tenía que ir solo en su línea.** `evidencia.mjs:362` exige
+  `ETIQUETA: PASS|FAIL` al ras y sin nada detrás; con la explicación pegada, el
+  bloque publicaba `SIN VEREDICTO`.
+
+### Cambio de semántica que hay que mirar: AC-MEAS-2
+
+`verificar-meas2.mjs` comparaba el panel contra **la tabla entera** —sin filtro de
+fecha ni de estacionamiento— mientras el panel filtra por los dos. Ahora la
+consulta usa los filtros del panel. **Sostengo que recién ahora verifica lo que
+AC-MEAS-2 dice**, y el auditor lo confirmó midiendo: endurece en la dimensión
+fecha y el desajuste anterior fallaba hacia el FAIL, no hacia el PASS falso. Pero
+es un cambio de qué compara un AC vigente, y se señala en vez de esconderse.
+
+**Riesgo declarado, no resuelto:** el corte del día está implementado dos veces
+con semánticas distintas. El panel usa `getTimezoneOffset()` del **servidor**
+(`src/app/dueno/page.tsx:33`), no la zona del estacionamiento; la consulta nueva
+usa `date_trunc(… AT TIME ZONE e.zona_horaria)`. Coinciden con el servidor en la
+zona del cliente; contra Vercel en UTC, difieren. **Es un defecto del panel.**
+
+### Evidencia de comando · corrida final
+
+```
+$ npm run verificar:h1                       AC-H1-1: FAIL   exit=1   ← el entregable
+$ npm test                    122/122, 0 fallos                       exit=0
+$ npm run verificar:esquema   8/8 · AC-DATA-1: PASS                   exit=0
+$ npm run verificar:invariantes 8/8                                   exit=0
+$ npm run verificar:meas1     AC-MEAS-1: PASS                         exit=0
+$ npm run verificar:ac        5/5 · 14 AC                             exit=0
+$ npm run verificar:verificadores 41/41                               exit=0
+$ npm run verificar:citas     23/23                                   exit=0
+$ npm run verificar:alcance   9/9                                     exit=0
+
+con el banco puesto (FIXTB90 cerrada hoy $700 + FIXTB04 activa):
+  verificar:op1    11/11    (la activa barrida: "limpieza previa: 1 sesión/es")
+  verificar:a3     11/11
+  verificar:m4     29/29
+  verificar:meas2  10/10    panel 3 · base 3 · panel $1700 · base $1700
+  el banco sobrevivió a las cuatro, sin mutar
+```
+
+Control negativo del banco, cinco comprobaciones, y **probado con el fallo
+plantado** en las dos formas:
+
+```
+predicado VIEJO en transacción     banco=0  -> el control FALLA
+tres sondas de vecindario          las tres delatadas
+árbol HEAD sin guardias            5 borrados desprotegidos en 4 archivos
+```
+
+### El bloque de evidencia deja de estar todo en verde, a propósito
+
+`npm run evidencia` publica ahora `verificar:h1 · exit=1 · FAIL` y **sale con
+exit 1**. Está escrito acá para que el próximo lector no lo «arregle»: mientras el
+banco esté vacío, ese FAIL **es la medición**. Se cierra tecleando en la app —no
+insertando filas, que el instrumento no puede impedir y sería fabricar el `6,2 s`.
+
+### Lo que NO se hizo
+
+- **Ninguna fila de banco quedó en la base.** Las sondas de interferencia se
+  retiraron con `npm run limpiar:fixtures -- --banco`; la base terminó en **0**.
+- **`src/` no se tocó**: `git status --porcelain -- src/` vacío en las tres vueltas.
+- **Ningún placeholder rellenado.** `{{N_MINIMO_H1}}` se propuso en `spec.md` §12 y
+  quedó abierto, con `{{UMBRAL_H1_SEGUNDOS}}` y `{{LINEA_BASE_CUADERNO_SEGUNDOS}}`.
+- **El escáner del control no cubre `src/`**, y lo dice en su propia salida. Importa
+  para INT-7: su mecanismo de retención va a ser un borrado por fecha en Drizzle
+  dentro de `src/`, y este control no lo vería.
