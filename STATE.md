@@ -15,7 +15,8 @@
 | **Bloqueo activo** | ninguno. El gate de evidencia quedó **FAIL, riesgo aceptado** (2026-08-14) |
 | **INT-12** | riesgo aceptado por decisión humana (2026-08-14). Ya no detiene el hito |
 | **Próximo paso** | Cerrar FASE C con `AC-OP-3`, y **pivotear a FASE D** (SPEC-D escrita y decidida) |
-| **Rama paralela de documentación** | T01 · entregables 1–2–3–4 cerrados el 2026-08-15. Falta el 5: **ADR-005** |
+| **Rama paralela de documentación** | T01 · **los cinco entregables cerrados** el 2026-08-15. ADR-005 queda **PROPUESTO**: adjudicarlo es decisión humana |
+| **HALLAZGO ABIERTO · alcance** | **el gate no cubre `tenant` ni `plataforma`.** Reproducido: 9/9 PASS con los dos plantados. Ver abajo |
 
 ## Rama de documentación T01 (2026-08-15) — no toca código
 
@@ -56,6 +57,32 @@ Dos veces un fix corrigió una mitad y dejó viva la otra.
 no se corrió es peor que no ponerla. El documento publicaba `21/21` como *«medido
 hoy»* siendo un número de la iteración anterior — dentro de la sección que
 declara que un PASS viejo no es una medición de hoy. El real era 23/23.
+
+**Entregable 5 cerrado (I3, 2026-08-15).**
+`docs/adr/ADR-005-modelo-de-tenant-y-panel-de-administracion.md` y
+`docs/SPEC-005-panel-de-administracion.md`, los dos en **PROPUESTO**. Ponen sobre
+la mesa la pregunta que ADR-004 nunca adjudicó —**multicliente** (N clientes, un
+recinto cada uno) ≠ **multisitio** (un cliente, varios recintos)— con cuatro
+alternativas, cada una con condición de reactivación falsable, consecuencias
+negativas y verificación por estructura. **Se recomienda la alternativa 2 y NO se
+adjudica.**
+
+## HALLAZGO ABIERTO · el gate de alcance no cubre `tenant` ni `plataforma`
+
+**Encontrado auditando I3, reproducido, y NO corregido.** `verificar-alcance.mjs`
+no menciona `plataforma` ni una vez, y `tenant` no está en su lista de entidades
+prohibidas (`scripts/verificar-alcance.mjs:91`). Con el rol, la entidad y una
+pantalla de aprovisionamiento plantados en una copia aislada, el gate da
+**`9/9 comprobaciones PASS · ALCANCE: PASS · exit=0`**.
+
+**Un cambio que introduzca multisitio pasa el gate y puede reportar AC-SCOPE en
+verde.** Es la familia de INT-12 y del gate de evidencia: la propiedad se
+sostiene —en el árbol real no hay `tenant`—, el mecanismo que la vigila no.
+
+**Corregirlo no es agregar `tenant` a una lista** —eso repite el defecto de la
+enumeración—: es extender el gate **por exclusión**, como ya se hizo con las
+pasarelas, y probarlo con el fallo plantado. Detalle y reproducible en
+`LEDGER.md` (2026-08-15).
 
 **Tres hallazgos que sobreviven a esta sesión y valen para el producto:**
 

@@ -45,6 +45,8 @@ Leé estos tres, **en este orden**:
 | [`data/actores.md`](data/actores.md) | Quién usa el sistema, verificado. **Y el actor que falta:** quien aprovisiona un cliente |
 | [`data/historias-usuario.md`](data/historias-usuario.md) | 10 historias de usuario derivadas de `spec.md` §5/§6; 2 fuera de alcance, a propósito |
 | [`data/seleccion-prototipo.md`](data/seleccion-prototipo.md) | Qué se construye primero y por qué, contra tres ejes. **Y las siete descartadas, con su puntaje** |
+| [`adr/ADR-005-modelo-de-tenant-y-panel-de-administracion.md`](adr/ADR-005-modelo-de-tenant-y-panel-de-administracion.md) | **PROPUESTO.** N clientes vs. multisitio — la pregunta que ADR-004 no adjudicó. **Y el hueco del gate de alcance, reproducido** |
+| [`SPEC-005-panel-de-administracion.md`](SPEC-005-panel-de-administracion.md) | **PROPUESTO y bloqueado.** Qué habría que construir si se acepta ADR-005 |
 
 **Dónde está lo bueno:** `MER.md` §5 (qué se rechazó y por qué), `MR.md` §4 (la
 tarifa que no se registra y qué se rompe por eso), `flujos.md` §2 (la resolución

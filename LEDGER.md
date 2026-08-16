@@ -3965,3 +3965,180 @@ disimula.
 
 **El total es una estimación propia, no una nota puesta por el evaluador.** Se
 escribe como estimación y no como hecho.
+
+---
+
+## 2026-08-15 · **HALLAZGO DE ALCANCE · el gate no cubre `tenant` ni `plataforma`**
+
+Se registra **acá y no solo dentro de ADR-005**, a pedido del auditor y con razón:
+es un defecto **del repositorio**, y hoy vive dentro de un ADR en estado
+PROPUESTO. Si ese ADR se rechaza y se archiva, el defecto se archiva con él. Acá
+no.
+
+### Qué falla
+
+`scripts/verificar-alcance.mjs` **no rechaza** la entidad `tenant`, el rol
+`plataforma` ni una pantalla de aprovisionamiento. Medido:
+
+```
+$ Select-String -Path scripts/verificar-alcance.mjs -Pattern 'plataforma'
+CERO apariciones
+
+$ Select-String -Path scripts/verificar-alcance.mjs -Pattern 'tenant'
+101: const MULTISITIO_UI = /(selector|conmutador|switcher)[-_]?(de[-_]?)?(sucursal|sitio|empresa|tenant)/i;
+```
+
+Una sola aparición, y es un nombre de **conmutador de interfaz**. Y
+`scripts/verificar-alcance.mjs:91` es
+`pago|pagos|transaccion|transacciones|sucursal|sucursales|reserva|reservas`:
+**`tenant` no está en la lista de entidades prohibidas.**
+
+### Reproducido, no argumentado
+
+Copia aislada del árbol, tres cosas plantadas, gate corrido contra la copia:
+
+```
+1. rol plataforma en el enum      -> PLANTADO
+2. entidad tenant en el esquema   -> PLANTADA
+3. pantalla de aprovisionamiento  -> PLANTADA   (src/app/plataforma/alta-cliente/page.tsx)
+
+$ node scripts/verificar-alcance.mjs <copia>
+PASS · AC-SCOPE-2 · ni el esquema ni las migraciones definen Pago/Transaccion/Sucursal/Reserva
+PASS · AC-SCOPE-2 · no hay selector de sucursal ni conmutador de empresa en la interfaz
+9/9 comprobaciones PASS · ALCANCE: PASS · exit=0
+```
+
+Comprobado que el archivo plantado cae dentro de la superficie escaneada: la copia
+tiene **42** archivos en `src/` contra **41** del árbol real. El defecto no es que
+el gate no mire: es que mira y no le importa.
+
+### Por qué importa, dicho sin dramatizar
+
+`CLAUDE.md` §1 declara multisitio como fila **bloqueante** de ADR-001, y ADR-004
+lo mantuvo excluido **por nombre**: *«Multisitio / entidad `tenant` / rol
+`plataforma`»*. **Un cambio que introduzca los tres pasa el gate y puede reportar
+AC-SCOPE en verde.**
+
+Es la misma familia que `CLAUDE.md` §1 ya documenta para la versión anterior de
+AC-SCOPE-1 —*«un criterio que siempre pasa es peor que no tener criterio»*—. Ahí
+el defecto era el pipe escapado de PowerShell; acá es una **enumeración
+incompleta**. El gate se reescribió **por exclusión** para las pasarelas, y esa
+reescritura nunca alcanzó a la fila de multisitio: quedó enumerada, y `tenant`
+nunca entró en la enumeración.
+
+**Matiz que evita el pánico:** nadie construyó nada de eso. Lo que falla es la
+red, no el producto — `verificar:alcance` sigue dando 9/9 legítimos sobre el árbol
+real, porque en el árbol real no hay `tenant`. Es exactamente el estado de INT-12
+y del gate de evidencia: **la propiedad se sostiene, el mecanismo que la vigila
+no.**
+
+### Qué NO se hizo, y por qué
+
+**No se corrigió.** Tocar `scripts/verificar-alcance.mjs` es tocar un verificador,
+y la rama de documentación T01 tiene prohibido tocar tooling. Corregirlo bien
+además no es agregar `tenant` a una lista —eso repetiría el defecto de la
+enumeración—: es extenderlo **por exclusión** y probarlo con el fallo plantado
+(`npm run verificar:alcance:prueba`, que ya existe).
+
+**Queda como trabajo declarado para el implementador, con el reproducible escrito
+arriba.**
+
+---
+
+## 2026-08-15 · Documentación T01 · entregable 5 (I3) · **VETO y después PASA**
+
+`docs/adr/ADR-005-modelo-de-tenant-y-panel-de-administracion.md` y
+`docs/SPEC-005-panel-de-administracion.md`, los dos **nuevos** y los dos en estado
+**PROPUESTO**. **No se tocó `src/`, `scripts/`, `spec.md` ni migraciones**:
+`git diff --stat HEAD` vacío, comprobado por el auditor.
+
+### Qué se redactó, y qué explícitamente no
+
+**Se redacta, no se adjudica.** Un loop no decide alcance. El ADR pone la pregunta
+en condiciones de ser decidida y **no la decide**: estado PROPUESTO, decisor
+*pendiente*, y la frase que cierra la puerta —*«lo único que este documento
+autoriza es leerlo»*—.
+
+**La pregunta:** ¿se habilita «N clientes, un recinto cada uno»? Con la distinción
+que ADR-004 nunca adjudicó:
+
+| | Qué es | Estado |
+|---|---|---|
+| **Multisitio** | un cliente con varios recintos | **rechazado** por ADR-004, con argumento |
+| **Multicliente** | N clientes con un recinto cada uno | **nunca evaluado** |
+
+Cuatro alternativas, cada una con **condición de reactivación falsable**,
+**consecuencias negativas** y **verificación por estructura**. Se recomienda la
+**alternativa 2** —N clientes sin entidad `tenant`—, con la razón en contra
+declarada y no neutralizada: `spec.md` §1 dice que el riesgo central es adopción,
+no escala. La respuesta es una **secuencia**, no una negación: primero H1 tiene un
+número, después se habilitan clientes.
+
+**El aislamiento entra como §3, antes de las alternativas**, con siete requisitos
+de seguridad y de Ley 21.719. El que carga el peso es **REQ-ISO-2**: hoy ningún
+verificador siembra un segundo estacionamiento, así que la separación se cumple
+por construcción **y por tener un solo cliente sembrado**. Con un cliente es una
+observación; con dos, un incumplimiento.
+
+### Ciclo 1 · **VETO** · el hallazgo es del repo, no del documento
+
+El documento afirmaba en **cinco** lugares —incluida la línea 3, el encabezado de
+estado— que el gate rechaza en ejecución `tenant`, `plataforma` y la pantalla de
+alta. **Es falso, y está registrado como hallazgo aparte arriba.**
+
+Es el peor error posible en este documento en particular: **el ADR existe para
+impedir que se construya antes de decidir, y lo hacía afirmando un mecanismo que
+no existe.** Un implementador que lo leyera y construyera las tres cosas obtendría
+`ALCANCE: PASS` y podría reportar el AC en verde.
+
+Más seis hallazgos, todos ciertos y todos corregidos:
+
+- **la numeración de alternativas de ADR-004 estaba mal leída** — es la
+  alternativa **3**, no la 1, y `:95` no es una alternativa sino el ítem 1 de *«Se
+  abre»* bajo *«Decisión propuesta»*. En el documento cuya tesis entera es *«leé
+  bien qué decidió ADR-004»*;
+- `usuario.email` citado a `src/db/schema.ts:51`, que es la PK: es **`:52`**;
+- dos citas a ADR-004 apuntando una línea antes del texto atribuido (`:116`→`:118`,
+  `:122`→`:123`) y una comilla que elidía `(spec.md §8)` sin marcarlo;
+- la regla de los emails `.invalid` atribuida a `spec.md` §11, que **no la
+  menciona** —cero apariciones de `invalid` en todo el archivo—: vive en
+  `scripts/sembrar.mjs:108`;
+- una contradicción interna sobre si AC-ISO-1 se puede construir hoy;
+- AC-ADM-3 faltaba en el inventario, la razón 2 razonaba desde un placeholder
+  abierto como si fuera un hecho, y la alternativa 2 no tenía condición de
+  reactivación propia.
+
+### Ciclo 2 · **PASA**
+
+Cerrados los siete. El auditor destacó lo que más importaba: **el hueco del gate
+no quedó colgado de que se acepte la alternativa 2** — está anclado también en la
+alternativa 1, el statu quo, así que si el ADR se rechaza entero el hallazgo
+sobrevive. Y ahora, además, vive en este ledger.
+
+### Evidencia de comando
+
+```
+$ node scripts/verificar-citas.mjs docs/adr
+ADR-005 · todas las citas archivo:línea resuelven · 33 citas
+7/7 comprobaciones PASS · CITAS: PASS · exit=0
+
+$ node scripts/verificar-citas.mjs docs
+SPEC-005 · todas las citas archivo:línea resuelven · 20 citas
+15/15 comprobaciones PASS · CITAS: PASS · exit=0
+
+$ npm run verificar:alcance          9/9 PASS · ALCANCE: PASS · exit=0
+$ npm run verificar:citas            23/23 PASS · CITAS: PASS · exit=0
+```
+
+`verificar:alcance` en 9/9 sobre el árbol real es legítimo **y es la mitad del
+hallazgo**: da 9/9 también con el fallo plantado.
+
+### Lo que queda para el humano, y que este ADR no puede aportar
+
+**Un número de H1.** Las cuatro alternativas se leen distinto según H1 se sostenga
+o no, y hoy no hay un solo dato. Decidir esto antes de medir H1 es decidir con la
+información que ADR-004 ya identificó como faltante, y que sigue faltando.
+
+**Ítem del Trabajo 01: ninguno.** I3 no puntúa — el trabajo eran cinco
+entregables y el quinto es este ADR, que no tiene ítem de rúbrica. El puntaje
+queda como lo dejó I2.
