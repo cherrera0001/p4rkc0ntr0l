@@ -15,6 +15,7 @@ import { exigirRol } from "@/lib/auth";
 import { operacionRealHabilitada } from "@/lib/env";
 import { ErrorBaseDatos } from "@/lib/errores";
 import { esPatenteFixture } from "@/lib/fixtures";
+import { esIdValido } from "@/lib/frontera";
 import { validarPatente } from "@/lib/patente";
 import {
   noAutorizado,
@@ -114,7 +115,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) {
+  // El guard anterior contaba caracteres de un alfabeto —`/^[0-9a-f-]{36}$/i`— y
+  // por eso aceptaba 36 guiones: pasaba el 400, llegaba a Postgres como `22P02`
+  // y salía 503, que la cola local reintenta en bucle **cortando el lote**
+  // (AC-API-1). `esIdValido` valida las posiciones, no el largo.
+  if (!esIdValido(id)) {
     return NextResponse.json({ error: "Falta un id válido (uuid)." }, { status: 400 });
   }
 

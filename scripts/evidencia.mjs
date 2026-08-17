@@ -162,6 +162,11 @@ const CATALOGO = [
   },
   { script: "build", grupo: "build" },
   { script: "verificar:salida", grupo: "servidor", url: true },
+  // Los dos de M7. Van en `servidor` y no en `base` porque hablan HTTP: sin algo
+  // escuchando no rinden veredicto, y un NO CORRIDO honesto vale más que un PASS
+  // de un comando que no pudo probar nada.
+  { script: "verificar:concurrencia", grupo: "servidor", url: true },
+  { script: "verificar:frontera", grupo: "servidor", url: true },
   { script: "verificar:pwa", grupo: "navegador", url: true },
   { script: "verificar:op1", grupo: "navegador", url: true },
   { script: "verificar:a3", grupo: "navegador", url: true },

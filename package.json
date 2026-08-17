@@ -17,6 +17,8 @@
     "verificar:m4": "node --env-file=.env scripts/verificar-m4.mjs",
     "verificar:op1": "node --env-file=.env scripts/verificar-op1.mjs",
     "verificar:salida": "node --env-file=.env scripts/verificar-salida.mjs",
+    "verificar:concurrencia": "node --env-file=.env scripts/verificar-concurrencia.mjs",
+    "verificar:frontera": "node --env-file=.env scripts/verificar-frontera.mjs",
     "verificar:meas1": "node --env-file=.env scripts/verificar-meas1.mjs",
     "verificar:h1": "node --env-file=.env scripts/verificar-h1.mjs",
     "verificar:metrica": "node --env-file=.env scripts/verificar-metrica.mjs",

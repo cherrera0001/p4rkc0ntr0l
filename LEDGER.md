@@ -4817,3 +4817,132 @@ Con tres o más filas de duraciones conocidas y distintas, `mediana`, `mín` y
 importa cómo esté escrito el SQL. Queda escrito para quien retome; **no se
 construye acá**, porque el hito está detenido.
 
+
+---
+
+## 2026-08-17 · M7 — integridad del cierre y frontera de entrada · **PASS**
+
+Adjudicado por el rol `arbitro-tecnico`, creado hoy a pedido explícito del dueño
+para que las decisiones de diseño dejen de detener el trabajo. **Su frontera está
+escrita y se respetó: decide diseño y arquitectura, y responde BLOQUEADO ante lo
+jurídico, lo comercial y todo `{{placeholder}}`.** No rellenó ninguno.
+
+### Lo que el árbitro corrigió de mi propio informe, midiendo
+
+Tres «defectos» que yo había reportado y que no lo eran:
+
+- **`tarifa` sin índice** → tiene uno, su PK. Y `tarifa` tiene **1 fila**: un
+  índice para escanear una fila es optimizar la nada. *(Segunda vez que este repo
+  me corrige lo mismo: una PK ES un índice, y el DDL no es el motor.)*
+- **`ssl` implícito en el driver** → `sslmode=require` **sí** está en la cadena.
+  Es documentación faltante, no defecto.
+- **`SESSION_SECRET` sin largo mínimo** → el secreto en uso mide **48
+  caracteres**. Es una guarda contra un despliegue futuro, no un agujero abierto.
+
+Y agravó uno: el id degenerado no solo produce un 503. `cola-local.ts:337-344`
+**corta el lote con un `break`**, así que un registro corrupto bloquea la
+sincronización **entera del turno** — y con ella la evidencia de H1.
+
+### La secuencia de evidencia: el fallo plantado era el árbol de hoy
+
+Los dos verificadores se escribieron **antes** de corregir y se corrieron contra
+el código sin tocar. No hubo que plantar nada.
+
+```
+AC-OP-5 · ARBOL SIN CORREGIR
+  FAIL · exactamente una respuesta declara haber cerrado la sesión · 8 de 8 con yaCerrada:false
+  FAIL · todas las respuestas publican la misma hora de salida · horas distintas:
+         14:02:04.605Z, 14:02:01.434Z, 14:02:02.791Z, 14:02:01.869Z,
+         14:02:03.233Z, 14:02:03.700Z, 14:02:04.159Z, 14:02:02.335Z
+  4/6 comprobaciones PASS
+
+AC-API-1 · ARBOL SIN CORREGIR
+  FAIL · ninguna entrada malformada produjo un 5xx · 2:
+         POST /api/login · byte NUL → HTTP 503
+         POST /api/sesiones/[id]/salida · 36 guiones (el caso medido) → HTTP 503
+  3/4 comprobaciones PASS · exit=1
+```
+
+**Las ocho salidas simultáneas escribieron las ocho.** Los montos coincidieron
+por casualidad —los ocho cierres cayeron dentro de la misma fracción de 15
+minutos—; con un cruce de fracción también divergirían. La hora no coincidió, y
+esa es la que delata.
+
+### El hallazgo que nadie sabía que estaba ahí
+
+`POST /api/login` con un **byte NUL** en el email devolvía 503. Postgres no
+admite NUL en columnas `text` ni escapado; el valor atravesaba las tres
+condiciones del login —es cadena, mide entre 1 y 255— y reventaba en el driver.
+
+**No lo encontró una lectura del código: lo encontró el corpus.** Aislado antes
+de tocar nada, para no corregir el síntoma equivocado:
+
+```
+"a\n b"   → 401   (el salto de línea no tiene nada de malo)
+"a<NUL>b" → 503   {"tipo":"base-datos"}
+```
+
+Por eso la guarda rechaza **solo** el NUL y no «los caracteres raros»: los
+acentos, los saltos de línea y los espacios invisibles son texto legítimo, y
+ampliar la guarda a ellos sería rechazar datos válidos para arreglar un caso que
+no los incluye.
+
+### Las tres correcciones
+
+1. **`estado = 'activa'` en el `WHERE` del `UPDATE`** de la salida, y la rama de
+   `returning` vacío que relee y responde `200 {yaCerrada:true}`. **No es achicar
+   la ventana:** en READ COMMITTED el segundo `UPDATE` se bloquea en el lock de
+   fila del primero y **re-evalúa su `WHERE` contra la versión nueva**. La fila ya
+   no matchea. La atomicidad la da la fila, no una transacción — y por eso no se
+   trajo un primitivo que este repo no tiene.
+2. **`esIdValido`** en `src/lib/frontera.ts`, una definición para los dos sitios.
+   El guard anterior contaba caracteres de un alfabeto; éste valida posiciones.
+3. **`esTextoAlmacenable`** en el login.
+
+Reproducción previa de la carrera, contra la base, con dos conexiones:
+
+```
+SIN guardia (el código de entonces): escrituras efectivas = 2 · monto final = 7777
+CON guardia estado='activa':         escrituras efectivas = 1 · monto final = 1000
+```
+
+### Después de corregir
+
+```
+AC-OP-5:  6/6 · exactamente una respuesta declara haber cerrado · 1 de 8
+AC-API-1: 4/4 · 55 caso(s) sin 5xx
+```
+
+Regresión completa: `test 122/122 · ac 9/9 · citas 49/49 · verificadores 49/49 ·
+alcance 9/9 · agentes 20/20 · metrica 4/4 · esquema 8/8 · invariantes 8/8 ·
+salida 11/11 · build exit=0`.
+
+**El meta-guard cazó mi propio verificador:** `verificar-concurrencia.mjs` llamaba
+`.json()` crudo, y `verificar:verificadores` lo rechazó (48/49). Corregido a
+`leerJson()`. Es exactamente para lo que existe.
+
+### Lo que NO entró, con su argumento
+
+- **ADR-005 sigue PROPUESTO.** Su precondición 1 —*«H1 tiene un número real»*—
+  está **falsificada por medición**: `sesion_vehiculo` tiene 0 filas. Y su
+  aceptación como decisión de producto quedó **BLOQUEADA** en seis placeholders,
+  tres de ellos jurídicos o comerciales. Ninguno se rellenó.
+- **El hueco del gate (`tenant`/`plataforma`/pantalla de alta) no se cerró**, con
+  disparador en vez de fecha: **es la primera obra de cualquier trabajo bajo
+  ADR-005**, antes de la primera línea, no después.
+- **El control negativo de aislamiento (REQ-ISO-2)** queda nombrado como
+  **M8**, primer candidato después de M7.
+- Rate limit distribuido, RLS, middleware de auth, largo mínimo de secreto e
+  índice de `tarifa`: fuera, cada uno con su razón medida arriba.
+
+**Cero migraciones. Cero campos. El esquema no se tocó.**
+
+### Deuda que este hito deja abierta y con nombre
+
+`estado='activa'` en el `WHERE` resuelve **una** fila. El repo sigue sin ningún
+primitivo transaccional, y el próximo read-modify-write que alguien escriba
+—el alta de cliente de ADR-005 crea estacionamiento + tarifa + dos usuarios— va a
+nacer con el mismo defecto y **sin nada que lo frene**. Condición de reversión
+declarada por el árbitro: que aparezca una operación que deba escribir dos o más
+filas de forma indivisible.
+

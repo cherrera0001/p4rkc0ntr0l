@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 
 import { conBase, db, usuario } from "@/db";
 import { cerrarSesion, claveCorrecta, iniciarSesion } from "@/lib/auth";
+import { esTextoAlmacenable } from "@/lib/frontera";
 import {
   identificarCliente,
   LimitadorIntentos,
@@ -56,7 +57,16 @@ export async function POST(request: Request) {
 
   const { email, clave } = (cuerpo ?? {}) as Record<string, unknown>;
 
-  if (typeof email !== "string" || email.length === 0 || email.length > 255) {
+  // `esTextoAlmacenable` rechaza el byte NUL, que Postgres no admite en `text`
+  // ni escapado. Un email con un NUL pasaba estas tres condiciones —es cadena y
+  // mide entre 1 y 255— y reventaba recién en el driver, saliendo 503 (AC-API-1).
+  // Lo encontró el corpus de `verificar:frontera`, no una lectura del código.
+  if (
+    typeof email !== "string" ||
+    email.length === 0 ||
+    email.length > 255 ||
+    !esTextoAlmacenable(email)
+  ) {
     return NextResponse.json({ error: "Email inválido." }, { status: 400 });
   }
 

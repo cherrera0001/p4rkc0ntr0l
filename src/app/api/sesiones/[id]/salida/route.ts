@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { conBase, db, sesionVehiculo } from "@/db";
 import { exigirRol } from "@/lib/auth";
 import { obtenerTarifaVigente } from "@/lib/contexto";
+import { esIdValido } from "@/lib/frontera";
 import {
   noAutorizado,
   origenAjeno,
@@ -46,7 +47,7 @@ export async function POST(
 
   const { id } = await params;
 
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!esIdValido(id)) {
     return NextResponse.json({ error: "Id de sesión inválido." }, { status: 400 });
   }
 
@@ -109,6 +110,29 @@ export async function POST(
       ),
     );
 
+    /**
+     * **`estado = 'activa'` en el WHERE: es lo que hace que se cierre UNA vez.**
+     * (AC-OP-5, `spec.md` §9.)
+     *
+     * Entre el SELECT de arriba (`:59`) y este UPDATE hay dos `await` más —la
+     * tarifa vigente y el cálculo—, así que la ventana no es de microsegundos:
+     * es un viaje de ida y vuelta a Railway. Dos toques en «Salida», o un
+     * reintento de la cola con el primero en vuelo, la atraviesan.
+     *
+     * Reproducido antes de corregir, con ocho salidas simultáneas contra la API:
+     *
+     *     8 de 8 respuestas con yaCerrada:false · ocho salida_at distintos
+     *
+     * Las ocho escribieron, y la última pisó la hora y el monto de las anteriores.
+     * El operador cobra en efectivo contra un número que la app ya cambió.
+     *
+     * **Por qué esto alcanza y no es solo achicar la ventana.** En READ
+     * COMMITTED —el default— el segundo UPDATE se bloquea en el lock de fila del
+     * primero y, al despertar, **re-evalúa su WHERE contra la versión nueva**.
+     * Con `estado = 'activa'` la fila ya no matchea: cero filas. No hay orden de
+     * intercalado que produzca dos cierres. La atomicidad la da la fila, no una
+     * transacción — y por eso no se trae un primitivo que este repo no tiene.
+     */
     const [cerrada] = await conBase(() =>
       db
         .update(sesionVehiculo)
@@ -117,10 +141,40 @@ export async function POST(
           and(
             eq(sesionVehiculo.id, id),
             eq(sesionVehiculo.estacionamientoId, operador.estacionamientoId),
+            eq(sesionVehiculo.estado, "activa"),
           ),
         )
         .returning(COLUMNAS_SALIDA),
     );
+
+    /**
+     * Cero filas = otro pedido ganó la carrera mientras éste calculaba.
+     *
+     * Se relee y se responde igual que el camino de `:79`: **200 con
+     * `yaCerrada:true`**, con el monto y la hora del ganador. No se inventa un
+     * 409: para la cola local un 4xx es definitivo (`cola-local.ts:276-278`) y
+     * el registro se borraría del dispositivo; y un 5xx haría reintentar en
+     * bucle. El contrato idempotente que el cliente ya presupone se mantiene
+     * exactamente igual — desde afuera, perder la carrera y llegar segundo por
+     * una reconexión son el mismo evento.
+     */
+    if (!cerrada) {
+      const [ganadora] = await conBase(() =>
+        db
+          .select(COLUMNAS_SALIDA)
+          .from(sesionVehiculo)
+          .where(
+            and(
+              eq(sesionVehiculo.id, id),
+              eq(sesionVehiculo.estacionamientoId, operador.estacionamientoId),
+            ),
+          ),
+      );
+      if (!ganadora) {
+        return NextResponse.json({ error: "La sesión no existe." }, { status: 404 });
+      }
+      return NextResponse.json({ sesion: ganadora, yaCerrada: true });
+    }
 
     return NextResponse.json({ sesion: cerrada, yaCerrada: false });
   } catch (error) {
