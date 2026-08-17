@@ -153,7 +153,7 @@ try {
       END AS poblacion,
       count(*)::int AS n,
       percentile_cont(0.5) WITHIN GROUP (
-        ORDER BY (salida_at - entrada_at)
+        ORDER BY EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))
       ) AS mediana,
       min(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS minimo,
       max(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS maximo
