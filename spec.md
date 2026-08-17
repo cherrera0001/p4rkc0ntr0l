@@ -294,22 +294,56 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 
 ## 9. Criterios de aceptación globales (con verificación)
 
-| ID | Criterio | Verificación |
-|----|----------|--------------|
-| AC-SCOPE-1 | **El conductor no paga dentro del sistema.** El cobro del estacionamiento sigue siendo en efectivo, fuera de la app. Ninguna pasarela vive fuera de la frontera declarada de suscripción, y el flujo del estacionamiento no la importa. | `npm run verificar:alcance` → todas las comprobaciones PASS |
-| AC-SCOPE-2 | El esquema no define `Pago`/`Transaccion`/`Sucursal`/`Reserva`. | `npm run verificar:alcance` → todas las comprobaciones PASS |
-| AC-SCOPE-3 | No existe módulo de integración LPR/cámara. | `npm run verificar:alcance` → todas las comprobaciones PASS |
-| AC-DATA-1 | El modelo de datos coincide con §4 (entidades y campos). | `npm run verificar:esquema` → todas las comprobaciones PASS |
-| AC-DATA-2 | Las invariantes del modelo §4 se hacen cumplir **en la base**, declaradas en la migración y no solo en la aplicación: un vehículo no está dos veces adentro del mismo estacionamiento; `salida_at ≥ entrada_at`; `tecleo_fin_at ≥ tecleo_inicio_at`; `monto_calculado ≥ 0`; `capacidad_total > 0`; `valor_hora ≥ 0`; `fraccion_minutos > 0`; `monto_minimo ≥ 0`. | `npm run verificar:invariantes` → todas las comprobaciones PASS |
-| AC-OP-1 | Ingreso offline persiste y sincroniza. | `npm run verificar:op1` → todas las comprobaciones PASS |
-| AC-OP-2 | Cálculo de precio correcto (mínimo + fracción). | `npm test` → 0 fallos |
-| AC-OP-4 | El ciclo de §5 se cumple **contra la API real**, no solo en la fórmula aislada: el ingreso crea la sesión, la salida la cierra, y el `monto_calculado` se computa con la **tarifa vigente de la base** y se persiste. Y la frontera valida: una patente inválida se rechaza y una inyección no altera el esquema (§7). | `npm run verificar:salida` → todas las comprobaciones PASS |
-| AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS |
-| AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS |
-| AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real |
-| AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS |
-| AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS |
-| AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores |
+| ID | Criterio | Verificación | Tipo |
+|----|----------|--------------|------|
+| AC-SCOPE-1 | **El conductor no paga dentro del sistema.** El cobro del estacionamiento sigue siendo en efectivo, fuera de la app. Ninguna pasarela vive fuera de la frontera declarada de suscripción, y el flujo del estacionamiento no la importa. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
+| AC-SCOPE-2 | El esquema no define `Pago`/`Transaccion`/`Sucursal`/`Reserva`. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
+| AC-SCOPE-3 | No existe módulo de integración LPR/cámara. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
+| AC-DATA-1 | El modelo de datos coincide con §4 (entidades y campos). | `npm run verificar:esquema` → todas las comprobaciones PASS | universal |
+| AC-DATA-2 | Las invariantes del modelo §4 se hacen cumplir **en la base**, declaradas en la migración y no solo en la aplicación: un vehículo no está dos veces adentro del mismo estacionamiento; `salida_at ≥ entrada_at`; `tecleo_fin_at ≥ tecleo_inicio_at`; `monto_calculado ≥ 0`; `capacidad_total > 0`; `valor_hora ≥ 0`; `fraccion_minutos > 0`; `monto_minimo ≥ 0`. | `npm run verificar:invariantes` → todas las comprobaciones PASS | universal |
+| AC-OP-1 | Ingreso offline persiste y sincroniza. | `npm run verificar:op1` → todas las comprobaciones PASS | existencial |
+| AC-OP-2 | Cálculo de precio correcto (mínimo + fracción). | `npm test` → 0 fallos | universal |
+| AC-OP-4 | El ciclo de §5 se cumple **contra la API real**, no solo en la fórmula aislada: el ingreso crea la sesión, la salida la cierra, y el `monto_calculado` se computa con la **tarifa vigente de la base** y se persiste. Y la frontera valida: una patente inválida se rechaza y una inyección no altera el esquema (§7). | `npm run verificar:salida` → todas las comprobaciones PASS | existencial |
+| AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS | existencial |
+| AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS | universal |
+| AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real | existencial |
+| AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS | existencial |
+| AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS | universal |
+| AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores | universal |
+
+> **La columna «Tipo»: universal o existencial (2026-08-16).**
+>
+> - **universal** — la forma es *«todo X cumple P»*. **Pasa sobre el conjunto
+>   vacío**: si no hay ningún X, es automáticamente verdadero.
+> - **existencial** — exige que **exista** al menos un X. No puede pasar sobre la
+>   nada; su salida útil es un número, no un veredicto.
+>
+> **Por qué la columna existe.** `AC-MEAS-1` estuvo meses en verde sin un solo
+> dato de operación: sus dos guardas son un `count(*)` sobre un `WHERE` —vacuamente
+> verdadero sobre cero filas— y una lectura de `information_schema`, que no depende
+> de las filas. El criterio hacía exactamente lo que decía; **lo que faltaba era la
+> obligación de preguntárselo.** Nadie lo notó hasta que FASE D fue a buscar el
+> número de H1 y no había ninguno.
+>
+> `npm run verificar:ac` exige que **cada AC declare su tipo**, y que **al menos
+> uno sea existencial**: si todos fueran universales, §9 entero pasaría sobre un
+> sistema sin datos, que es exactamente el estado del que este proyecto salió.
+>
+> **Es una declaración de quien escribe el AC, no una medición.** El guard
+> comprueba que esté, no la re-deriva. Decirlo importa: afirmar que está medida
+> sería el defecto que estas notas persiguen.
+>
+> Nueve universales y cinco existenciales hoy. **Que un AC sea universal no lo
+> vuelve malo** —«el proyecto compila» no puede ser otra cosa—; lo que era malo era
+> no saber cuáles podían aprobar la nada.
+
+> **Verificadores soltados a propósito.** El espejo de esta tabla: un verificador
+> que ningún AC cita es un huérfano, y desde el 2026-08-16 **un huérfano no
+> declarado hace fallar `verificar:ac`**. Nadie está obligado a subir un
+> verificador a §9 —eso sería especificar retroactivamente, que es autorar
+> requisitos— pero **todos están obligados a declararlo**, con su motivo, en
+> `scripts/verificar-ac.mjs`. Antes se reportaban como `INFO · decisión pendiente`,
+> y el contador creció de 5 a 6 sin que nada fallara.
 
 > **Cada criterio cita el COMANDO, no un número.** Los conteos derivan y crecen
 > con cada comprobación que se agrega; un AC que dijera "13/13" quedaría falso al

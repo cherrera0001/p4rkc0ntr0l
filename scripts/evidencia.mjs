@@ -143,6 +143,7 @@ const CATALOGO = [
   { script: "verificar:ac", grupo: "estatico" },
   { script: "verificar:citas", grupo: "estatico" },
   { script: "verificar:verificadores", grupo: "estatico" },
+  { script: "verificar:agentes", grupo: "estatico" },
   { script: "verificar:esquema", grupo: "base" },
   { script: "verificar:invariantes", grupo: "base" },
   { script: "verificar:meas1", grupo: "base" },

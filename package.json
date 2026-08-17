@@ -29,6 +29,8 @@
     "verificar:alcance": "node scripts/verificar-alcance.mjs",
     "verificar:alcance:prueba": "node scripts/verificar-alcance.prueba.mjs",
     "verificar:citas": "node scripts/verificar-citas.mjs",
+    "verificar:agentes": "node scripts/verificar-agentes.mjs",
+    "generar:agentes": "node scripts/generar-agentes.mjs",
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "evidencia": "node scripts/evidencia.mjs",
     "evidencia:prueba": "node scripts/evidencia.prueba.mjs",

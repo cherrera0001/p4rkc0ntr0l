@@ -1,45 +1,85 @@
-/loop — M5 endurecimiento por CONCILIO. Fuente: docs/revision-seguridad-2026-08-09.md.
+/loop — trabajo por CONCILIO, con BoundedLoop. Protocolo, no snapshot.
 
-GATE TERMINAL (antes de cualquier corrección)
-- A-2: verificá por huella si la credencial fue rotada. Si la huella en Railway
-  sigue siendo la de los logs → A-2 ABIERTO → el concilio NO abre M-4. Registrá
-  el bloqueo y detené: es acción humana, ningún fix la resuelve. Esto es el veto
-  del Auditor aplicado a la infraestructura, no una opción.
+## Por qué este archivo ya no nombra un hito
 
-REANUDACIÓN
-- STATE.md + cola de LEDGER.md. M5 va 1/5 (A-3 cerrado). No rehagas PASS.
+Hasta el 2026-08-16 este comando decía *"M5 va 1/5 (A-3 cerrado)"* y *"Empezá por
+el GATE TERMINAL (A-2) ahora"*. **M5 cerró el 2026-08-10 y A-2 el 2026-08-09**:
+quien escribiera `/loop` recibía la orden de abrir un gate resuelto una semana
+antes, con la autoridad de un comando del repo.
 
-CICLO POR HALLAZGO (orden fijo: M-4 → C-1 → A-1 → M-1+M-2; WIP=1)
-1. Delegá al subagente `implementador`: corrige ESE hallazgo. Recibís diff +
-   verificador + comando.
-2. Delegá al subagente `auditor-adversarial`: que intente romperlo leyendo el
-   código real. Si VETO → vuelve a `implementador` con el bypass. BoundedLoop: 3
-   ciclos implementador↔auditor. Al 3.º sin PASA → registrá FAIL y detené el hito.
-3. Con PASA del auditor, delegá al `verificador`: corre verificador + regresión
-   completa, local y contra el deploy. Todo verde o es FAIL.
-4. LEARN (obligatorio, no opcional): antes de cerrar el hallazgo, extraé a
-   LEARNINGS.md la lección GENERALIZABLE, no el relato. Y el paso profesional:
-   si la lección es recurrente (ej. "criterio atado a una herramienta que cambió",
-   "efecto de módulo que exige secreto en build"), convertila en un guard o check
-   reutilizable para que NO pueda regresar en silencio. La lección que no se
-   vuelve mecanismo se repite.
-5. Cierre: sobrescribí STATE.md, cerrá en LEDGER.md (append-only, secretos por
-   huella), actualizá CLAUDE.md §2. Una línea en el chat. Siguiente hallazgo.
+Un comando que **embebe** el estado se desfasa; uno que lo **lee** no puede. El
+estado vive en `STATE.md` y `LEDGER.md`, y ante discrepancia manda el ledger.
+**No vuelvas a escribir acá qué hallazgo sigue.**
 
-REGLAS DEL CONCILIO
-- El implementador nunca cierra su propio trabajo. El auditor nunca implementa.
-  La aprobación exige las tres voces: implementa, no-rompe, verifica-con-comando.
-- El auditor que aprueba desde una descripción, en vez del código real, es el modo
-  de falla que este concilio existe para evitar. Explícito en su definición.
+## ARRANQUE (antes de tocar nada)
 
-FUERA DE ALCANCE / FRENOS
-- Nada de pago/LPR/reserva/multisitio (ADR-001). No habilitar operación real:
-  sigue bloqueada por {{BASE_LICITUD}} y {{PLAZO_RETENCION_PATENTE}}. Solo fixtures.
-- M-4 toca el flujo offline (leer activos del servidor en vez de IndexedDB): que
-  el implementador lo declare y el auditor confirme que no rompe AC-OP-1.
+1. Leé `CLAUDE.md`, `STATE.md` y la cola de `LEDGER.md`. Reportá **en qué rama
+   estás** (`git branch --show-current`) y qué hito está abierto. No lo asumas:
+   este repo tiene trabajo en ramas paralelas.
+2. `git status`. Si hay cambios sin commitear que no son tuyos, decilo antes de
+   seguir.
+3. Verificá los bloqueos vigentes que `STATE.md` declare. Si uno es **acción
+   humana** —una credencial, un `{{placeholder}}`, una decisión de alcance—
+   ningún fix lo resuelve: registralo y detenete.
 
-EFICIENCIA
-- Output real = repo + LEDGER.md + STATE.md + LEARNINGS.md. Chat: una línea por
-  hallazgo cerrado. Sin recaps, sin tablas, sin narrar cada delegación.
+## CICLO POR HALLAZGO — WIP = 1
 
-Empezá por el GATE TERMINAL (A-2) ahora.
+1. **`implementador`**: corrige UN hallazgo. Diff mínimo. Devuelve el cambio, su
+   verificador y el comando. **No cierra su propio trabajo.**
+2. **`auditor-adversarial`**: intenta romperlo **leyendo el código real**. VETO
+   (con el bypass o la regresión reproducidos) o PASA. **BoundedLoop: 3 ciclos.**
+   Al tercero sin PASA → registrá **FAIL** y detené el hito. No hay cuarto intento.
+3. **`verificador`**: corre el verificador del hallazgo **más la regresión
+   completa**, y pega **salida real**. Todo verde o es FAIL.
+4. **LEARN — obligatorio.** Extraé a `LEARNINGS.md` la lección **generalizable**,
+   no el relato. Y el paso que de verdad importa: **si la lección puede repetirse,
+   convertila en un guard.** La lección que no se vuelve mecanismo se repite —
+   este repo lo pagó con el gate de alcance, con INT-12 y con el banco de H1.
+5. **Cierre:** `STATE.md` (sobrescribible), `LEDGER.md` (append-only, secretos por
+   huella), `CLAUDE.md` §2 si cambia el estado de un hito. Una línea en el chat.
+
+## REGLAS DEL CONCILIO
+
+- **El implementador nunca cierra su propio trabajo. El auditor nunca implementa.**
+  La aprobación exige las tres voces: implementa · no-rompe · verifica-con-comando.
+- **Un auditor que aprueba desde una descripción es el modo de falla que este
+  concilio existe para evitar.** Está en su definición y no es negociable.
+- **La duda es VETO.**
+- **U7 — toda afirmación sobre el repositorio es verificable con un comando.** Y su
+  forma operativa, que costó dos vetos: no alcanza con medir antes de escribir;
+  hay que buscar **todas** las ocurrencias de lo que acabás de refutar. Un `grep`
+  del *claim*, no del dato.
+- **Nunca pegues una transcripción con prompt `$` que no corriste.** Un número
+  copiado del ledger publicado como "medido hoy" ya costó un veto.
+
+## FRENOS
+
+- **Gate ADR-001** (`CLAUDE.md` §1): nada de pago del conductor, LPR, reservas ni
+  multisitio, salvo que un ADR lo enmiende.
+- **Nada se construye sobre un ADR que no esté ACEPTADO** — ni una versión chica,
+  ni el hook preparado. **Leé el estado de cada ADR en su propio archivo**
+  (`docs/adr/`): acá no se escribe cuál está adjudicado y cuál no, por la misma
+  razón que no se escribe qué hallazgo sigue.
+- **Ningún `{{placeholder}}` se rellena.** Si falta un valor, detenete y pedilo.
+  Cuáles siguen abiertos lo dice `spec.md` §12, no este archivo.
+- **La operación con datos reales está condicionada** a las decisiones legales que
+  `spec.md` §4 nombra. El interruptor y su estado se leen del entorno y de
+  `STATE.md`.
+- Los bloqueos concretos de hoy están en `STATE.md`, no acá.
+
+## EFICIENCIA
+
+Output real = repo + `LEDGER.md` + `STATE.md` + `LEARNINGS.md`. En el chat, una
+línea por hallazgo cerrado. Sin recaps ni narración de cada delegación.
+
+## ENTORNO
+
+Windows + PowerShell. Prefijo obligatorio para node/npm/npx/git mientras no se
+reinicie Claude Code:
+
+```powershell
+$env:PATH = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path','User')
+```
+
+Empezá por el ARRANQUE y reportá el estado antes de abrir nada.

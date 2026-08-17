@@ -13,7 +13,7 @@
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `ab4b1a3` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-16 · **grupos:** estatico, base
+**Commit:** `c2dca49` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
@@ -21,9 +21,10 @@
 | `npm run verificar:alcance` | `exit=0` · 9/9 | PASS |  |
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
 | `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
-| `npm run verificar:ac` | `exit=0` · 5/5 | PASS |  |
+| `npm run verificar:ac` | `exit=0` · 9/9 | PASS |  |
 | `npm run verificar:citas` | `exit=0` · 23/23 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 41/41 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 43/43 | PASS |  |
+| `npm run verificar:agentes` | `exit=0` · 16/16 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
@@ -40,7 +41,7 @@
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 11 de 22 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 12 de 23 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
 
 **Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->

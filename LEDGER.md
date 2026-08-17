@@ -4328,3 +4328,379 @@ insertando filas, que el instrumento no puede impedir y sería fabricar el `6,2 
 - **El escáner del control no cubre `src/`**, y lo dice en su propia salida. Importa
   para INT-7: su mecanismo de retención va a ser un borrado por fecha en Drizzle
   dentro de `src/`, y este control no lo vería.
+
+---
+
+## 2026-08-16 · Harness · una sola fuente de agentes, y el análisis de escalamiento
+
+Tres entregables en una vuelta: unificar las definiciones de agente, reparar
+`/loop`, y analizar cómo escala la app. **Auditados juntos: VETO con nueve
+hallazgos, cuatro bloqueantes.** Lo que sigue incluye los nueve y su corrección.
+
+### El defecto que la duplicación ya había costado
+
+El repo tenía los tres roles del concilio escritos dos veces. Los cuerpos eran
+idénticos salvo una línea, así que la copia parecía inocua.
+
+```
+auditor         .claude → tools: Read, Grep, PowerShell        .codex → sin restricción
+implementador   .claude → tools: Read, Grep, Edit, PowerShell  .codex → sin restricción
+verificador     .claude → tools: Read, PowerShell              .codex → sin restricción
+```
+
+**Lo que divergió no fue el texto: fue la valla.** En `.claude` el auditor no tiene
+`Edit`, así que *«No modificás código»* es una restricción del harness. En `.codex`
+la misma frase era una sugerencia — para el rol que existe precisamente para no
+poder aprobar lo que él mismo escribió. Y `.codex/` **no estaba en git**: era la
+copia que perdió la valla y la que nadie ve en un diff.
+
+> **Esta transcripción es ahora la única evidencia de esa medición.** El generador
+> sobrescribió los `.toml` originales en su lugar y `.codex/` nunca estuvo
+> versionado: no hay copia en el historial. **El orden correcto era commitear
+> `.codex/` antes de regenerar.** Se registra como error de procedimiento, no como
+> detalle: el archivo que introdujo el generador cita INT-12 como la lección de que
+> un artefacto fuera de git no aparece en una revisión, y la repitió mientras la
+> citaba.
+
+### Lo entregado
+
+`.claude/agents/` pasa a ser **la fuente única**. `.codex/agents/*.toml` se genera
+(`npm run generar:agentes`) y **queda versionado**. `npm run verificar:agentes`
+falla si divergen, y está en el catálogo de evidencia.
+
+**La valla de `tools` se traduce a prosa, no a mecanismo**, y el `.toml` lo dice en
+su cara: no se inventó una clave TOML que no se puede verificar, porque una clave
+inventada parecería una restricción activa sin serlo.
+
+### Los cuatro bloqueantes del auditor
+
+**V2 · El guard no hacía cumplir la propiedad por la que existe.** Escribía
+`if (agente.tools) { comprobar(…) }`: **la comprobación desaparecía junto con la
+valla.** Reproducido — borrar `tools:` de la fuente daba `7/7 PASS` con el rol
+adversarial sin restricción en los dos harnesses y sin una sola línea FAIL. Es
+`CLAUDE.md` §1 al pie de la letra: *«un criterio que siempre pasa es peor que no
+tener criterio»*, cometido otra vez.
+
+Corregido con un piso: **todo rol declara su valla o es FAIL.** Y `renderCodex`
+se niega a generar un `.toml` sin restricción. Probado con el fallo plantado:
+
+```
+FAIL · auditor · la fuente se puede traducir a .codex · no declara `tools`…
+FAIL · auditor · declara su valla de herramientas en la fuente
+FAIL · auditor · la restricción de herramientas llegó a .codex
+10/13 comprobaciones PASS   exit=1
+```
+
+**Y un defecto propio que apareció al probarlo:** el guard **moría** en vez de
+fallar —`renderCodex` lanzaba y el script abortaba sin veredicto—, que es el
+hallazgo que originó `verificar-verificadores.mjs`. Ahora atrapa y reporta.
+
+**V3 · El `.toml` usaba cadena básica (`"""`), donde `\` es escape.** Una ruta de
+Windows —`C:\Users\…`— produce `\U`, escape inválido, y el archivo deja de
+parsear. Las tres fuentes son documentación de Windows y PowerShell, así que no es
+hipotético. Y **el guard no lo vería**: compara lo generado contra lo que el mismo
+render produce, así que un `.toml` roto coincide consigo mismo para siempre.
+Corregido a cadena literal (`'''`), que no interpreta escapes, más una
+comprobación de que el cuerpo no contenga el delimitador.
+
+**V1 · La entrega dejaba el gate de evidencia en rojo.** Agregar el guard subió
+`verificar:verificadores` de 41 a 43 y sumó una fila al catálogo, y los bloques
+publicados quedaron desfasados. Regenerados: hoy publican `43/43` y
+`verificar:agentes 14/14`.
+
+**V4 · Una afirmación falsa en la sección titulada «medido».** El análisis decía
+*«los tres índices arrancan por `estacionamiento_id`, así que toda consulta del
+producto entra por índice»*. La premisa es cierta y **la conclusión es falsa**: los
+tres índices son de `sesion_vehiculo`, y **`tarifa` no tiene ninguno**. Una FK no
+crea índice en Postgres, y `obtenerTarifaVigente()` (`src/lib/contexto.ts:57`)
+corre **en cada salida** filtrando y ordenando esa tabla.
+
+**Es la única consulta que degrada con la cantidad de clientes, y está en el camino
+crítico del cobro** — en la sección que sostenía que el eje A cuesta *«casi nada»*.
+Corregido, con el costo declarado: un índice sobre
+`(estacionamiento_id, vigente_desde)`. **No se agrega acá**: es `src/db/schema.ts`
+más migración, y esta sesión no toca `src/`.
+
+### Los cinco menores, todos corregidos
+
+- **V5** · `src/lib/cola-local.ts:92` es `export function guardar(…)`: no prueba el
+  orden disco-antes-que-red. La evidencia está en
+  `src/app/pantalla-operador.tsx:335`. La afirmación era cierta; la cita no la
+  sostenía — el caso exacto que este ledger ya registró para el tecleo.
+- **V6** · «los seis caminos de aislamiento» son **cinco**. `src/lib/auth.ts:88`
+  filtra por `usuario.id`: es de donde **sale** la clave de cliente, no donde se
+  aplica. `ADR-005:80` la describe bien; el análisis la había reetiquetado.
+- **V7** · `usuario.email` es **único global** con un solo `estacionamiento_id`:
+  **una persona no puede ser usuaria de dos clientes.** Es una restricción de
+  multicliente que vive en el modelo, en la misma tabla cuya carencia es la tesis,
+  y faltaba en la sección «lo que ya está listo».
+- **V8** · `/loop` **seguía embebiendo estado** —*«ADR-005 está PROPUESTO»*— once
+  líneas debajo de prometer que no lo haría. Generalizado: *nada se construye sobre
+  un ADR que no esté ACEPTADO; el estado de cada ADR se lee de su archivo*.
+- **V9** · El análisis había perdido el candado que ADR-005 sí puso. Decía *«un
+  movimiento gratis y disponible hoy»*, que un implementador bajo `/loop` lee como
+  luz verde. Restaurado: **que no dependa de una decisión no lo autoriza.**
+
+### La tesis del análisis, que el auditor verificó y sostiene
+
+**El eje «más clientes» no está bloqueado por el modelo de datos: está bloqueado
+por la autenticación**, y eso falta en ADR-005 §6.
+
+```
+src/db/schema.ts:50-60   usuario = { id, email, rol, estacionamiento_id, created_at }
+src/lib/auth.ts:114      exigirEnv("CLAVE_ACCESO")   ← una sola, para todos
+src/app/api/login/route.ts:84   if (!fila || !claveOk)
+```
+
+Cualquier email **que exista en `usuario`** más la clave compartida da sesión como
+esa persona. Con un cliente es una clave de piloto; con N es una falla de
+aislamiento que ninguna cláusula `WHERE` corrige, porque el aislamiento funciona
+*después* de autenticar. Y agregar credencial por usuario **rompe `AC-DATA-1`** —
+27 campos exactos— así que exige enmendar `spec.md` §4 y migrar.
+
+### `/loop` estaba desfasado por un hito entero
+
+Decía *«M5 va 1/5 (A-3 cerrado)»* y *«Empezá por el GATE TERMINAL (A-2) ahora»*.
+**M5 cerró el 2026-08-10 y A-2 el 2026-08-09.** Reescrito como protocolo que
+**lee** el estado en vez de embeberlo: un comando que embebe estado se desfasa;
+uno que lo lee no puede.
+
+### Evidencia de comando
+
+```
+npm run verificar:agentes        14/14 · AGENTES: PASS      exit=0
+  con el fallo plantado          10/13 · FALLARON: 3        exit=1
+npm run verificar:verificadores  43/43                      exit=0
+npm run verificar:citas          23/23                      exit=0
+node verificar-citas.mjs docs    17/17 · análisis: 21 citas exit=0
+npm run verificar:ac              5/5 · 14 AC               exit=0
+npm run verificar:alcance         9/9                       exit=0
+npm run evidencia --actualizar   11/12 · el único FAIL es verificar:h1, por diseño
+```
+
+### Sobre MCP, y por qué no hay nada acá
+
+Se revisó lo conectado —Canva, Gmail, Drive, Calendar, Notion, Typeform,
+SurveyMonkey, Docusign— y **ninguno responde una pregunta abierta del proyecto**.
+Se deja escrito para que la omisión sea decisión y no olvido: inventar una
+integración plausible sería la forma «harness» del `6,2 s`.
+
+---
+
+## 2026-08-16 · **CORRECCIÓN** de la entrada anterior · los índices de `tarifa`
+
+Entrada nueva y no edición: este ledger es append-only, y la afirmación falsa
+quedó escrita arriba. **Corregirla borrándola sería el defecto que persigue.**
+
+### Qué dije mal
+
+La entrada anterior publica, en su hallazgo V4:
+
+> *«los tres índices son de `sesion_vehiculo`, y **`tarifa` no tiene ninguno**»*
+
+**Las dos mitades son falsas.** Una `PRIMARY KEY` **es** un índice en Postgres, y
+el esquema tiene ocho, no tres. Medido contra la base viva —no leyendo el SQL, que
+es lo que me hizo equivocar—:
+
+```
+índices reales: 8
+  estacionamiento   estacionamiento_pkey           (id)
+  sesion_vehiculo   sesion_vehiculo_activa_unica   (estacionamiento_id, patente)
+  sesion_vehiculo   sesion_vehiculo_pkey           (id)
+  sesion_vehiculo   sesion_vehiculo_por_estado     (estacionamiento_id, estado)
+  sesion_vehiculo   sesion_vehiculo_por_salida     (estacionamiento_id, estado, salida_at)
+  tarifa            tarifa_pkey                    (id)
+  usuario           usuario_email_unique           (email)
+  usuario           usuario_pkey                   (id)
+
+tarifa: 1 índice · ¿alguno sirve a un filtro por estacionamiento_id? NO
+```
+
+### Qué se sostiene, y qué hay que leer en su lugar
+
+**La conclusión no cambia y ahora está mejor sostenida:** `tarifa` **no tiene
+índice sobre `estacionamiento_id`** —el único que tiene es el de su PK, sobre
+`id`, que no sirve a esa consulta—, y `obtenerTarifaVigente()`
+(`src/lib/contexto.ts:57`) corre en cada salida filtrando por ese campo. Sigue
+siendo el único punto del eje A que crece con el eje B.
+
+Tres índices **explícitos** (`CREATE INDEX`); ocho en total contando claves.
+
+### Por qué se registra como hallazgo y no como errata
+
+**La afirmación falsa se escribió en el párrafo que corregía una afirmación
+falsa del mismo género.** V4 vetó *«toda consulta del producto entra por índice»*
+por ser una categórica más fuerte que lo medido; la corrección introdujo
+*«`tarifa` no tiene ningún índice»*, otra categórica más fuerte que lo medido, en
+la misma sección titulada «medido».
+
+**La lección operativa, que es nueva:** cuando la corrección de una afirmación
+sobre el esquema se escribe leyendo el DDL, se hereda el vocabulario del DDL —ahí
+`CREATE INDEX` y `PRIMARY KEY` son cosas distintas— y se pierde lo que la base
+hace con ellas. **Contra el esquema se mide con `pg_indexes`, no con `grep` sobre
+las migraciones.**
+
+### Y las dos notas que el mismo ciclo cerró
+
+- **El guard de agentes miraba que la valla existiera, no qué permitía.** Un
+  `tools: Read, Grep, Edit, Write, PowerShell` en el rol adversarial daba 14/14 —
+  con el `.codex` generado instruyéndole que podía escribir—. Ahora se comprueba
+  **por contenido** (qué dice el rol que hace, no una lista de nombres) que el rol
+  que audita no declare herramientas de escritura. Probado con el fallo plantado:
+  `FAIL · auditor · el rol que audita no puede escribir · declara Edit, Write`,
+  15/16, exit 1.
+- **Un BOM en la fuente mataba el guard sin veredicto.** `agentes()` estaba fuera
+  de todo `try` — el mismo hallazgo que dije haber cerrado, una línea más arriba, y
+  alcanzable por el accidente más probable de este entorno. Se saca el BOM en
+  `leerAgente` y la lectura se atrapa. Con BOM puesto: **16/16**, ya no muere.
+
+---
+
+## 2026-08-16 · Harness (unificación + análisis + `/loop`) · **FAIL** · BoundedLoop agotado
+
+Tercer ciclo sin PASA. La regla del concilio es la que este mismo repo escribió
+—*«al 3.º sin PASA → registrá FAIL y detené el hito»*, hoy en
+`.claude/commands/loop.md`— y se aplica sin descuento. **Se registra el FAIL.**
+
+Es el tercer BoundedLoop que se agota en la historia del proyecto, después de
+INT-12 y del gate de evidencia. Y como en esos dos, hay que decir con precisión
+**qué** falla, porque no es todo.
+
+### Lo que NO falla
+
+| | |
+|---|---|
+| La unificación de agentes | **funciona.** Fuente única, `.codex` generado y versionado, guard que caza toda divergencia probada |
+| La tesis del análisis de escalamiento | **verificada por el auditor**: el bloqueo del eje B es la autenticación, no el modelo de datos |
+| `/loop` | reparado: estaba desfasado por un hito entero |
+
+### Lo que falla: el ciclo, no el artefacto
+
+**B1 · La comprobación de quién puede escribir se auto-anulaba, por segunda vez.**
+La versión del ciclo 2 preguntaba `if (/adversarial|audit/i.test(name + description))`
+— es decir, **la condición se evaluaba sobre texto que el archivo auditado
+controla**. El auditor lo reprodujo:
+
+```
+name: revisor-critico
+tools: Read, Grep, Edit, Write, PowerShell
+→ 15/15 comprobaciones PASS · AGENTES: PASS · exit=0
+```
+
+El rol adversarial con `Edit` y `Write`, el `.codex` instruyéndole que puede
+escribir, **y ninguna línea FAIL**: el recuento baja de 16 a 15 y nada lo nombra.
+
+Y el comentario decía *«se detecta por CONTENIDO y no por una lista de nombres»*
+sobre una regex que **es** una lista de dos nombres. Es el caso de
+`api/cobro-salida/` que obligó a reescribir AC-SCOPE-1 **por exclusión**
+(`CLAUDE.md` §1), aplicado a la prosa en vez de a la ruta.
+
+**Corregido tras el veto, y se registra como corrección, no como PASA.** La forma
+que no se anula **afirma sobre el conjunto**: los roles que declaran herramientas
+de escritura tienen que ser exactamente `{implementador}`. Falla si el auditor
+gana `Edit`, falla si aparece un cuarto rol que escribe, y falla **cerrado** si se
+renombra al implementador. Probado con el bypass exacto del auditor:
+
+```
+FAIL · solo implementador declara herramientas de escritura
+       escriben: auditor, implementador · esperado: implementador
+15/16 comprobaciones PASS   exit=1
+```
+
+**B2 · Se trabajó sobre el árbol mientras el auditor lo auditaba. Es mío y es
+WIP=1.** A pedido humano se implementaron dos mejoras —la columna `Tipo` en §9 y
+el huérfano declarado— con el ciclo 3 en vuelo. Yo juzgué *«no se pisan»* y **me
+equivoqué**: lo que se movió fue `spec.md` —la fuente de verdad— y
+`scripts/verificar-ac.mjs`, y el bloque de evidencia quedó publicando
+`verificar:ac 5/5 PASS` mientras el comando daba `5/7 FAIL` a medio cablear.
+
+El auditor lo cazó por `mtime` y tiene razón en las tres consecuencias: **el
+auditor audita un árbol congelado**; `git status -- src/` vacío es una vitrina
+angosta, porque lo que se movió pesa más que `src/`; y el gate de evidencia lo
+detectó solo. Hoy el cableado está terminado y `verificar:ac` da 9/9 — **pero eso
+es una medición nueva, no la de este ciclo.**
+
+### Qué queda abierto
+
+**El hito se detiene.** La unificación no se declara verificada: se declara
+**funcionando y no verificada**, igual que INT-12. Reabrirlo exige decisión
+humana, no otra vuelta encubierta.
+
+### Evidencia de comando · árbol quieto
+
+```
+npm test                    122/122            exit=0
+npm run verificar:ac          9/9              exit=0
+npm run verificar:agentes    16/16             exit=0   (bypass plantado: 15/16, exit=1)
+npm run verificar:verificadores 43/43          exit=0
+npm run verificar:citas      23/23             exit=0
+npm run verificar:alcance     9/9              exit=0
+npm run verificar:esquema     8/8              exit=0
+npm run verificar:invariantes 8/8              exit=0
+npm run evidencia            11/12 · el único FAIL es verificar:h1, por diseño
+git status --porcelain -- src/   vacío
+```
+
+---
+
+## 2026-08-16 · spec-driven · el huérfano declarado y la clasificación de los AC
+
+**Entregable nuevo, cerrado en código y SIN AUDITAR.** Se declara así.
+
+### El huérfano declarado
+
+Hasta hoy un verificador sin AC se reportaba `INFO · decisión pendiente de
+especificar-o-soltar`. El argumento para no fallar era bueno y **se conserva
+entero**: forzar el FAIL empujaría a especificar retroactivamente todo lo que
+tiene verificador, y eso es **autorar requisitos**, no formalizar.
+
+Pero «pendiente» sin fecha ni gate es una decisión que no se toma, y el contador
+crecía en silencio: **subió de 5 a 6 el 2026-08-16 cuando agregué
+`verificar:agentes`, y nada falló.**
+
+La regla que cierra la fuga sin romper el argumento: **nadie está obligado a subir
+un verificador a §9; todos están obligados a declararlo.** Un huérfano declarado
+en `SOLTADOS`, con su motivo y dónde vive la decisión, es legítimo. Un huérfano
+**no declarado es FAIL**.
+
+Los cinco motivos **no se inventaron**: ya estaban escritos —`spec.md` §9 nota de
+FASE C para `endurecimiento`, `m4`, `ui`, `int12`; `matriz-trazabilidad.md:96`
+para `temporizador`—. Esto los vuelve exigibles. Y `verificar:agentes` entró a
+`META_GUARDS`, que es donde va: vigila el andamio, no el producto.
+
+Más el espejo, para que el mapa no se desfase del territorio: **un soltado que ya
+no es huérfano también falla**.
+
+### La clasificación universal / existencial
+
+Columna nueva `Tipo` en la tabla de §9. **Nueve universales, cinco existenciales.**
+
+- **universal** — *«todo X cumple P»*: **pasa sobre el conjunto vacío**.
+- **existencial** — exige que exista al menos un X; su salida útil es un número.
+
+**Por qué:** `AC-MEAS-1` estuvo meses en verde sin un dato. El criterio hacía
+exactamente lo que decía; **lo que faltaba era la obligación de preguntárselo.**
+Ahora cada AC declara su tipo, y hay un piso: **al menos uno tiene que ser
+existencial**, o §9 entero podría pasar sobre un sistema vacío — que es el estado
+del que este proyecto salió ayer.
+
+**Es una declaración de quien escribe el AC, no una medición**, y el guard
+comprueba que esté, no la re-deriva. Queda dicho en `spec.md`: afirmar que está
+medida sería el defecto que estas notas persiguen.
+
+**Que un AC sea universal no lo vuelve malo** —«el proyecto compila» no puede ser
+otra cosa—; lo que era malo era no saber cuáles podían aprobar la nada.
+
+### Probado con el fallo plantado, las dos
+
+```
+AC-BUILD-1 sin tipo          → FAIL · cada AC declara si es universal o existencial   8/9  exit=1
+verificar:inventado huérfano → FAIL · todo verificador está en §9 o declarado como soltado
+                                      sin declarar: verificar:inventado                8/9  exit=1
+sano                                                                                   9/9  exit=0
+```
+
+`verificar:ac` pasó de 5 a **9 comprobaciones**. `spec.md` §9 ganó una columna y
+dos notas; `scripts/verificar-ac.mjs`, el mapa `SOLTADOS` con los cinco motivos.
+
+**Sin auditar. No se declara verificado.**

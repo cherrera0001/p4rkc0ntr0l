@@ -108,7 +108,12 @@ const filas = (seccion ?? "")
       .split(/(?<!\\)\|/)
       .slice(1, -1)
       .map((c) => c.replace(/\\\|/g, "|").trim());
-    return { id: celdas[0], criterio: celdas[1] ?? "", verificacion: celdas[2] ?? "" };
+    return {
+      id: celdas[0],
+      criterio: celdas[1] ?? "",
+      verificacion: celdas[2] ?? "",
+      tipo: (celdas[3] ?? "").toLowerCase().replace(/[^a-z]/g, ""),
+    };
   });
 
 comprobar("§9 declara criterios de aceptación", filas.length > 0, `${filas.length} AC`);
@@ -116,6 +121,45 @@ comprobar("§9 declara criterios de aceptación", filas.length > 0, `${filas.len
 // Los IDs no se repiten: dos filas con el mismo ID hacen que una gane en silencio.
 const repetidos = filas.map((f) => f.id).filter((id, i, todos) => todos.indexOf(id) !== i);
 comprobar("ningún AC tiene el ID repetido", repetidos.length === 0, [...new Set(repetidos)].join(", "));
+
+// --- Universal o existencial ---------------------------------------------------
+//
+// **Por qué esta columna existe.** `AC-MEAS-1` estuvo meses en verde sin un solo
+// dato: sus dos guardas son un `count(*)` sobre un `WHERE` —vacuamente verdadero
+// sobre el conjunto vacío— y una lectura de `information_schema`. *Un criterio
+// universal —«todo X cumple P»— es automáticamente verdadero si no hay ningún X.*
+//
+// El defecto no fue de quien lo escribió: el criterio hacía exactamente lo que
+// decía. Lo que faltaba era **la obligación de preguntárselo**. Nada en §9 forzaba
+// a declarar si un criterio puede pasar sobre la nada, así que nadie lo notó hasta
+// que FASE D fue a buscar el número de H1 y no había ninguno.
+//
+// La clasificación es **una declaración de quien escribe el AC**, no una medición:
+// este guard comprueba que esté, no la re-deriva. Decirlo importa — afirmar que
+// está medida sería el defecto que este repo persigue.
+const TIPOS = new Set(["universal", "existencial"]);
+const sinTipo = filas.filter((f) => !TIPOS.has(f.tipo));
+comprobar(
+  "cada AC declara si es universal o existencial",
+  sinTipo.length === 0,
+  sinTipo.length
+    ? `${sinTipo.length} sin declarar: ${sinTipo.map((f) => `${f.id}="${f.tipo || "vacío"}"`).join(", ")}`
+    : `${filas.filter((f) => f.tipo === "existencial").length} existencial(es) · ` +
+      `${filas.filter((f) => f.tipo === "universal").length} universal(es)`,
+);
+
+// **Piso contra el contrato vacuo.** Si todos los criterios fueran universales, §9
+// entero podría pasar sobre un sistema sin un solo dato — que es exactamente el
+// estado en el que este proyecto estuvo hasta FASE D. Al menos uno tiene que
+// exigir que algo exista.
+const existenciales = filas.filter((f) => f.tipo === "existencial");
+comprobar(
+  "al menos un AC exige que existan datos",
+  existenciales.length > 0,
+  existenciales.length
+    ? existenciales.map((f) => f.id).join(", ")
+    : "todos universales: §9 entero pasaría sobre un sistema vacío",
+);
 
 // --- Cada AC apunta a algo ejecutable -----------------------------------------
 
@@ -196,6 +240,56 @@ const META_GUARDS = new Set([
   // lista de huérfanos, y un refactor podía borrarla sin violar nada — llevándose
   // la única evidencia de que el gate no es decorativo.
   "verificar:alcance:prueba",
+  // Vigila que las definiciones de agente no diverjan entre harnesses. Es del
+  // mismo género: verifica el andamio del repo, no el producto.
+  "verificar:agentes",
+]);
+
+/**
+ * Verificadores **soltados a propósito**: verifican algo real y ningún AC los
+ * exige, y eso es una decisión tomada, no un olvido.
+ *
+ * ## Por qué existe este mapa
+ *
+ * Hasta el 2026-08-16 los huérfanos se reportaban como `INFO` con la leyenda
+ * *«decisión pendiente de especificar-o-soltar»*. El argumento para no fallar era
+ * bueno y se conserva entero: **forzar el FAIL empujaría a especificar
+ * retroactivamente todo lo que tiene verificador, y eso es autorar requisitos, no
+ * formalizar.** Un guard no puede decidir esa frontera; una persona sí.
+ *
+ * Pero «pendiente» sin fecha ni gate es una decisión que no se toma, y el contador
+ * puede crecer en silencio: **subió de 5 a 6 el 2026-08-16 cuando se agregó
+ * `verificar:agentes`, y nada falló.**
+ *
+ * La regla que cierra la fuga sin romper el argumento: **nadie está obligado a
+ * subir un verificador a §9; todos están obligados a declararlo.** Un huérfano
+ * declarado acá, con su motivo y dónde vive la decisión, es legítimo. Un huérfano
+ * **no declarado** es FAIL.
+ *
+ * Los motivos de abajo **no se inventaron acá**: ya estaban escritos en el repo.
+ * Esto los vuelve exigibles.
+ */
+const SOLTADOS = new Map([
+  [
+    "verificar:endurecimiento",
+    "spec.md §9, nota de FASE C (2026-08-14): verifica propiedades que §1–§8 nunca enunció. Si se quiere exigible, va por ADR",
+  ],
+  [
+    "verificar:m4",
+    "spec.md §9, nota de FASE C (2026-08-14): la purga del dispositivo nace de la revisión de seguridad, posterior a la spec",
+  ],
+  [
+    "verificar:ui",
+    "spec.md §9, nota de FASE C (2026-08-14): la capa de presentación nace de la traducción de diseño, posterior a la spec",
+  ],
+  [
+    "verificar:int12",
+    "spec.md §9, nota de FASE C (2026-08-14) + LEDGER 2026-08-14: además su gate está registrado FAIL como riesgo aceptado",
+  ],
+  [
+    "verificar:temporizador",
+    "docs/data/matriz-trazabilidad.md:96 (2026-08-14): AC-OP-3 no se escribe hasta que el comando sostenga lo que el criterio afirmaría; el verificador está VETADO",
+  ],
 ]);
 
 const verificadores = Object.keys(scripts)
@@ -216,27 +310,30 @@ for (const fila of filas) {
 
 const huerfanos = verificadores.filter((v) => !citados.has(v));
 
-/**
- * **Informativo a propósito, no un FAIL.**
- *
- * Un verificador sin AC es un huérfano: verifica algo real y ningún criterio
- * escrito lo exige, así que un refactor podría borrarlo sin violar nada. Es
- * información valiosa.
- *
- * Pero hacerlo fallar empujaría a **especificar retroactivamente** todo lo que
- * tiene verificador —el endurecimiento entero, la capa de presentación— y eso es
- * autorar requisitos nuevos, no formalizar. La frontera que este proyecto
- * adoptó: *¿el AC hace exigible una afirmación que ya está en §1-§8, o introduce
- * una afirmación nueva?* Un guard no puede decidir eso; una persona sí.
- *
- * Así que se reporta y no se bloquea. Que la lista exista es el punto.
- */
-if (huerfanos.length > 0) {
-  console.log(
-    `INFO · ${huerfanos.length} verificador(es) sin AC en §9, decisión pendiente de especificar-o-soltar: ${huerfanos.join(", ")}`,
-  );
-} else {
-  console.log(`INFO · los ${verificadores.length} verificadores de producto están citados por algún AC`);
+// **Un huérfano no declarado es FAIL.** Ver el fundamento en `SOLTADOS`: nadie
+// está obligado a subir un verificador a §9, todos están obligados a declararlo.
+const noDeclarados = huerfanos.filter((v) => !SOLTADOS.has(v));
+comprobar(
+  "todo verificador está en §9 o declarado como soltado",
+  noDeclarados.length === 0,
+  noDeclarados.length
+    ? `sin declarar: ${noDeclarados.join(", ")} → o lo cita un AC, o entra a SOLTADOS con su motivo`
+    : `${citados.size} citado(s) por un AC · ${huerfanos.length} soltado(s) con motivo escrito`,
+);
+
+// El espejo: una declaración que sobra también es ruido. Si un verificador soltado
+// vuelve a §9 y nadie saca su línea de acá, el mapa deja de describir el territorio.
+const soltadosDeMas = [...SOLTADOS.keys()].filter((v) => !huerfanos.includes(v));
+comprobar(
+  "ningún soltado sobra en la lista",
+  soltadosDeMas.length === 0,
+  soltadosDeMas.length
+    ? `ya no son huérfanos y siguen declarados: ${soltadosDeMas.join(", ")}`
+    : "la lista de soltados coincide con los huérfanos reales",
+);
+
+for (const v of huerfanos) {
+  console.log(`INFO · soltado a propósito · ${v} · ${SOLTADOS.get(v)}`);
 }
 
 // --- Cierre -------------------------------------------------------------------
