@@ -153,7 +153,7 @@ try {
       END AS poblacion,
       count(*)::int AS n,
       percentile_cont(0.5) WITHIN GROUP (
-        ORDER BY EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))
+        ORDER BY (salida_at - entrada_at)
       ) AS mediana,
       min(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS minimo,
       max(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS maximo
@@ -222,6 +222,73 @@ try {
   console.log("  cumplir: un INSERT con duraciones elegidas a mano entra al banco y da PASS.");
   console.log("  Reproducido en el ciclo 1 de auditoría de FASE D. Este comando NO puede");
   console.log("  distinguir una persona tecleando de una fila fabricada — solo puede decirlo.");
+
+  // --- AC-H1-2 · la métrica del código es la que declara la spec -----------
+  //
+  // Hasta el 2026-08-16 el código y `spec.md` §6 coincidían **por casualidad**:
+  // los dos decían `tecleo_fin_at − tecleo_inicio_at` y **nada comprobaba que
+  // siguieran diciendo lo mismo**. Cambiar el SQL a `salida_at − entrada_at`
+  // habría convertido a §6 en mentira sin que ningún comando lo notara — la
+  // fuente de verdad describiendo algo que el sistema dejó de hacer.
+  //
+  // No se compara contra una constante escrita acá: eso solo probaría que este
+  // archivo es consistente consigo mismo. **Se lee la expresión de `spec.md` y se
+  // la compara contra el SQL de este archivo**, que es la divergencia que importa.
+  console.log("\nAC-H1-2 · LA MÉTRICA ES LA QUE LA SPEC DECLARA");
+  const controlMetrica = [];
+  const comprobarMetrica = (nombre, ok, detalle = "") => {
+    controlMetrica.push(ok);
+    console.log(`  ${ok ? "PASS" : "FAIL"} · ${nombre}${detalle ? ` · ${detalle}` : ""}`);
+  };
+
+  // El signo menos de la spec es U+2212 (−) y el de SQL es un guion (-). Se
+  // normalizan los dos para comparar la expresión, no su tipografía.
+  const normalizar = (s) => s.replace(/[−–—]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
+
+  const specTexto = readFileSync(join(DIR, "..", "spec.md"), "utf8");
+  const declarada = specTexto.match(/La duración del tecleo = `([^`]+)` es la métrica de H1/);
+
+  comprobarMetrica(
+    "spec.md §6 declara la métrica en la forma que este guard puede leer",
+    Boolean(declarada),
+    declarada
+      ? `«${declarada[1]}»`
+      : "no se encontró la línea «La duración del tecleo = `…` es la métrica de H1»",
+  );
+
+  // Toda aparición de la métrica en el SQL de este archivo, sin comentarios: si
+  // una sola diverge, la publicación deja de ser lo que la spec promete.
+  const propio = readFileSync(join(DIR, "verificar-h1.mjs"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const usos = [...propio.matchAll(/EXTRACT\(EPOCH FROM \(([^)]*)\)\)/g)].map((m) => m[1]);
+
+  // Piso contra el vacío: si el SQL cambia de forma y la búsqueda deja de
+  // encontrarlo, «ninguna diverge» sería vacuamente verdadero.
+  comprobarMetrica(
+    "el SQL de este verificador sigue siendo visible para el guard",
+    usos.length > 0,
+    usos.length ? `${usos.length} uso(s) de la métrica` : "no se encontró ningún EXTRACT(EPOCH …): el guard quedó ciego",
+  );
+
+  const divergentes = declarada ? usos.filter((u) => normalizar(u) !== normalizar(declarada[1])) : usos;
+  comprobarMetrica(
+    "todo uso en el código es la expresión que declara §6",
+    declarada !== null && divergentes.length === 0,
+    divergentes.length
+      ? `${divergentes.length} divergente(s): ${[...new Set(divergentes)].map((d) => `«${d.trim()}»`).join(", ")}`
+      : "el código y la spec dicen lo mismo",
+  );
+
+  // --- Qué mitad de H1 mide esto, dicho junto al número --------------------
+  console.log("\nQUÉ PARTE DE H1 MIDE ESTE NÚMERO");
+  console.log("  Mide el **ingreso**: desde que el operador toca `Nuevo ingreso`");
+  console.log("  (src/app/pantalla-operador.tsx:280) hasta que confirma (:328).");
+  console.log("  NO mide el ciclo de **salida**: `registrarSalida()` (:346) no marca");
+  console.log("  ningún instante, y `salida_at` dice cuándo ocurrió, no cuánto tardó.");
+  console.log("  spec.md §1 enuncia H1 sobre entrada + salida, así que este número es");
+  console.log("  UNA MITAD. El tiempo de la salida se toma fuera de banda:");
+  console.log("  ver docs/PROTOCOLO-medicion-H1.md.");
 
   // --- Control negativo del banco ----------------------------------------
   //
@@ -463,8 +530,18 @@ try {
   // Existencial, no universal: el PASS exige que EXISTA al menos una medición
   // sobre la que valga la pena hablar. La población efímera no cuenta para esto,
   // justamente porque no es evidencia de nada.
-  // El control va primero: si el banco no es durable, la muestra que este
-  // comando publique mañana no significa nada, tenga el n que tenga.
+  // AC-H1-2 va primero de todo: si el número no es el que la spec pregunta, su
+  // tamaño de muestra da igual.
+  if (!controlMetrica.every(Boolean)) {
+    console.log("\nLa métrica del código dejó de ser la que `spec.md` §6 declara.");
+    console.log("Cualquier número que este comando publique responde otra pregunta que la");
+    console.log("que la fuente de verdad hace, y nadie lo notaría leyendo la salida.");
+    console.log("\nAC-H1-1: FAIL");
+    process.exit(1);
+  }
+
+  // El control del banco va después: si el banco no es durable, la muestra que
+  // este comando publique mañana no significa nada, tenga el n que tenga.
   if (!control.every(Boolean)) {
     console.log("\nEl control negativo del banco no pasa: el banco dejó de estar protegido");
     console.log("de la limpieza, o alguien invadió su espacio de nombres. Cualquier muestra");

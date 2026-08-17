@@ -209,7 +209,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `c2dca49` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base
+**Commit:** `0774c4c` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|

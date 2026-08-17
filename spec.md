@@ -220,6 +220,44 @@ la app pero no la evidencia sobre H1/H2.
 - Cada `SesionVehiculo` cerrada debe tener `tecleo_inicio_at` y `tecleo_fin_at`.
 - La duración del tecleo = `tecleo_fin_at − tecleo_inicio_at` es la métrica de H1.
 
+> **Qué cubre esta métrica y qué no (2026-08-16).** §1 enuncia H1 sobre **entrada
+> + salida**. Esta métrica mide **solo el ingreso**: `tecleo_inicio_at` se marca al
+> tocar *Nuevo ingreso* (`src/app/pantalla-operador.tsx:280`) y `tecleo_fin_at` al
+> confirmar (`src/app/pantalla-operador.tsx:328`).
+>
+> **El ciclo de salida no está instrumentado.** `registrarSalida()`
+> (`src/app/pantalla-operador.tsx:346`) no marca ningún instante: el único
+> timestamp de la salida es `salida_at`, que el servidor calcula al cerrar
+> (`src/app/api/sesiones/[id]/salida/route.ts:83`) y que mide **cuándo ocurrió**,
+> no **cuánto tardó el operador**.
+>
+> Las dos secciones convivieron así desde M2 sin que nada lo detectara. Se escribe
+> acá para que quien lea un número de `verificar:h1` sepa qué mitad de H1 tiene
+> delante.
+>
+> **Por qué no se instrumenta la salida ahora.** Agregar timestamps exige campos
+> nuevos, y `AC-DATA-1` compara los **27 exactos** de §4: sería enmendar la fuente
+> de verdad más una migración, contra el principio de minimización. **Y no hace
+> falta para el piloto:** en la app la salida es un toque sin tecleo, así que el
+> tiempo del operador se toma **fuera de banda**, con el mismo cronómetro que
+> `{{LINEA_BASE_CUADERNO_SEGUNDOS}}` necesita de todos modos. El método está en
+> `docs/PROTOCOLO-medicion-H1.md`.
+>
+> **Qué dispararía el ADR.** Si el piloto muestra que la salida pesa en H1 **y**
+> que la medición fuera de banda es demasiado ruidosa para decidir, entonces sí:
+> instrumentarla es enmienda de §4 y va por ADR. Hoy no hay dato que lo sostenga,
+> y proponerlo sin ese dato sería construir sobre una hipótesis.
+
+**AC-H1-2 (la métrica del código es la de esta sección).** La expresión que
+`verificar:h1` usa para calcular la duración es exactamente la que este párrafo
+declara. *Verificación: `npm run verificar:h1`* (§9).
+
+> **Por qué hace falta un criterio para esto.** Hoy el código y §6 coinciden **por
+> casualidad, no por mecanismo**: nada comprobaba que siguieran diciendo lo mismo.
+> Cambiar el SQL a `salida_at − entrada_at` habría convertido a §6 en mentira sin
+> que ningún comando lo notara — la fuente de verdad describiendo algo que el
+> sistema dejó de hacer.
+
 **AC-MEAS-1.** Toda sesión cerrada tiene ambos timestamps de tecleo no nulos.
 *Verificación: `npm run verificar:meas1`* (§9).
 
@@ -307,6 +345,7 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS | existencial |
 | AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS | universal |
 | AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real | existencial |
+| AC-H1-2 | **La métrica del código es la que §6 declara.** Toda expresión con que `verificar:h1` calcula la duración del tecleo coincide con la que `spec.md` §6 define. Sin esto, cambiar el SQL convierte a §6 en mentira sin que ningún comando lo note. | `npm run verificar:h1` → todas las comprobaciones de «LA MÉTRICA ES LA QUE LA SPEC DECLARA» en PASS | universal |
 | AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS | existencial |
 | AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS | universal |
 | AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores | universal |
