@@ -144,13 +144,21 @@ const CATALOGO = [
   { script: "verificar:citas", grupo: "estatico" },
   { script: "verificar:verificadores", grupo: "estatico" },
   { script: "verificar:agentes", grupo: "estatico" },
+  { script: "verificar:metrica", grupo: "base" },
   { script: "verificar:esquema", grupo: "base" },
   { script: "verificar:invariantes", grupo: "base" },
   { script: "verificar:meas1", grupo: "base" },
   {
     script: "verificar:h1",
     grupo: "base",
-    nota: "**se espera FAIL** mientras el banco esté vacío: es el entregable de FASE D, no una regresión. *«No pude medirlo» no es «está bien»*",
+    // **`causaEsperada`, y no una nota fija.** La nota que había acá decía «se
+    // espera FAIL mientras el banco esté vacío», y con eso absolvía por
+    // adelantado a *cualquier* rojo de este comando. No es hipotético: en el
+    // ciclo 2 el FAIL venía del control negativo del banco —una regresión real,
+    // introducida por un `DELETE` sin `WHERE`— y se publicó bajo esta misma
+    // exculpación. La nota se genera ahora comparando la causa declarada con la
+    // que el comando imprime.
+    causaEsperada: "banco-vacio",
   },
   { script: "build", grupo: "build" },
   { script: "verificar:salida", grupo: "servidor", url: true },
@@ -452,7 +460,30 @@ for (const entrada of CATALOGO) {
   const contradictorio =
     !falloEjecucion && (veredicto === "PASS" || veredicto === "FAIL") && (exit === 0) !== (veredicto === "PASS");
 
-  filas.push({ ...entrada, corrido: true, exit, recuento, veredicto, falloEjecucion, contradictorio });
+  // **Un FAIL esperado solo se absuelve si el comando dice por qué falló.**
+  //
+  // La nota fija que había en el catálogo declaraba el rojo «esperado» sin mirar
+  // la salida, así que exculpaba también a los rojos que no eran ese. Acá se
+  // compara la causa declarada con la que el comando imprime al ras del margen,
+  // y las tres respuestas posibles se publican distintas: coincide, no coincide,
+  // o el comando no la declaró.
+  const nota = entrada.causaEsperada
+    ? notaPorCausa(entrada.causaEsperada, veredicto, r.stdout ?? "")
+    : entrada.nota;
+
+  filas.push({ ...entrada, nota, corrido: true, exit, recuento, veredicto, falloEjecucion, contradictorio });
+}
+
+function notaPorCausa(esperada, veredicto, salida) {
+  if (veredicto !== "FAIL") return `causa esperada del rojo: \`${esperada}\` (hoy no está en rojo)`;
+  const m = salida.match(/^CAUSA: ([\w-]+)[ \t]*$/m);
+  if (!m) {
+    return `⚠ **rojo sin causa declarada.** Se esperaba \`CAUSA: ${esperada}\` y el comando no imprimió ninguna: no se puede distinguir el entregable de una regresión`;
+  }
+  if (m[1] !== esperada) {
+    return `⚠ **REGRESIÓN, no el entregable.** Se esperaba \`${esperada}\` y falló por \`${m[1]}\``;
+  }
+  return `**FAIL esperado**, causa verificada \`${esperada}\`: es el entregable de FASE D. *«No pude medirlo» no es «está bien»*`;
 }
 
 // --- El bloque ----------------------------------------------------------------

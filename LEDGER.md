@@ -4704,3 +4704,116 @@ sano                                                                            
 dos notas; `scripts/verificar-ac.mjs`, el mapa `SOLTADOS` con los cinco motivos.
 
 **Sin auditar. No se declara verificado.**
+
+---
+
+## 2026-08-17 · FASE D-2 — **FAIL registrado. Hito detenido.**
+
+**Tres ciclos con el auditor, tres VETO. La regla del concilio dice que un tercer
+ciclo sin PASA se registra FAIL y se detiene el hito. Esto es eso.**
+
+No se abre un ciclo 4. Seguir parcheando es exactamente lo que la regla existe
+para impedir: cada ronda cerró la forma concreta que el auditor había plantado y
+dejó viva la propiedad, y las tres veces el auditor encontró la propiedad por
+otro lado. El defecto no está en las mutaciones que faltaron: está en el diseño
+del guard, y eso no se arregla con una cuarta corrección del mismo tipo.
+
+### El diagnóstico, que es de quien escribió el guard y no del auditor
+
+**Se blindó un punto —la mediana, por su forma sintáctica exacta— en vez de la
+propiedad.** Mientras el ancla sea un regex sobre el texto del fuente y la sonda
+un solo punto sobre una sola columna, la superficie no cubierta —`min`, `max`,
+el estadístico, el `WHERE` del universo, y cualquier transformación monótona—
+sigue siendo mayor que la cubierta.
+
+### Los tres hallazgos del ciclo 3, todos reproducidos por el auditor
+
+**D-1 · `min` y `max` no los cubre ninguna de las cuatro capas.** El ancla mira
+solo lo que hay entre `WITHIN GROUP (` y `) AS mediana`; la sonda lee solo
+`filas[0].mediana`; el guard por exclusión usa `col - col`, que es justo lo que
+el bypass del ciclo 2 evade. Con la mutación puesta:
+
+```
+min(EXTRACT(EPOCH FROM salida_at) - EXTRACT(EPOCH FROM entrada_at)) AS minimo,
+max(EXTRACT(EPOCH FROM salida_at) - EXTRACT(EPOCH FROM entrada_at)) AS maximo
+
+4/4 comprobaciones PASS · AC-H1-2: PASS · exit=0
+FILA PUBLICADA: {"poblacion":"banco","n":1,"mediana":7,"minimo":3600,"maximo":3600}
+```
+
+3600 s es la permanencia, impresa bajo el encabezado *«tiempo de tecleo =
+tecleo_fin_at − tecleo_inicio_at (spec.md §6)»*. Dos de las tres expresiones
+publicadas quedan fuera del criterio, y `spec.md:348` dice **«toda»**.
+
+**Y sin piso:** el detalle pasó de `3 resta(s) revisada(s)` a `1` y siguió en
+PASS. `verificar-h1.mjs:352` tiene piso explícito por esta misma razón;
+`metrica.mjs` no lo tiene, mientras su propio encabezado condena el criterio que
+pasa sobre el conjunto vacío.
+
+**D-2 · El ancla se apunta a un señuelo — y es el hallazgo grave.** El regex
+engancha el **primer** `percentile_cont` del archivo, y `AS\s+mediana` no tiene
+límite de palabra: matchea `AS mediana_referencia`. Un señuelo aliasado secuestra
+el ancla y la columna real queda sin verificar.
+
+```sql
+percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS mediana_referencia,
+percentile_cont(0.5) WITHIN GROUP (ORDER BY LEAST(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at)), 10)) AS mediana,
+```
+
+Con una fila de tecleo real de 40 s:
+
+```
+FILA PUBLICADA: {"mediana":10,"minimo":40,"maximo":40}
+4/4 comprobaciones PASS · AC-H1-2: PASS
+```
+
+**Tecleo real 40 s, mediana publicada 10 s, criterio en verde.** Es el `6,2 s`
+inventado otra vez, ahora con un guard firmándolo. La sonda de cuatro instantes
+no puede verlo **por construcción**: es un solo punto, y toda transformación
+monótona que comprima valores por encima de 7 s le resulta invisible.
+
+**D-3 · `BORRA-BANCO-A-PROPOSITO` es auto-servicio.** La marca es un `test()` de
+texto: no verifica transacción, ni `throw`, ni rollback. El auditor plantó un
+borrado real, confirmado, sin transacción, con la marca copiada, y el control lo
+aprobó — `15 borrado(s) revisado(s)`, PASS. La aserción se llama *«**prueba** que
+no toca el banco»* y con la marca pasa a ser autodeclaración: el modo de falla que
+este ledger ya registró para INT-12, *«el historial se puede forjar»*.
+
+La transacción de `metrica.mjs` **sí revierte siempre** —el auditor lo verificó y
+es correcto—. El defecto es que la marca no está atada a esa propiedad.
+
+### Lo que el auditor verificó como cierto, y queda en pie
+
+- **La sonda de cuatro instantes es correcta.** Seis pares, seis números
+  distintos, incluidos los invertidos. No hay expresión de duración plausible
+  distinta de la declarada que dé 7 s sobre ella. El FAIL nombra el par medido.
+- **La corrección de la exculpación es correcta y está probada con una regresión
+  real.** Con el control negativo roto, el bloque publicó:
+  `⚠ **REGRESIÓN, no el entregable.** Se esperaba banco-vacio y falló por control-negativo`.
+  Dos líneas `CAUSA:` son inalcanzables, y `interpretar()` no puede confundirlas
+  con un veredicto.
+- **La regresión reclamada es exacta:** `test 122/122 · alcance 9/9 ·
+  alcance:prueba 15/15 · ac 9/9 · citas 49/49 · verificadores 45/45 · agentes
+  16/16 · metrica 4/4 · esquema 8/8 · invariantes 8/8`.
+
+### Consecuencia sobre AC-H1-2
+
+**AC-H1-2 no se declara verificado.** El criterio de §9 es el correcto y se deja
+escrito; lo que no se sostiene es su columna de verificación: `verificar:metrica`
+en verde **no** prueba «toda expresión», prueba la mediana por su forma exacta
+más un punto de la consulta real. Se corrige el texto de §9 para que diga lo que
+el comando hace, y la deuda queda acá, visible, en vez de disimulada detrás de un
+PASS.
+
+**Publicar un PASS que reclama más de lo que verifica es el defecto que este repo
+persigue desde AC-SCOPE-1.** No se repite para salvar un hito.
+
+### La salida técnica, documentada y NO implementada
+
+El guard correcto no mira el fuente: **fija las tres estadísticas con datos.**
+Con tres o más filas de duraciones conocidas y distintas, `mediana`, `mín` y
+`máx` quedan cada una determinada por los datos, y una transformación monótona
+—el bypass de D-2— se delata sola. No necesita ancla, ni regex, ni marca: no le
+importa cómo esté escrito el SQL. Queda escrito para quien retome; **no se
+construye acá**, porque el hito está detenido.
+

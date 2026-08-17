@@ -25,7 +25,20 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DIR = resolve(RAIZ, process.argv[2] ?? "docs/data");
+
+/**
+ * Qué se barre por defecto.
+ *
+ * Hasta el 2026-08-16 era **solo `docs/data`**, y eso dejaba fuera del guard a los
+ * documentos que más citan código: `spec.md` —la fuente de verdad—, los ADR y las
+ * specs de `docs/`. Sus citas resolvían, pero **ningún comando lo sostenía**: es
+ * la regla U7 aplicada al propio guard de las citas.
+ *
+ * Se sigue aceptando un directorio por argumento para barrer uno solo.
+ */
+const OBJETIVOS = process.argv[2]
+  ? [process.argv[2]]
+  : ["docs/data", "docs", "docs/adr", "spec.md"];
 
 const resultados = [];
 const comprobar = (nombre, ok, detalle = "") => {
@@ -33,15 +46,22 @@ const comprobar = (nombre, ok, detalle = "") => {
   console.log(`${ok ? "PASS" : "FAIL"} · ${nombre}${detalle ? ` · ${detalle}` : ""}`);
 };
 
-function documentos(dir) {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .map((f) => join(dir, f))
+/** Un objetivo puede ser un directorio (no recursivo) o un archivo suelto. */
+function documentos(objetivo) {
+  const ruta = resolve(RAIZ, objetivo);
+  if (!existsSync(ruta)) return [];
+  if (statSync(ruta).isFile()) return ruta.endsWith(".md") ? [ruta] : [];
+  return readdirSync(ruta)
+    .map((f) => join(ruta, f))
     .filter((f) => statSync(f).isFile() && f.endsWith(".md"));
 }
 
-const docs = documentos(DIR);
-comprobar("hay documentos derivados que revisar", docs.length > 0, `${docs.length} en ${DIR}`);
+const docs = [...new Set(OBJETIVOS.flatMap(documentos))].sort();
+comprobar(
+  "hay documentos derivados que revisar",
+  docs.length > 0,
+  `${docs.length} en ${OBJETIVOS.join(", ")}`,
+);
 
 // Rutas del repo que una cita puede referenciar. Se exige la extensión para no
 // confundir una cita con un `nombre:línea` de prosa.

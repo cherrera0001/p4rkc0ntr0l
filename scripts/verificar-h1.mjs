@@ -57,8 +57,9 @@
  * `{{UMBRAL_H1_SEGUNDOS}}` y `{{LINEA_BASE_CUADERNO_SEGUNDOS}}` siguen abiertos
  * (`spec.md` §12). Tampoco aplica un mínimo de muestra: cuál es el `n` a partir
  * del cual una mediana significa algo es decisión humana, propuesta como
- * `{{N_MINIMO_H1}}`. **Deuda declarada: ese nombre todavía no está en `spec.md`
- * §12; se agrega al cablear (iteración 3).**
+ * `{{N_MINIMO_H1}}`, que **sí está** en `spec.md` §12 desde el cableado de FASE D
+ * y sigue **sin resolver**. (Este comentario decía que todavía no estaba: quedó
+ * viejo en el archivo que lo agregó.)
  *
  * Uso:  npm run verificar:h1
  */
@@ -70,6 +71,7 @@ import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 
 import { PREFIJO_BANCO } from "./lib/fixtures.mjs";
+import { comprobarMetrica, consultaPoblaciones } from "./lib/metrica.mjs";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -144,25 +146,11 @@ try {
   // `src/db/schema.ts:127`), así que hoy el `IS NOT NULL` es redundante. Se
   // escribe igual: si un cambio futuro las afloja, este comando tiene que seguir
   // midiendo sobre datos completos en vez de promediar nulos en silencio.
-  const filas = await sql`
-    SELECT
-      CASE
-        WHEN patente NOT LIKE 'FIXT%'  THEN 'real'
-        WHEN patente LIKE 'FIXTB%'     THEN 'banco'
-        ELSE 'efimero'
-      END AS poblacion,
-      count(*)::int AS n,
-      percentile_cont(0.5) WITHIN GROUP (
-        ORDER BY EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))
-      ) AS mediana,
-      min(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS minimo,
-      max(EXTRACT(EPOCH FROM (tecleo_fin_at - tecleo_inicio_at))) AS maximo
-    FROM sesion_vehiculo
-    WHERE estado = 'cerrada'
-      AND tecleo_inicio_at IS NOT NULL
-      AND tecleo_fin_at IS NOT NULL
-    GROUP BY 1
-  `;
+  // **Una sola definición de la consulta**, en `scripts/lib/metrica.mjs`. Acá
+  // había una copia: mientras existió, `verificar:metrica` podía ejercitar la del
+  // módulo y dar PASS mientras ésta publicaba otra cosa. Probar una copia solo
+  // demuestra lo que la copia hace.
+  const filas = await consultaPoblaciones(sql);
 
   // Las poblaciones sin filas no vuelven del GROUP BY: una población ausente y
   // una vacía son lo mismo acá, y las dos tienen que aparecer en la tabla.
@@ -225,60 +213,23 @@ try {
 
   // --- AC-H1-2 · la métrica del código es la que declara la spec -----------
   //
-  // Hasta el 2026-08-16 el código y `spec.md` §6 coincidían **por casualidad**:
-  // los dos decían `tecleo_fin_at − tecleo_inicio_at` y **nada comprobaba que
-  // siguieran diciendo lo mismo**. Cambiar el SQL a `salida_at − entrada_at`
-  // habría convertido a §6 en mentira sin que ningún comando lo notara — la
-  // fuente de verdad describiendo algo que el sistema dejó de hacer.
+  // La comprobación vive en `scripts/lib/metrica.mjs` y tiene comando propio:
+  // `npm run verificar:metrica`. Acá se corre igual, y primero, para fallar
+  // rápido: si el número no es el que la spec pregunta, su tamaño de muestra
+  // da igual.
   //
-  // No se compara contra una constante escrita acá: eso solo probaría que este
-  // archivo es consistente consigo mismo. **Se lee la expresión de `spec.md` y se
-  // la compara contra el SQL de este archivo**, que es la divergencia que importa.
+  // **Por qué tiene comando propio.** Este script sale con exit≠0 mientras el
+  // banco esté vacío —es su entregable, no un defecto—, así que un criterio
+  // colgado de él **nunca podría registrarse PASS** en el bloque de evidencia.
+  // Y sus comprobaciones salían indentadas, invisibles para `evidencia.mjs`,
+  // que solo lee veredictos al ras del margen: en `STATE.md`, «la métrica dejó
+  // de ser la que la spec declara» y «todavía no hay datos» eran la misma fila.
   console.log("\nAC-H1-2 · LA MÉTRICA ES LA QUE LA SPEC DECLARA");
-  const controlMetrica = [];
-  const comprobarMetrica = (nombre, ok, detalle = "") => {
-    controlMetrica.push(ok);
-    console.log(`  ${ok ? "PASS" : "FAIL"} · ${nombre}${detalle ? ` · ${detalle}` : ""}`);
-  };
-
-  // El signo menos de la spec es U+2212 (−) y el de SQL es un guion (-). Se
-  // normalizan los dos para comparar la expresión, no su tipografía.
-  const normalizar = (s) => s.replace(/[−–—]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
-
-  const specTexto = readFileSync(join(DIR, "..", "spec.md"), "utf8");
-  const declarada = specTexto.match(/La duración del tecleo = `([^`]+)` es la métrica de H1/);
-
-  comprobarMetrica(
-    "spec.md §6 declara la métrica en la forma que este guard puede leer",
-    Boolean(declarada),
-    declarada
-      ? `«${declarada[1]}»`
-      : "no se encontró la línea «La duración del tecleo = `…` es la métrica de H1»",
-  );
-
-  // Toda aparición de la métrica en el SQL de este archivo, sin comentarios: si
-  // una sola diverge, la publicación deja de ser lo que la spec promete.
-  const propio = readFileSync(join(DIR, "verificar-h1.mjs"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-  const usos = [...propio.matchAll(/EXTRACT\(EPOCH FROM \(([^)]*)\)\)/g)].map((m) => m[1]);
-
-  // Piso contra el vacío: si el SQL cambia de forma y la búsqueda deja de
-  // encontrarlo, «ninguna diverge» sería vacuamente verdadero.
-  comprobarMetrica(
-    "el SQL de este verificador sigue siendo visible para el guard",
-    usos.length > 0,
-    usos.length ? `${usos.length} uso(s) de la métrica` : "no se encontró ningún EXTRACT(EPOCH …): el guard quedó ciego",
-  );
-
-  const divergentes = declarada ? usos.filter((u) => normalizar(u) !== normalizar(declarada[1])) : usos;
-  comprobarMetrica(
-    "todo uso en el código es la expresión que declara §6",
-    declarada !== null && divergentes.length === 0,
-    divergentes.length
-      ? `${divergentes.length} divergente(s): ${[...new Set(divergentes)].map((d) => `«${d.trim()}»`).join(", ")}`
-      : "el código y la spec dicen lo mismo",
-  );
+  const resultadosMetrica = comprobarMetrica();
+  for (const r of resultadosMetrica) {
+    console.log(`  ${r.ok ? "PASS" : "FAIL"} · ${r.nombre}${r.detalle ? ` · ${r.detalle}` : ""}`);
+  }
+  const controlMetrica = resultadosMetrica.map((r) => r.ok);
 
   // --- Qué mitad de H1 mide esto, dicho junto al número --------------------
   console.log("\nQUÉ PARTE DE H1 MIDE ESTE NÚMERO");
@@ -536,7 +487,12 @@ try {
     console.log("\nLa métrica del código dejó de ser la que `spec.md` §6 declara.");
     console.log("Cualquier número que este comando publique responde otra pregunta que la");
     console.log("que la fuente de verdad hace, y nadie lo notaría leyendo la salida.");
-    console.log("\nAC-H1-1: FAIL");
+    console.log("Detalle y veredicto propio: npm run verificar:metrica");
+    // **Veredicto distinguible.** Antes esta rama imprimía `AC-H1-1: FAIL`, byte
+    // por byte lo mismo que la rama del banco vacío: en el bloque de evidencia,
+    // «la métrica cambió» y «todavía no hay datos» eran la misma fila.
+    console.log("\nCAUSA: metrica-divergente");
+    console.log("AC-H1-2: FAIL");
     process.exit(1);
   }
 
@@ -550,7 +506,8 @@ try {
     // El veredicto va solo en su línea y al ras del margen: `evidencia.mjs:362`
     // exige exactamente esa forma, y una línea con explicación pegada se publica
     // como SIN VEREDICTO.
-    console.log("\nAC-H1-1: FAIL");
+    console.log("\nCAUSA: control-negativo");
+    console.log("AC-H1-1: FAIL");
     process.exit(1);
   }
 
@@ -560,7 +517,14 @@ try {
     console.log("por primera vez en un veredicto en vez de escondida detrás de un PASS vacuo.");
     console.log("Se cierra tecleando en la app. Insertar filas por SQL también daría PASS");
     console.log("—el instrumento no puede impedirlo— y sería fabricar el `6,2 s` de nuevo.");
-    console.log("\nAC-H1-1: FAIL");
+    // **La causa, en una línea que una máquina pueda leer.** El bloque de
+    // evidencia publicaba este rojo bajo la nota «se espera FAIL mientras el
+    // banco esté vacío», que absuelve por adelantado a *cualquier* rojo. Y ya
+    // absolvió uno real: durante el ciclo 2 el FAIL venía de la rama de arriba
+    // —el control negativo— y `STATE.md` lo publicó igual, como si fuera éste.
+    // Una nota en prosa no puede distinguirlos; esta línea sí.
+    console.log("\nCAUSA: banco-vacio");
+    console.log("AC-H1-1: FAIL");
     process.exit(1);
   }
 

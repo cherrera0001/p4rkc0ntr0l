@@ -250,7 +250,16 @@ la app pero no la evidencia sobre H1/H2.
 
 **AC-H1-2 (la métrica del código es la de esta sección).** La expresión que
 `verificar:h1` usa para calcular la duración es exactamente la que este párrafo
-declara. *Verificación: `npm run verificar:h1`* (§9).
+declara. *Verificación: `npm run verificar:metrica`* (§9).
+
+> **El criterio está escrito; su verificación no se sostiene, y eso se dice acá.**
+> Tres ciclos de auditoría terminaron en VETO y el hito quedó detenido (LEDGER
+> 2026-08-17). El último bypass publicó **10 s sobre un tecleo real de 40 s con el
+> criterio en verde**: un señuelo aliasado `AS mediana_referencia` secuestra el
+> ancla y la columna real aplica un tope. Mientras el guard sea un regex sobre el
+> texto del fuente más una sonda de un solo punto, deja afuera más superficie de
+> la que cubre. **Un PASS de `verificar:metrica` no autoriza a leer §6 como
+> garantizada.**
 
 > **Por qué hace falta un criterio para esto.** Hoy el código y §6 coinciden **por
 > casualidad, no por mecanismo**: nada comprobaba que siguieran diciendo lo mismo.
@@ -345,7 +354,7 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS | existencial |
 | AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS | universal |
 | AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real | existencial |
-| AC-H1-2 | **La métrica del código es la que §6 declara.** Toda expresión con que `verificar:h1` calcula la duración del tecleo coincide con la que `spec.md` §6 define. Sin esto, cambiar el SQL convierte a §6 en mentira sin que ningún comando lo note. | `npm run verificar:h1` → todas las comprobaciones de «LA MÉTRICA ES LA QUE LA SPEC DECLARA» en PASS | universal |
+| AC-H1-2 | **La métrica del código es la que §6 declara.** Toda expresión con que `verificar:h1` calcula la duración del tecleo coincide con la que `spec.md` §6 define. Sin esto, cambiar el SQL convierte a §6 en mentira sin que ningún comando lo note. | **NO VERIFICADO** (LEDGER 2026-08-17). `npm run verificar:metrica` en verde **no** prueba «toda expresión»: cubre la mediana por su forma exacta más un punto de la consulta real. El mínimo, el máximo, el estadístico y toda transformación monótona quedan fuera — los tres huecos están reproducidos en el ledger | universal |
 | AC-MEAS-2 | El panel del dueño refleja las sesiones registradas. | `npm run verificar:meas2` → todas las comprobaciones PASS | existencial |
 | AC-PWA-1 | PWA instalable: manifiesto con los campos de instalabilidad (name/short_name, start_url, display, iconos 192 y 512 que existen) **y** service worker registrado, activado y controlando la página. | `npm run verificar:pwa` → todas las comprobaciones PASS | universal |
 | AC-BUILD-1 | El proyecto compila. | `npm run build` sin errores | universal |

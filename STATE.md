@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-15
+**Actualizado:** 2026-08-17
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -21,6 +21,8 @@
 | **HALLAZGO ABIERTO · alcance** | **el gate no cubre `tenant` ni `plataforma`.** Reproducido: 9/9 PASS con los dos plantados. Ver abajo |
 | **Harness (unificación de agentes)** | **FAIL, BoundedLoop agotado** (2026-08-16). Funciona y **no se declara verificado** — igual que INT-12. Reabrirlo es decisión humana |
 | **spec-driven · huérfano declarado + tipo de AC** | cerrado en código el 2026-08-16, **SIN AUDITAR**. `verificar:ac` pasó de 5 a 9 comprobaciones |
+| **FASE D-2 · AC-H1-2** | **FAIL registrado, hito detenido** (2026-08-17). Tres ciclos, tres VETO. El último bypass publicó **10 s sobre un tecleo real de 40 s con el criterio en verde**. `AC-H1-2` **no se declara verificado**; el criterio queda escrito y su verificación, corregida para decir lo que hace. Detalle y salida técnica en `LEDGER.md` (2026-08-17) |
+| **Backend · dos defectos de corrección, no de escala** | medidos el 2026-08-17. (1) `POST /salida` es read-modify-write **sin transacción** y su `UPDATE` no lleva `estado='activa'` (`src/app/api/sesiones/[id]/salida/route.ts:59-123`): dos POST concurrentes se pisan el monto. (2) `exigirRol()` corre **fuera del `try`** en las tres rutas: una caída de base devuelve **500 opaco** en vez del 503 tipado que el sistema declara. **Sin corregir** |
 
 ## FASE D (2026-08-16) — «SIN DATOS» dejó de ser una frase y pasó a ser un FAIL
 
@@ -209,7 +211,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `0774c4c` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base
+**Commit:** `24ec134` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
@@ -218,13 +220,14 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
 | `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 9/9 | PASS |  |
-| `npm run verificar:citas` | `exit=0` · 23/23 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 43/43 | PASS |  |
+| `npm run verificar:citas` | `exit=0` · 49/49 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 45/45 | PASS |  |
 | `npm run verificar:agentes` | `exit=0` · 16/16 | PASS |  |
+| `npm run verificar:metrica` | `exit=0` · 4/4 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:meas1` | `exit=0` · — | PASS |  |
-| `npm run verificar:h1` | `exit=1` · — | FAIL | **se espera FAIL** mientras el banco esté vacío: es el entregable de FASE D, no una regresión. *«No pude medirlo» no es «está bien»* |
+| `npm run verificar:h1` | `exit=1` · — | FAIL | **FAIL esperado**, causa verificada `banco-vacio`: es el entregable de FASE D. *«No pude medirlo» no es «está bien»* |
 | `npm run build` | **NO CORRIDO** · grupo `build` | — |  |
 | `npm run verificar:salida` | **NO CORRIDO** · grupo `servidor` | — |  |
 | `npm run verificar:pwa` | **NO CORRIDO** · grupo `navegador` | — |  |
@@ -237,7 +240,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 12 de 23 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 13 de 24 comandos.** Los 11 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
 
 **Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->

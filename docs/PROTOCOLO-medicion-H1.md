@@ -127,8 +127,16 @@ exactamente cómo una muestra se sesga sin que nadie lo note.
 - **Banco de medición:** `FIXTB` + dígitos → `FIXTB01`, `FIXTB02`, …
   Sobrevive a la limpieza **solo cuando la sesión está cerrada**
   (`scripts/lib/fixtures.mjs`).
-- **No uses `FIXT` + dos dígitos**: ése es el espacio de los verificadores, y
-  `npm run verificar:h1` falla si alguien lo invade.
+- **No uses `FIXT` + dos dígitos**: ése es el espacio de los verificadores. Una
+  tanda tomada con `FIXT01` la barre `limpiarFixtures()` en la próxima corrida de
+  navegador, y **la perdés sin que nada avise**.
+
+> **Ojo con qué protege el guard, porque va en la dirección contraria a lo que
+> parece.** `verificar:h1` comprueba que **ningún verificador use una patente
+> `FIXTB…`** —protege al banco de los verificadores— escaneando los archivos
+> `scripts/verificar-*.mjs`. **No mira las filas de la base**, así que no puede
+> avisarte si vos tecleaste en el espacio equivocado. Esa mitad depende de este
+> párrafo, no de un comando.
 
 Las patentes del banco **son datos de prueba**: no son dato personal y por eso el
 piloto puede operar con ellas sin resolver `{{BASE_LICITUD}}`.
