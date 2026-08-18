@@ -214,7 +214,17 @@ export const POST = rutaAutenticada(
       if (!existente) {
         // El id existe pero es de otro estacionamiento. Ni se confirma ni se
         // niega: el operador no tiene por qué saber nada de esa sesión.
-        return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+        //
+        // **404, no 403 — y la diferencia es pérdida de datos, no estilo.**
+        // (Hallazgo del experto de API del concilio, reproducido.) Para la cola
+        // local un 403 es *definitivo* y **borra el ingreso del dispositivo**
+        // (`cola-local.ts:276`); un 404 es recuperable y lo conserva. La ruta de
+        // salida ya responde 404 ante este mismo hecho; esta —que es la que la
+        // cola realmente golpea— elegía el código destructivo. Un operador
+        // reasignado de estacionamiento con ingresos aún sin sincronizar los
+        // perdía en silencio. 404 además dice *menos* que 403, así que no se
+        // pierde el "ni confirma ni niega". Alinea con el contrato §1.3.
+        return NextResponse.json({ error: "La sesión no existe." }, { status: 404 });
       }
 
       return NextResponse.json({ sesion: existente, duplicada: true }, { status: 200 });

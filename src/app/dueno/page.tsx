@@ -21,19 +21,66 @@ import Descuadre from "./descuadre";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Minutos que una zona horaria adelanta a UTC en un instante dado.
+ *
+ * Se deriva formateando el instante EN LA ZONA y restándolo del mismo instante
+ * en UTC. No usa `getTimezoneOffset()`, que devuelve el offset **del proceso** —y
+ * Vercel corre en UTC—, no el de la zona que se pide.
+ */
+function offsetMinutos(zona: string, instante: Date): number {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: zona,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+    .formatToParts(instante)
+    .reduce<Record<string, number>>((a, x) => {
+      if (x.type !== "literal") a[x.type] = Number(x.value);
+      return a;
+    }, {});
+  const comoUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
+  return Math.round((comoUTC - instante.getTime()) / 60_000);
+}
+
+/**
+ * Medianoche de HOY en la zona del estacionamiento, como instante UTC.
+ *
+ * **El corte del día del dueño usa la zona del estacionamiento, no la del
+ * servidor.** (Hallazgo crítico del experto de frontend del concilio.) La versión
+ * anterior sacaba el offset de `new Date(...).getTimezoneOffset()`, que es el del
+ * proceso: en Vercel —UTC— el «ingresos de hoy» de un estacionamiento en Santiago
+ * se cortaba a las 20:00 hora local, no a medianoche. Medido: desfase de −4 h en
+ * Santiago, −6 h en Pascua, +2 h en Madrid. `verificar:meas2` no lo veía porque
+ * la máquina de desarrollo está en la misma zona que el fixture.
+ *
+ * Y con multicliente cada cliente elige su zona (ADR-005), así que el desfase
+ * dejó de ser un borde y pasó a ser por cliente.
+ */
 function inicioDelDia(zonaHoraria: string): Date {
   const ahora = new Date();
-  const partes = new Intl.DateTimeFormat("en-CA", {
+  const [anio, mes, dia] = new Intl.DateTimeFormat("en-CA", {
     timeZone: zonaHoraria,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(ahora);
-  // Medianoche local del estacionamiento, no del servidor: un servidor en UTC
-  // cortaría el día del operador a las 21:00.
-  const offsetMin = -new Date(`${partes}T00:00:00`).getTimezoneOffset();
-  const utc = new Date(`${partes}T00:00:00Z`);
-  return new Date(utc.getTime() - offsetMin * 60_000);
+  })
+    .format(ahora)
+    .split("-")
+    .map(Number);
+
+  // La medianoche local, tratada primero como si fuera UTC, y después corrida por
+  // el offset real de la zona en ese instante. Se recalcula el offset sobre la
+  // medianoche candidata para clavar el borde correcto aun cerca de un cambio de
+  // hora de verano.
+  const ingenua = Date.UTC(anio, mes - 1, dia, 0, 0, 0);
+  const off = offsetMinutos(zonaHoraria, new Date(ingenua));
+  return new Date(ingenua - off * 60_000);
 }
 
 export default async function PanelDueno() {

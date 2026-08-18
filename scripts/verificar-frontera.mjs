@@ -40,7 +40,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { EMAIL_OPERADOR } from "./lib/fixtures.mjs";
+import postgres from "postgres";
+
+import { EMAIL_OPERADOR, EMAIL_PLATAFORMA } from "./lib/fixtures.mjs";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
@@ -107,7 +109,17 @@ const DEGENERADOS = [
 
 /** Campos que las rutas leen del cuerpo. Se envían todos a todas: una ruta que
  *  ignore un campo simplemente lo ignora, y una que lo lea sin validar se delata. */
-const CAMPOS = ["id", "patente", "entradaAt", "tecleoInicioAt", "tecleoFinAt", "clienteAhora", "email", "clave"];
+// **Union de los campos que lee CUALQUIER ruta.** El descubrimiento de rutas
+// es por exclusion (bien); el de campos era una enumeracion que no incluia los
+// del alta de cliente, asi que las 66 peticiones a /api/plataforma/clientes
+// morian con cuerpo vacio y la ruta pasaba sin haberse probado. Un criterio
+// que siempre pasa es peor que no tenerlo (CLAUDE.md §1).
+const CAMPOS = [
+  "id", "patente", "entradaAt", "tecleoInicioAt", "tecleoFinAt", "clienteAhora",
+  "email", "clave",
+  "nombre", "zonaHoraria", "capacidadTotal", "valorHora", "fraccionMinutos",
+  "montoMinimo", "emailDueno", "emailOperador",
+];
 
 const rutas = rutasDelArbol();
 comprobar(
@@ -116,26 +128,42 @@ comprobar(
   `${rutas.length} ruta(s): ${rutas.map((r) => `${r.ruta} [${r.metodos.join(",")}]`).join(" · ")}`,
 );
 
-async function entrarComoOperador() {
+async function entrar(email) {
   const r = await fetch(`${URL_BASE}/api/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: EMAIL_OPERADOR, clave: process.env.CLAVE_ACCESO ?? "" }),
+    body: JSON.stringify({ email, clave: process.env.CLAVE_ACCESO ?? "" }),
   });
-  if (!r.ok) throw new Error(`No se pudo iniciar sesión: HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`No se pudo iniciar sesión (${email}): HTTP ${r.status}`);
   return r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
 }
 
+// El rol plataforma no vive de forma permanente en la base (se limpia). Se
+// siembra para esta corrida y se borra al final: sin él, la ruta de alta solo se
+// podía probar con un 401, que es justo el agujero que este verificador cierra.
+const sql = process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL, { max: 1 }) : null;
+
 const cincoXX = [];
 const tocadas = new Set();
+// Por ruta: ¿alguna sesión alcanzó su frontera (una respuesta que no sea 401/403)?
+// Una ruta que responde 401 en el 100% de sus casos no probó su validación:
+// probó su puerta. Ese es el agujero exacto que dejaba pasar la ruta nueva.
+const alcanzada = new Set();
 let casos = 0;
 let limitadas = 0;
 
 try {
-  // La sesión va primero: sin ella, todo responde 401 antes de llegar a validar,
-  // y el verificador estaría probando la puerta en vez de la frontera.
-  const cookie = await entrarComoOperador();
-  const cabeceras = { "Content-Type": "application/json", Cookie: cookie };
+  // **Una sesión por rol.** Antes se entraba solo como operador, y toda ruta que
+  // exige otro rol respondía 401 antes de validar nada. Se prueba cada ruta con
+  // cada rol; basta que UNA sesión alcance su frontera para haberla probado.
+  const sesiones = [{ rol: "operador", cookie: await entrar(EMAIL_OPERADOR) }];
+  if (sql) {
+    await sql`
+      INSERT INTO usuario (email, rol, estacionamiento_id)
+      VALUES (${EMAIL_PLATAFORMA}, 'plataforma', NULL)
+      ON CONFLICT (email) DO NOTHING`;
+    sesiones.push({ rol: "plataforma", cookie: await entrar(EMAIL_PLATAFORMA) });
+  }
 
   for (const { ruta, metodos } of rutas) {
     for (const metodo of metodos) {
@@ -145,31 +173,39 @@ try {
         const camino = ruta.replace(/\[[^\]]+\]/g, encodeURIComponent(String(valor ?? "")));
         const cuerpo = Object.fromEntries(CAMPOS.map((c) => [c, valor]));
 
-        let r;
-        try {
-          r = await fetch(`${URL_BASE}${camino}`, {
-            method: metodo,
-            headers: cabeceras,
-            body: metodo === "GET" || metodo === "DELETE" ? undefined : JSON.stringify(cuerpo),
-          });
-        } catch (e) {
-          cincoXX.push(`${metodo} ${ruta} · ${nombreValor} · sin respuesta: ${e.message}`);
-          continue;
-        }
+        for (const { cookie } of sesiones) {
+          let r;
+          try {
+            r = await fetch(`${URL_BASE}${camino}`, {
+              method: metodo,
+              headers: { "Content-Type": "application/json", Cookie: cookie },
+              body: metodo === "GET" || metodo === "DELETE" ? undefined : JSON.stringify(cuerpo),
+            });
+          } catch (e) {
+            cincoXX.push(`${metodo} ${ruta} · ${nombreValor} · sin respuesta: ${e.message}`);
+            continue;
+          }
 
-        casos++;
-        tocadas.add(ruta);
-        // 429 es una respuesta legítima de la frontera —el limitador de intentos
-        // del login—, no un 5xx. Se cuenta aparte para poder declararlo.
-        if (r.status === 429) limitadas++;
-        if (r.status >= 500) {
-          cincoXX.push(`${metodo} ${ruta} · ${nombreValor} → HTTP ${r.status}`);
+          casos++;
+          tocadas.add(ruta);
+          if (r.status !== 401 && r.status !== 403) alcanzada.add(ruta);
+          // 429 es una respuesta legítima de la frontera —el limitador de intentos
+          // del login—, no un 5xx. Se cuenta aparte para poder declararlo.
+          if (r.status === 429) limitadas++;
+          if (r.status >= 500) {
+            cincoXX.push(`${metodo} ${ruta} · ${nombreValor} → HTTP ${r.status}`);
+          }
         }
       }
     }
   }
 } catch (e) {
   comprobar("la corrida llegó al final", false, e.message);
+} finally {
+  if (sql) {
+    await sql`DELETE FROM usuario WHERE email = ${EMAIL_PLATAFORMA}`.catch(() => {});
+    await sql.end();
+  }
 }
 
 comprobar(
@@ -184,6 +220,18 @@ comprobar(
   tocadas.size === rutas.length
     ? `${tocadas.size}/${rutas.length}`
     : `sin probar: ${rutas.filter((r) => !tocadas.has(r.ruta)).map((r) => r.ruta).join(", ")}`,
+);
+
+// **Piso que delata la evasión por rol.** Una ruta que respondió 401/403 en el
+// 100% de sus casos no probó su validación: probó su puerta. Es exactamente lo
+// que le pasaba a /api/plataforma/clientes cuando el verificador entraba solo
+// como operador — daba PASS sin haber tocado una sola guarda de la ruta.
+comprobar(
+  "toda ruta alcanzó su frontera con algún rol (ninguna quedó en 401/403 el 100%)",
+  alcanzada.size === rutas.length,
+  alcanzada.size === rutas.length
+    ? `${alcanzada.size}/${rutas.length} validadas de verdad, no solo su puerta`
+    : `solo su puerta (401/403 siempre): ${rutas.filter((r) => !alcanzada.has(r.ruta)).map((r) => r.ruta).join(", ")}`,
 );
 
 comprobar(
