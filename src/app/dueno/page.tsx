@@ -9,7 +9,7 @@
  * cuenta en caja es justamente la señal que el panel busca hacer visible.
  */
 
-import { and, count, eq, gte, sum } from "drizzle-orm";
+import { and, count, eq, gte, sql, sum } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { conBase, db, sesionVehiculo } from "@/db";
@@ -19,6 +19,7 @@ import { obtenerEstacionamiento } from "@/lib/contexto";
 import Cabecera from "../cabecera";
 import CerrarSesion from "../cerrar-sesion";
 import Descuadre from "./descuadre";
+import IngresosPorHora from "./ingresos-por-hora";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,28 @@ export default async function PanelDueno() {
   const cerradasHoy = agregado?.cerradas ?? 0;
   const libres = est.capacidadTotal - activas;
 
+  // Ingresos por hora del día, en la zona del estacionamiento (data-driven, el
+  // gráfico del diseño 1n). La hora se extrae de `salida_at` convertida a la zona
+  // local: el corte y la agrupación usan la misma referencia horaria que el resto
+  // del panel, no la del servidor.
+  const filasPorHora = await conBase(() =>
+    db
+      .select({
+        hora: sql<number>`date_part('hour', ${sesionVehiculo.salidaAt} AT TIME ZONE ${est.zonaHoraria})::int`,
+        monto: sql<number>`coalesce(sum(${sesionVehiculo.montoCalculado}), 0)::int`,
+      })
+      .from(sesionVehiculo)
+      .where(
+        and(
+          eq(sesionVehiculo.estacionamientoId, est.id),
+          eq(sesionVehiculo.estado, "cerrada"),
+          gte(sesionVehiculo.salidaAt, desde),
+        ),
+      )
+      .groupBy(sql`1`),
+  );
+  const porHora = new Map(filasPorHora.map((f) => [Number(f.hora), Number(f.monto)]));
+
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <Cabecera contexto={`${est.nombre} · hoy`} titulo="Panel" accion={<CerrarSesion />} />
@@ -160,6 +183,8 @@ export default async function PanelDueno() {
       </section>
 
       <Descuadre ocupacionRegistrada={activas} />
+
+      <IngresosPorHora porHora={porHora} />
 
       <p className="text-xs leading-relaxed text-subtle">
         Los ingresos son los <strong className="font-semibold text-muted">observados

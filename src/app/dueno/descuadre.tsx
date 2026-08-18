@@ -30,40 +30,43 @@ export default function Descuadre({
   const diferencia = valido ? valor - ocupacionRegistrada : null;
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4 shadow-xs">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="observada" className="font-medium text-ink">
-          ¿Cuántos vehículos contás en el patio?
-        </label>
-        <p className="text-xs text-faint">
-          Compará lo que ves con lo que el sistema tiene registrado.
-        </p>
-      </div>
+    // La card oscura del diseño (canvas 1n): es la pregunta que el panel le hace
+    // al dueño, y por eso rompe el ritmo claro de las stat cards.
+    <section className="flex flex-col gap-4 rounded-2xl bg-ink p-6 text-white shadow-md">
+      <span className="mono-caption text-white/50">Descuadre</span>
+      <label htmlFor="observada" className="text-lg font-medium text-white">
+        ¿Cuántos vehículos contás en el patio ahora mismo?
+      </label>
 
-      <input
-        id="observada"
-        data-testid="ocupacion-observada"
-        inputMode="numeric"
-        value={observada}
-        onChange={(e) => setObservada(e.target.value.replace(/[^0-9]/g, ""))}
-        className="tabular rounded-xl border-2 border-line-strong bg-canvas px-4 py-3 text-center text-2xl font-semibold text-ink caret-accent focus:border-accent focus:outline-none"
-      />
+      <div className="flex items-stretch gap-2">
+        <input
+          id="observada"
+          data-testid="ocupacion-observada"
+          inputMode="numeric"
+          value={observada}
+          onChange={(e) => setObservada(e.target.value.replace(/[^0-9]/g, ""))}
+          aria-describedby={diferencia !== null ? "descuadre-resultado" : undefined}
+          className="tabular min-w-0 flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-center text-2xl font-semibold text-white caret-accent placeholder:text-white/30 focus:border-accent focus:outline-none"
+          placeholder="—"
+        />
+      </div>
 
       {diferencia !== null && (
         <p
+          id="descuadre-resultado"
           data-testid="descuadre"
           data-valor={diferencia}
-          className={`rounded-xl p-3 text-sm font-medium ${
+          className={`rounded-xl border p-4 text-sm font-medium ${
             diferencia === 0
-              ? "bg-success-soft text-success"
-              : "bg-warning-soft text-warning"
+              ? "border-success/30 bg-success/10 text-success-soft"
+              : "border-warning/30 bg-warning/10 text-warning-soft"
           }`}
         >
           {diferencia === 0
             ? "Sin descuadre: lo contado coincide con lo registrado."
             : diferencia > 0
-              ? `Descuadre: hay ${diferencia} vehículo(s) más en el patio que sesiones registradas.`
-              : `Descuadre: hay ${Math.abs(diferencia)} sesión(es) registrada(s) de más respecto de lo contado.`}
+              ? `Hay ${diferencia} vehículo(s) más en el patio que sesiones registradas. El sistema hace visible la diferencia; no la impide.`
+              : `Hay ${Math.abs(diferencia)} sesión(es) registrada(s) de más respecto de lo contado.`}
         </p>
       )}
     </section>
