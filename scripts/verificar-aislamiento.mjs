@@ -76,7 +76,12 @@ async function entrar(email) {
 
 async function limpiar() {
   await sql`DELETE FROM sesion_vehiculo WHERE patente IN (${PATENTE_A}, ${PATENTE_B})`;
-  await sql`DELETE FROM usuario WHERE email IN (${EMAIL_DUENO_B}, ${EMAIL_OPERADOR_B})`;
+  // **El usuario de plataforma se borra tambien, y esto no es prolijidad.**
+  // La clave de acceso es compartida (piloto), asi que dejar vivo un usuario de
+  // plataforma con email predecible en una base que sirve a una URL publica es
+  // dejar abierta la ruta de alta de clientes: el privilegio mas alto del
+  // sistema. Un fixture que sobrevive a su verificador deja de ser un fixture.
+  await sql`DELETE FROM usuario WHERE email IN (${EMAIL_DUENO_B}, ${EMAIL_OPERADOR_B}, ${EMAIL_PLATAFORMA})`;
   await sql`DELETE FROM tarifa WHERE estacionamiento_id IN (SELECT id FROM estacionamiento WHERE nombre = ${NOMBRE_B})`;
   await sql`DELETE FROM estacionamiento WHERE nombre = ${NOMBRE_B}`;
 }
