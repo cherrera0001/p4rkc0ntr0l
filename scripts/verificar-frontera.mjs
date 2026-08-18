@@ -62,9 +62,18 @@ function rutasDelArbol() {
         recorrer(completa, `${ruta}/${entrada}`);
       } else if (entrada === "route.ts" || entrada === "route.tsx") {
         const texto = readFileSync(completa, "utf8");
-        const metodos = [...texto.matchAll(/export\s+async\s+function\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map(
-          (m) => m[1],
-        );
+        // **Cualquier forma de exportar el manejador, no una.** La primera
+        // versión buscaba `export async function GET`, y el envoltorio de ruta
+        // las convirtió en `export const GET = rutaAutenticada(…)`: el
+        // descubrimiento devolvió cero métodos para dos de las tres rutas y este
+        // verificador dejó de probarlas sin decir nada. Lo cazó el piso de «toda
+        // ruta descubierta recibió al menos una petición», que existe para eso —
+        // y es la misma lección de AC-SCOPE-1: enumerar una forma deja agujeros.
+        const metodos = [
+          ...texto.matchAll(
+            /export\s+(?:async\s+function|const|let|var)\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g,
+          ),
+        ].map((m) => m[1]);
         salida.push({ ruta, metodos });
       }
     }
