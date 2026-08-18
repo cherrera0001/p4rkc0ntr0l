@@ -139,9 +139,20 @@ sucursal ni reserva.
 **Usuario**
 - `id` (uuid, PK)
 - `email` (texto, único)
-- `rol` (`operador` | `dueño`)
-- `estacionamiento_id` (FK)
+- `rol` (`operador` | `dueño` | `plataforma`)
+- `estacionamiento_id` (FK, **nulo si y solo si el rol es `plataforma`**)
 - `created_at` (timestamp)
+
+> **`plataforma` es el rol de C4A** (ADR-005 alternativa 2, aceptado el
+> 2026-08-17): da de alta clientes. Hasta esa fecha esa operación —la de mayor
+> privilegio del sistema— se hacía con `DATABASE_URL` en la mano y un script.
+> **No accede a `patente` por ninguna ruta** (AC-ISO-2).
+>
+> La nulabilidad de `estacionamiento_id` **no es «nullable a secas»**: la base
+> hace cumplir `pertenencia_por_rol`, o sea nulo exactamente cuando el rol es
+> `plataforma`. Sin esa invariante, un `operador` sin estacionamiento filtraría
+> contra `null` y las seis cláusulas de aislamiento del producto dejarían de
+> aislar. Verificado por comportamiento contra la base, no por el DDL.
 
 > **Prohibido en el esquema:** entidades `Pago`, `Transaccion`, `Sucursal`,
 > `Reserva`. Verificado en AC-DATA-1.
@@ -325,7 +336,9 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 - **PWA instalable:** manifiesto válido + service worker; instalable en móvil.
 - **Offline-first:** el **ingreso** del operador (§5) funciona sin conexión. La
   **salida** requiere red y no se reintenta sola — ver la nota de §5.
-- **Un solo estacionamiento** en la v1 (sin multitenancy).
+- **N clientes, un recinto cada uno** (ADR-005 alt. 2, aceptado 2026-08-17).
+  Sin jerarquia sobre `estacionamiento`: **multisitio** —un cliente con varios
+  recintos— sigue fuera, y lo hace cumplir AC-SCOPE-4 por exclusion.
 - **Simplicidad de operación:** deploy por `git push`; sin infraestructura que
   administrar más allá de Vercel + la base gestionada.
 
@@ -346,6 +359,7 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-SCOPE-1 | **El conductor no paga dentro del sistema.** El cobro del estacionamiento sigue siendo en efectivo, fuera de la app. Ninguna pasarela vive fuera de la frontera declarada de suscripción, y el flujo del estacionamiento no la importa. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
 | AC-SCOPE-2 | El esquema no define `Pago`/`Transaccion`/`Sucursal`/`Reserva`. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
 | AC-SCOPE-3 | No existe módulo de integración LPR/cámara. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
+| AC-SCOPE-4 | **Multisitio sigue fuera, y ahora lo hace cumplir un comando.** El modelo no tiene ninguna entidad por encima de `estacionamiento` que agrupe varios recintos bajo un mismo dueño: ni `tenant`, ni `empresa`, ni `organizacion`, ni sus llaves foráneas. **No prohíbe tener varios clientes** —eso es multicliente y ADR-005 lo habilita—: prohíbe la jerarquía. Cierra el hueco que ADR-005 §2.5 reprodujo, donde el gate daba 9/9 PASS con `tenant` plantado. | `npm run verificar:alcance` → todas las comprobaciones PASS | universal |
 | AC-DATA-1 | El modelo de datos coincide con §4 (entidades y campos). | `npm run verificar:esquema` → todas las comprobaciones PASS | universal |
 | AC-DATA-2 | Las invariantes del modelo §4 se hacen cumplir **en la base**, declaradas en la migración y no solo en la aplicación: un vehículo no está dos veces adentro del mismo estacionamiento; `salida_at ≥ entrada_at`; `tecleo_fin_at ≥ tecleo_inicio_at`; `monto_calculado ≥ 0`; `capacidad_total > 0`; `valor_hora ≥ 0`; `fraccion_minutos > 0`; `monto_minimo ≥ 0`. | `npm run verificar:invariantes` → todas las comprobaciones PASS | universal |
 | AC-OP-1 | Ingreso offline persiste y sincroniza. | `npm run verificar:op1` → todas las comprobaciones PASS | existencial |
@@ -353,6 +367,9 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 | AC-OP-4 | El ciclo de §5 se cumple **contra la API real**, no solo en la fórmula aislada: el ingreso crea la sesión, la salida la cierra, y el `monto_calculado` se computa con la **tarifa vigente de la base** y se persiste. Y la frontera valida: una patente inválida se rechaza y una inyección no altera el esquema (§7). | `npm run verificar:salida` → todas las comprobaciones PASS | existencial |
 | AC-OP-5 | **Una sesión se cierra una sola vez.** N pedidos de salida simultáneos sobre la misma sesión activa producen **un solo cierre**: un único `salida_at` y un único `monto_calculado`, idénticos en todas las respuestas y sin cambiar en la base después de la ráfaga. Formaliza la idempotencia del cierre que §5 ya afirma. **Se enuncia sobre lo que se observa desde afuera, no sobre cómo se implemente**: sirve igual con un `WHERE` condicional, con una transacción o con un lock. | `npm run verificar:concurrencia` → todas las comprobaciones PASS | existencial |
 | AC-API-1 | **Ninguna entrada malformada de la frontera de la API produce un 5xx.** Cualquier valor degenerado, en cualquier campo que la API lea del cuerpo o de la ruta, se responde con un rechazo de cliente; nunca con 5xx. No es cosmética: un 5xx es *recuperable* para la cola local del operador y además **corta el lote**, así que un dato que la base nunca va a aceptar bloquearía la cola entera del turno — y con ella la evidencia de H1. Formaliza §7, *«validación de entrada en toda frontera»*. | `npm run verificar:frontera` → todas las comprobaciones PASS | universal |
+| AC-ISO-1 | **Ningun dato de un cliente es legible ni alcanzable desde otro.** Con **dos** estacionamientos sembrados, un usuario de A no obtiene ningun recurso de B por ningun camino: ni en el listado, ni cerrando una salida sabiendo el id. La patente es dato personal (§7): un cruce no es un defecto de interfaz, es una comunicacion de datos a un tercero. **Y exige ver lo propio**, o «no ve lo de B» seria cierto por vacio. | `npm run verificar:aislamiento` -> todas las comprobaciones PASS | existencial |
+| AC-ISO-2 | **El rol `plataforma` no obtiene ninguna patente por ninguna ruta.** Es el rol con mas privilegio del sistema —da de alta clientes— y por eso el que mas hay que acotar. Minimizacion, §4 y §7. | `npm run verificar:aislamiento` -> todas las comprobaciones PASS | universal |
+| AC-ADM-1 | **El alta deja al cliente operativo, o no deja nada.** Un alta exitosa produce estacionamiento con `capacidad_total > 0` y zona horaria valida, **una** tarifa vigente, un `dueno` y un `operador`. Las cuatro filas se escriben en una transaccion: un alta a medias dejaria un estacionamiento que no puede cobrar una salida. | `npm run verificar:aislamiento` -> todas las comprobaciones PASS | existencial |
 | AC-PDP-1 | **No se opera con datos reales antes de resolver la base de licitud.** Con `OPERACION_REAL_HABILITADA=false`, una patente que no es fixture no se guarda en el dispositivo, no entra a la cola de sincronización, no se reintenta y no llega a la base. | `npm run verificar:a3` → todas las comprobaciones PASS | existencial |
 | AC-MEAS-1 | Sesiones cerradas con timestamps de tecleo completos. | `npm run verificar:meas1` → todas las comprobaciones PASS | universal |
 | AC-H1-1 | **La métrica de H1 existe y tiene muestra.** `npm run verificar:h1` publica la **mediana del tiempo de tecleo** y el **tamaño de muestra**, separando banco de prueba de operación real y marcando como no-evidencia lo que dejan los verificadores. **Falla si no hay datos**: *«no pude medirlo» no es «está bien»*. No concluye sobre H1: medir no requiere umbral, comparar sí. | `npm run verificar:h1` → publica el tamaño de muestra y la mediana por población; exit≠0 si no hay ninguna sesión de banco ni real | existencial |

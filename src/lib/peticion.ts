@@ -13,7 +13,7 @@
 
 import { NextResponse } from "next/server";
 
-import { exigirRol, type SesionUsuario } from "./auth.ts";
+import { exigirRol, type Rol, type SesionDeRecinto, type SesionUsuario } from "./auth.ts";
 import { describirParaLog, ErrorConfiguracion } from "./errores.ts";
 
 export const noAutorizado = () =>
@@ -135,13 +135,16 @@ export function respuestaDeFallo(contexto: string, error: unknown): NextResponse
  * cambiarlo acá sería colar una decisión de seguridad dentro de un refactor. Por
  * eso `exigirOrigen` es explícito en cada ruta y no un default silencioso.
  */
-export function rutaAutenticada<C = unknown>(
+export function rutaAutenticada<C = unknown, R extends Rol = Rol>(
   opciones: {
-    rol: SesionUsuario["rol"];
+    rol: R;
     exigirOrigen: boolean;
   },
   manejador: (entrada: {
-    sesion: SesionUsuario;
+    // El rol pedido determina el tipo de la sesion: quien pide "operador" o
+    // "dueno" recibe un `estacionamientoId` que NO es nulo, y por eso no
+    // puede escribir por descuido una clausula de aislamiento contra `null`.
+    sesion: R extends "plataforma" ? SesionUsuario : SesionDeRecinto;
     request: Request;
     contexto: C;
   }) => Promise<NextResponse>,
@@ -162,7 +165,20 @@ export function rutaAutenticada<C = unknown>(
       const sesion = await exigirRol(opciones.rol);
       if (!sesion) return noAutorizado();
 
-      return await manejador({ sesion, request, contexto });
+      // **Estado imposible, no error de usuario.** La base garantiza
+      // `pertenencia_por_rol`: un rol de recinto siempre tiene estacionamiento.
+      // Si llegara a pasar es corrupcion del modelo, y sale por el 503 tipado —
+      // nunca hacia adelante, donde filtraria contra `null` y devolveria datos
+      // de todos los clientes.
+      if (sesion.rol !== "plataforma" && sesion.estacionamientoId === null) {
+        throw new Error("usuario de recinto sin estacionamiento: viola pertenencia_por_rol");
+      }
+
+      return await manejador({
+        sesion: sesion as R extends "plataforma" ? SesionUsuario : SesionDeRecinto,
+        request,
+        contexto,
+      });
     } catch (error) {
       return respuestaDeFallo(etiqueta, error);
     }

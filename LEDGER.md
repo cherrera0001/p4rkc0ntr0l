@@ -4946,3 +4946,128 @@ nacer con el mismo defecto y **sin nada que lo frene**. Condición de reversión
 declarada por el árbitro: que aparezca una operación que deba escribir dos o más
 filas de forma indivisible.
 
+
+---
+
+## 2026-08-17 · M8 — multicliente · **PASS**. ADR-005 aceptado.
+
+**ADR-005 pasa a ACEPTADO en su alternativa 2** (N clientes, un recinto cada uno,
+sin entidad `tenant`), por decision explicita y repetida del decisor. Yo lo estaba
+tratando como bloqueado esperando una adjudicacion que ya habia ocurrido. **Ese
+fue un error de ejecucion, no una regla del repo**, y esta entrada lo registra.
+
+### Lo primero fue cerrar el hueco del gate, antes de la primera linea
+
+ADR-005 §2.5 documentaba que `verificar:alcance` daba **9/9 PASS con `tenant`,
+`plataforma` y una pantalla de alta plantadas**: lo que sostenia la exclusion era
+prosa, no un comando.
+
+`AC-SCOPE-4` lo cierra, y hace la distincion que importa:
+
+| | | |
+|---|---|---|
+| **multicliente** | N clientes, UN recinto cada uno | **permitido** |
+| **multisitio** | UN cliente, VARIOS recintos | **prohibido** |
+
+Lo prohibido no es tener varias filas en `estacionamiento` —eso es multicliente—
+sino una **jerarquia por encima** de el. Por eso el patron busca la entidad
+agrupadora y su llave foranea, no la cantidad de clientes.
+
+Probado con el fallo plantado:
+
+```
+con tenant plantado en el esquema
+  FAIL · AC-SCOPE-4 · el modelo no tiene ninguna entidad por encima de estacionamiento
+         1 hallazgo(s): src/db/schema.ts:139
+  10/11 comprobaciones PASS · FALLARON
+restaurado
+  11/11 comprobaciones PASS
+```
+
+### La invariante que sostiene el aislamiento, en la base y no en el codigo
+
+El rol `plataforma` no pertenece a ningun recinto, asi que `estacionamiento_id`
+tuvo que volverse nulable. **Aflojarlo a "nulable a secas" habria abierto un
+agujero**: un `operador` sin estacionamiento no tiene frontera contra la que
+filtrar, y las seis clausulas de aislamiento del producto compararian contra
+`null`.
+
+Por eso la columna lleva `pertenencia_por_rol`: nulo **si y solo si** el rol es
+`plataforma`. Verificado por comportamiento contra la base, no leyendo el DDL:
+
+```
+RECHAZADO · operador SIN estacionamiento    · 23514
+RECHAZADO · plataforma CON estacionamiento  · 23514
+ACEPTADO  · plataforma SIN estacionamiento
+```
+
+Y el tipo acompana: `SesionDeRecinto` tiene `estacionamientoId: string`, mientras
+`SesionUsuario` lo tiene `string | null`. El envoltorio de ruta estrecha segun el
+rol pedido, asi que **una clausula de aislamiento contra `null` ya no compila**.
+Al hacer el cambio, el compilador senalo cuatro sitios que habia que mirar: eso
+era el punto.
+
+**Detalle de Postgres que costo una migracion abortada:** un valor de enum recien
+agregado no se puede usar en la misma transaccion que lo agrego, y drizzle-kit
+corre cada migracion en una. La primera version del CHECK comparaba contra el
+literal del enum y abortaba la migracion entera —ni el `DROP NOT NULL` aplicaba—.
+Se compara por texto (`rol::text`).
+
+### El control negativo que ADR-005 §2.4 pedia, y que hoy existe
+
+`npm run verificar:aislamiento`, 9/9. Siembra **dos** clientes —el segundo por la
+ruta real de alta, no por SQL, asi el alta queda ejercitada de paso— y prueba los
+caminos que existen.
+
+Tiene dos pisos, y los dos hacen falta:
+
+- **dos estacionamientos**, porque con uno el criterio pasa por casualidad;
+- **A ve lo suyo**, porque si A no viera nada, «A no ve lo de B» seria cierto por
+  vacio. Es el mismo defecto que AC-MEAS-1 sostuvo durante meses.
+
+Probado fallando, borrando una clausula de aislamiento real del listado:
+
+```
+FAIL · AC-ISO-1 · el listado del operador de A no incluye ninguna patente de B
+       3 activa(s) · FUGA: ve FIXT71
+8/9 comprobaciones PASS
+```
+
+### Transacciones: la condicion de reversion de M7 se cumplio el mismo dia
+
+Al cerrar M7 el arbitro declaro: «que aparezca una operacion que deba escribir
+dos o mas filas de forma indivisible». Aparecio. El alta escribe cuatro
+—estacionamiento, tarifa, dueno y operador— y ninguna sirve sola: un
+estacionamiento sin tarifa no puede cerrar una salida. Va con `db.transaction`
+dentro de `conBase`, para que un fallo siga saliendo por `ErrorBaseDatos` y el
+saneo de credenciales de INT-1 no se pierda.
+
+### Lo demas
+
+- **Rol, permisos y ruteo en un solo lugar** (`src/lib/roles.ts`). Estaba escrito
+  en cuatro archivos. La tabla es **descriptiva**: la autorizacion la hace cada
+  ruta, y esconder un enlace no es negar un permiso.
+- **Contrato de API** en `docs/CONTRATO-api.md`, derivado del codigo y con una
+  seccion final de **lo que NO cubre** —sin sync por lotes, sin versionado, sin
+  limite de tamano de cuerpo, sin rate limit fuera del login, sin rutas de
+  edicion—. Un contrato que calla se lee como completo.
+- `AC-ISO-2`: el rol con mas privilegio del sistema **no accede a ninguna
+  patente**. Comprobado por el listado (401) y por la ruta de salida (401).
+
+### Ningun placeholder se relleno
+
+`{{BASE_LICITUD}}`, `{{PLAZO_RETENCION_PATENTE}}`, `{{ROL_TRATAMIENTO_C4A}}`,
+`{{PLAZO_RETENCION_USUARIO}}` y `{{PRECIO_SUSCRIPCION_UF}}` siguen abiertos. El
+propio ADR-005 ya decia que **bloquean el encendido, no la construccion**: se
+construye con `OPERACION_REAL_HABILITADA=false`, que es como el sistema ya opera.
+
+### Regresion
+
+```
+test 122/122 · ac 9/9 · citas 51/51 · verificadores 51/51 · alcance 11/11
+agentes 20/20 · esquema 8/8 · invariantes 8/8 · salida 11/11
+concurrencia 6/6 · frontera 4/4 · aislamiento 9/9 · build exit=0
+```
+
+`verificar:esquema` sigue en 8/8: **cero tablas nuevas, cero campos nuevos**. La
+unica migracion agrega un valor de enum, afloja una nulabilidad y suma un CHECK.

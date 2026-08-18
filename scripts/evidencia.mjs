@@ -167,6 +167,7 @@ const CATALOGO = [
   // de un comando que no pudo probar nada.
   { script: "verificar:concurrencia", grupo: "servidor", url: true },
   { script: "verificar:frontera", grupo: "servidor", url: true },
+  { script: "verificar:aislamiento", grupo: "servidor", url: true },
   { script: "verificar:pwa", grupo: "navegador", url: true },
   { script: "verificar:op1", grupo: "navegador", url: true },
   { script: "verificar:a3", grupo: "navegador", url: true },

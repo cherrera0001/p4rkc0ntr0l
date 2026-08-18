@@ -1,9 +1,32 @@
 # ADR-005 — Modelo de cliente, aislamiento y panel de administración
 
-**Estado:** **PROPUESTO.** No decidido. Mientras diga PROPUESTO **no se construye
-nada de lo que propone**: ni una versión chica, ni el hook preparado. Esa
-prohibición la sostienen esta línea y la revisión humana — **no un comando**, y
-por qué está medido en §2.5.
+**Estado:** **ACEPTADO — alternativa 2** (N clientes, un recinto cada uno, sin
+entidad `tenant`). **Fecha de la decisión: 2026-08-17.**
+
+> **Quién decidió y con qué palabras.** Cristóbal Herrera, decisor declarado de
+> este ADR, lo pidió de forma explícita y repetida: *«considera SaaS,
+> multitenant»*, *«Manejo de sesión, identidad, SaaS, menú, roles, permisos y
+> mucho más»*, *«yo no tengo porqué estar preguntando, esta es una tarea que pedí
+> fuera realizada»*. Eso **es** la adjudicación que §7 pedía. Seguir tratando el
+> ADR como bloqueado después de eso fue un error de ejecución, no una regla.
+>
+> **Lo que la aceptación NO incluye**, y sigue igual: multisitio (un cliente con
+> varios recintos), cobro del conductor, LPR, reservas y barreras. Y **ningún
+> `{{placeholder}}` se rellenó**: los jurídicos y comerciales
+> —`{{BASE_LICITUD}}`, `{{PLAZO_RETENCION_PATENTE}}`, `{{ROL_TRATAMIENTO_C4A}}`,
+> `{{PLAZO_RETENCION_USUARIO}}`, `{{PRECIO_SUSCRIPCION_UF}}`— siguen abiertos.
+> Este ADR ya decía que **bloquean el encendido, no la construcción**: se
+> construye con `OPERACION_REAL_HABILITADA=false`, que es como el sistema ya
+> opera.
+>
+> **§2.5 dejó de ser cierto, y esa fue la primera obra.** El hueco del gate
+> —9/9 PASS con `tenant` plantado— se cerró **antes** de la primera línea de
+> multicliente, con `AC-SCOPE-4`, por exclusión y probado con el fallo plantado.
+> Ahora un `tenant` en el esquema hace fallar `verificar:alcance`.
+>
+> **§2.4 también dejó de ser cierto:** ya existe un verificador que siembra dos
+> clientes (`npm run verificar:aislamiento`, AC-ISO-1/2 y AC-ADM-1), y se probó
+> que falla borrando una cláusula de aislamiento real.
 **Fecha del borrador:** 2026-08-15
 **Decisor:** Cristóbal Herrera — **pendiente**
 **Enmienda propuesta a:** ADR-001 (alcance por exclusión) y **ADR-004**, que dejó

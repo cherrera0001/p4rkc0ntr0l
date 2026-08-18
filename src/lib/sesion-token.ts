@@ -29,9 +29,32 @@ import { exigirEnv } from "./env.ts";
  */
 export const DURACION_SEGUNDOS = 12 * 60 * 60;
 
+export type Rol = "operador" | "dueño" | "plataforma";
+
 export type SesionUsuario = {
   id: string;
   email: string;
+  rol: Rol;
+  /**
+   * **Nulo si y solo si el rol es `plataforma`.** La invariante la hace cumplir
+   * la base (`pertenencia_por_rol`, `src/db/schema.ts`), no la aplicación.
+   *
+   * Se deja `| null` en el tipo a propósito, en vez de mentirle al compilador
+   * con un `string`: si una ruta de producto olvidara comprobarlo, filtraría
+   * contra `null` y el aislamiento se caería en silencio. Que el tipo obligue a
+   * mirarlo es la mitad de la garantía; `SesionDeRecinto` es la otra.
+   */
+  estacionamientoId: string | null;
+};
+
+/**
+ * Sesión de alguien que pertenece a un recinto: `operador` o `dueño`.
+ *
+ * Es el tipo que reciben todas las rutas del producto, y su `estacionamientoId`
+ * **no** es nulo. Así una cláusula de aislamiento no puede compilar contra
+ * `null` por descuido.
+ */
+export type SesionDeRecinto = SesionUsuario & {
   rol: "operador" | "dueño";
   estacionamientoId: string;
 };

@@ -44,12 +44,14 @@ import {
   DURACION_SEGUNDOS,
   igualEnTiempoConstante,
   serializarSesion,
+  type Rol,
+  type SesionDeRecinto,
   type SesionUsuario,
 } from "./sesion-token.ts";
 
 const COOKIE = "sesion";
 
-export type { SesionUsuario };
+export type { Rol, SesionDeRecinto, SesionUsuario };
 export { deserializarSesion, serializarSesion };
 
 export async function iniciarSesion(usuarioSesion: SesionUsuario): Promise<void> {

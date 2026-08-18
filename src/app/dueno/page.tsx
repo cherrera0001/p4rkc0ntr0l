@@ -14,6 +14,7 @@ import { redirect } from "next/navigation";
 
 import { conBase, db, sesionVehiculo } from "@/db";
 import { sesionActual } from "@/lib/auth";
+import { destinoDe } from "@/lib/roles";
 import { obtenerEstacionamiento } from "@/lib/contexto";
 import CerrarSesion from "../cerrar-sesion";
 import Descuadre from "./descuadre";
@@ -38,7 +39,11 @@ function inicioDelDia(zonaHoraria: string): Date {
 export default async function PanelDueno() {
   const usuario = await sesionActual();
   if (!usuario) redirect("/login");
-  if (usuario.rol !== "dueño") redirect("/");
+  if (usuario.rol !== "dueño") redirect(destinoDe(usuario.rol));
+  // La base garantiza que un rol de recinto tiene estacionamiento
+  // (pertenencia_por_rol). Se comprueba igual: sin esto el filtro de aislamiento
+  // compararia contra null y el panel mostraria datos de todos los clientes.
+  if (usuario.estacionamientoId === null) redirect("/login");
 
   // El estacionamiento del dueño autenticado, no la primera fila de la tabla
   // (hallazgo M-2). Con un solo estacionamiento sembrado daban lo mismo, y esa

@@ -271,6 +271,47 @@ comprobar(
   selector.slice(0, 3).join(" | "),
 );
 
+
+// --- AC-SCOPE-4 · multisitio sigue fuera, y ahora lo hace cumplir un comando ---
+//
+// **Este bloque cierra el hueco que ADR-005 §2.5 documento y reprodujo:** el gate
+// daba 9/9 PASS con la entidad `tenant`, el rol `plataforma` y una pantalla de
+// alta plantadas. Lo que sostenia la exclusion era la prosa de ADR-004 y la
+// revision humana, no un comando.
+//
+// **La distincion que hay que hacer cumplir, y es toda la razon de ser de esto:**
+//
+//   | multicliente | N clientes, UN recinto cada uno | PERMITIDO (ADR-005, alt. 2) |
+//   | multisitio   | UN cliente, VARIOS recintos     | PROHIBIDO (ADR-001, ADR-004)|
+//
+// Lo prohibido no es tener varias filas en `estacionamiento`: eso es multicliente
+// y esta habilitado. Lo prohibido es una **jerarquia por encima** de
+// `estacionamiento` que agrupe varios bajo un mismo dueno. Por eso el patron
+// busca la entidad agrupadora y su llave foranea, no la cantidad de clientes.
+//
+// El rol `plataforma` NO se rechaza: es parte de la alternativa aceptada.
+const JERARQUIA_SOBRE_ESTACIONAMIENTO =
+  /(^|[^A-Za-z0-9])(tenant|tenants|tenant_?id|empresa|empresas|empresa_?id|organizacion|organizaciones|organizacion_?id|casa_?matriz|cuenta_?maestra|sucursal_?id)([^A-Za-z0-9]|$)/i;
+
+const jerarquia = coincidencias(
+  [...archivos("src/db"), ...archivos("drizzle")],
+  JERARQUIA_SOBRE_ESTACIONAMIENTO,
+);
+comprobar(
+  "AC-SCOPE-4 · el modelo no tiene ninguna entidad por encima de estacionamiento",
+  jerarquia.length === 0,
+  jerarquia.length
+    ? `${jerarquia.length} hallazgo(s): ${jerarquia.slice(0, 3).join(" | ")}`
+    : "multicliente si, multisitio no: estacionamiento sigue siendo la raiz",
+);
+
+// Piso: si el escaner deja de ver el esquema, lo de arriba pasa sobre la nada.
+comprobar(
+  "AC-SCOPE-4 · el escaner ve el esquema y las migraciones",
+  [...archivos("src/db"), ...archivos("drizzle")].length > 0,
+  `${[...archivos("src/db"), ...archivos("drizzle")].length} archivo(s)`,
+);
+
 // --- AC-SCOPE-3 · sin LPR ni captura de imagen --------------------------------
 
 const lpr = coincidencias(superficie, LPR);

@@ -27,8 +27,18 @@ export const estadoSesion = pgEnum("estado_sesion", ["activa", "cerrada"]);
 /** Estado de sincronización offline-first (spec.md §3 y §5). */
 export const estadoSync = pgEnum("estado_sync", ["local", "sincronizada"]);
 
-/** Roles de la v1. Auth mínima, dos roles, sin más (spec.md §3). */
-export const rolUsuario = pgEnum("rol_usuario", ["operador", "dueño"]);
+/**
+ * Roles del sistema (spec.md §3, enmendado por ADR-005 alternativa 2).
+ *
+ * `plataforma` es el rol de C4A: da de alta clientes nuevos. Existe porque hasta
+ * hoy esa operación —la de mayor privilegio del sistema— se hacía con
+ * `DATABASE_URL` en la mano y `scripts/sembrar.mjs` a mano, o sea por el camino
+ * menos auditable que hay.
+ *
+ * **No accede a `patente` por ninguna ruta** (REQ-ISO-3 de ADR-005): es el rol
+ * con más poder y el más difícil de acotar, y la patente es dato personal.
+ */
+export const rolUsuario = pgEnum("rol_usuario", ["operador", "dueño", "plataforma"]);
 
 export const estacionamiento = pgTable(
   "estacionamiento",
@@ -51,13 +61,31 @@ export const usuario = pgTable("usuario", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   rol: rolUsuario("rol").notNull(),
-  estacionamientoId: uuid("estacionamiento_id")
-    .notNull()
-    .references(() => estacionamiento.id),
+  /**
+   * **Nulo si y solo si el rol es `plataforma`**, y lo hace cumplir la base
+   * (ver `pertenencia_por_rol` abajo).
+   *
+   * Aflojar esto a "nullable a secas" habría abierto un agujero de aislamiento:
+   * un `operador` sin estacionamiento no tiene frontera contra la que filtrar, y
+   * las seis cláusulas de aislamiento del producto quedarían comparando contra
+   * `null`. La invariante va en la base y no en la aplicación, igual que las
+   * otras siete (AC-DATA-2).
+   */
+  estacionamientoId: uuid("estacionamiento_id").references(() => estacionamiento.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}, (t) => [
+  check(
+    "pertenencia_por_rol",
+    // **Se compara por texto, no por el valor del enum.** Postgres prohibe usar
+    // un valor de enum recien agregado dentro de la misma transaccion que lo
+    // agrego, y drizzle-kit corre cada migracion en una. Medido: sin el cast la
+    // migracion aborta entera y no aplica ni el DROP NOT NULL.
+    sql`(${t.rol}::text = 'plataforma' AND ${t.estacionamientoId} IS NULL)
+        OR (${t.rol}::text <> 'plataforma' AND ${t.estacionamientoId} IS NOT NULL)`,
+  ),
+]);
 
 /**
  * Tarifa vigente de un estacionamiento.

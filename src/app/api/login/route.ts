@@ -19,6 +19,7 @@ import { NextResponse } from "next/server";
 import { conBase, db, usuario } from "@/db";
 import { cerrarSesion, claveCorrecta, iniciarSesion } from "@/lib/auth";
 import { esTextoAlmacenable } from "@/lib/frontera";
+import { destinoDe } from "@/lib/roles";
 import {
   identificarCliente,
   LimitadorIntentos,
@@ -115,7 +116,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       rol: fila.rol,
-      destino: fila.rol === "dueño" ? "/dueno" : "/",
+      // Cada rol aterriza donde puede trabajar. El de plataforma no ve el
+      // producto: da de alta clientes y nada mas (REQ-ISO-3 de ADR-005).
+      destino: destinoDe(fila.rol),
     });
   } catch (error) {
     return respuestaDeFallo("POST /api/login", error);

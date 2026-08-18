@@ -15,6 +15,13 @@
       "when": 1786375078640,
       "tag": "0001_large_kinsey_walden",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787015701964,
+      "tag": "0002_remarkable_bishop",
+      "breakpoints": true
     }
   ]
 }

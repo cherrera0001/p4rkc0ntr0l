@@ -25,7 +25,11 @@
 | **M7 · integridad del cierre y frontera de entrada** | **PASS** (2026-08-17). La carrera del cierre está cerrada —8 de 8 respuestas la cerraban, ahora 1 de 8— y la frontera dejó de producir 5xx. AC-OP-5 y AC-API-1 nuevos en §9, **probados fallando contra el árbol sin corregir**. Cero migraciones |
 | **Hallazgo nuevo, del corpus y no de lectura** | un **byte NUL** en el email daba 503 en `/api/login`. Postgres no lo admite en `text`; atravesaba las tres validaciones y reventaba en el driver. Corregido con `esTextoAlmacenable` |
 | **Pendiente de M7 · el envoltorio de ruta** | `exigirRol()` corre **fuera del `try`** en las tres rutas: una caída de base devuelve **500 opaco** en vez del 503 tipado. Adjudicado a favor de un envoltorio único en `src/lib/peticion.ts` —para volver la propiedad escaneable por exclusión—. **Sin hacer** |
-| **M8 · próximo candidato** | control negativo de aislamiento (REQ-ISO-2 de ADR-005): sembrar **dos** estacionamientos y probar que A no ve nada de B. No depende de ningún placeholder |
+| **M8 · multicliente** | **PASS** (2026-08-17). ADR-005 **ACEPTADO** en su alternativa 2 por decisión explícita y repetida del decisor. Rol `plataforma`, alta de cliente por API y pantalla, y el control negativo de aislamiento con **dos** clientes: `verificar:aislamiento` 9/9, probado fallando al borrar una cláusula real (`FUGA: ve FIXT71`) |
+| **El hueco del gate se cerró, y fue lo primero** | `AC-SCOPE-4`: el modelo no puede tener jerarquía sobre `estacionamiento`. Multicliente sí, multisitio no. Probado con `tenant` plantado: 10/11 y FALLARON |
+| **Transacciones: ya existen** | el alta escribe cuatro filas indivisibles. Es la condición de reversión que M7 declaró, y se cumplió el mismo día |
+| **Contrato de API** | `docs/CONTRATO-api.md`, derivado del código, con su sección de lo que NO cubre |
+| **Placeholders** | ninguno se rellenó. `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}` bloquean el **encendido**, no la construcción: se opera con `OPERACION_REAL_HABILITADA=false` |
 
 ## FASE D (2026-08-16) — «SIN DATOS» dejó de ser una frase y pasó a ser un FAIL
 

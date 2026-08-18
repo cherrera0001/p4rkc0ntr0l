@@ -9,6 +9,7 @@
 import { redirect } from "next/navigation";
 
 import { sesionActual } from "@/lib/auth";
+import { destinoDe } from "@/lib/roles";
 import { operacionRealHabilitada } from "@/lib/env";
 import PantallaOperador from "./pantalla-operador";
 
@@ -18,7 +19,10 @@ export default async function Home() {
   const usuario = await sesionActual();
 
   if (!usuario) redirect("/login");
-  if (usuario.rol === "dueño") redirect("/dueno");
+  // Cada rol a su pantalla, desde una sola tabla (`src/lib/roles.ts`). Antes
+  // esta regla estaba escrita en cuatro archivos, y un rol nuevo dejaba a
+  // alguien viendo la pantalla equivocada.
+  if (usuario.rol !== "operador") redirect(destinoDe(usuario.rol));
 
   // La variable de entorno solo la puede leer el servidor. Se pasa como prop
   // para que el cliente pueda aplicar la barrera antes de escribir en

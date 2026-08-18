@@ -30,7 +30,7 @@ const COLUMNAS_SALIDA = {
   estado: sesionVehiculo.estado,
 };
 
-export const POST = rutaAutenticada<{ params: Promise<{ id: string }> }>(
+export const POST = rutaAutenticada<{ params: Promise<{ id: string }> }, "operador">(
   { rol: "operador", exigirOrigen: true },
   async ({ sesion: operador, contexto }) => {
     const { id } = await contexto.params;
