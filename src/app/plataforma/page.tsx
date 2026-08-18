@@ -13,6 +13,7 @@ import { redirect } from "next/navigation";
 
 import { sesionActual } from "@/lib/auth";
 import { destinoDe } from "@/lib/roles";
+import Cabecera from "../cabecera";
 import CerrarSesion from "../cerrar-sesion";
 import FormularioAlta from "./formulario-alta";
 
@@ -27,29 +28,22 @@ export default async function Plataforma() {
   if (usuario.rol !== "plataforma") redirect(destinoDe(usuario.rol));
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
-      <header className="flex items-start justify-between gap-3 pt-1">
-        <div className="flex flex-col gap-1">
-          <span className="eyebrow">Plataforma</span>
-          <h1 className="text-xl font-semibold">Alta de cliente</h1>
-          <p className="text-sm text-subtle">{usuario.email}</p>
-        </div>
-        <CerrarSesion />
-      </header>
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      <Cabecera contexto="C4A · Plataforma" titulo="Alta de cliente" accion={<CerrarSesion />} />
 
-      <p className="text-sm text-subtle">
-        Crea un estacionamiento con su primera tarifa, un dueno y un operador. Las
-        cuatro filas se escriben juntas: si algo falla, no queda un cliente a medio
-        crear.
-      </p>
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-5 pb-12">
+        <p className="text-sm text-subtle">
+          Crea un estacionamiento con su primera tarifa, un dueño y un operador. Las
+          cuatro filas se escriben juntas: si algo falla, no queda un cliente a
+          medio crear.
+        </p>
 
-      <FormularioAlta />
+        <FormularioAlta />
 
-      <footer className="text-xs text-subtle">
-        Este rol no accede a patentes por ninguna ruta (AC-ISO-2). El sistema opera
-        solo con patentes de prueba mientras la base de licitud y el plazo de
-        retencion sigan sin resolver.
-      </footer>
-    </main>
+        <footer className="mono-caption text-faint">
+          Este rol no accede a patentes por ninguna ruta · Operación real deshabilitada
+        </footer>
+      </main>
+    </div>
   );
 }

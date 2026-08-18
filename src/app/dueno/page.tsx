@@ -16,6 +16,7 @@ import { conBase, db, sesionVehiculo } from "@/db";
 import { sesionActual } from "@/lib/auth";
 import { destinoDe } from "@/lib/roles";
 import { obtenerEstacionamiento } from "@/lib/contexto";
+import Cabecera from "../cabecera";
 import CerrarSesion from "../cerrar-sesion";
 import Descuadre from "./descuadre";
 
@@ -128,16 +129,10 @@ export default async function PanelDueno() {
   const libres = est.capacidadTotal - activas;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
-      <header className="flex items-start justify-between gap-3 pt-1">
-        <div className="flex flex-col gap-1">
-          <span className="eyebrow">Visibilidad</span>
-          <h1>Panel</h1>
-          <span className="text-sm text-subtle">{est.nombre}</span>
-        </div>
-        <CerrarSesion />
-      </header>
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      <Cabecera contexto={`${est.nombre} · hoy`} titulo="Panel" accion={<CerrarSesion />} />
 
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
       <section className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1 rounded-2xl border border-line bg-card p-4 shadow-xs">
           <p className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase">
@@ -173,6 +168,7 @@ export default async function PanelDueno() {
         cifra es la referencia contra la cual comparar la caja, no un registro de
         lo recaudado.
       </p>
-    </main>
+      </main>
+    </div>
   );
 }

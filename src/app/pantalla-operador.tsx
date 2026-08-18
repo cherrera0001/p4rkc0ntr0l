@@ -27,6 +27,7 @@ import {
 } from "@/lib/cola-local";
 import { esPatenteFixture } from "@/lib/fixtures";
 import { validarPatente } from "@/lib/patente";
+import Cabecera from "./cabecera";
 import CerrarSesion from "./cerrar-sesion";
 
 /**
@@ -404,15 +405,10 @@ export default function PantallaOperador({
   const sinSincronizar = locales.filter((s) => s.syncEstado === "local").length;
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
-      <header className="flex items-start justify-between gap-3 pt-1">
-        <div className="flex flex-col gap-1">
-          <span className="eyebrow">Operación</span>
-          <h1>Estacionamiento</h1>
-        </div>
-        <CerrarSesion />
-      </header>
+    <div className="flex min-h-dvh flex-col bg-canvas">
+      <Cabecera contexto="Operación · terreno" titulo="Estacionamiento" accion={<CerrarSesion />} />
 
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
       {/* AC-UX-1 — el estado de red es contenido de primer nivel, no un ícono.
           El operador tiene que saber sin preguntar si lo que registró ya subió;
           de eso depende que confíe en la app cuando la señal se corta. */}
@@ -595,6 +591,7 @@ export default function PantallaOperador({
           </p>
         </section>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

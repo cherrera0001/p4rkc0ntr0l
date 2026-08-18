@@ -6,11 +6,16 @@
  * La validacion de verdad vive en el servidor (`api/plataforma/clientes`): esto
  * solo evita viajes obvios y muestra los campos que el servidor devolvio como
  * invalidos. **El cliente no es una frontera de seguridad**, y por eso no repite
- * las reglas: si divergieran, la del servidor manda y la de aca seria una mentira
- * mantenida en dos lugares.
+ * las reglas: si divergieran, la del servidor manda.
+ *
+ * Accesibilidad, por los hallazgos del experto de frontend del concilio: el
+ * foco va al primer campo con error, cada campo invalido lleva `aria-describedby`
+ * al mensaje, el `<form>` es `noValidate` (la validacion real es del servidor, y
+ * la burbuja nativa dejaba la pantalla muda), y el estado se anuncia por
+ * `aria-live`.
  */
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 
 type Estado =
   | { tipo: "quieto" }
@@ -18,21 +23,47 @@ type Estado =
   | { tipo: "creado"; nombre: string }
   | { tipo: "error"; mensaje: string; campos: string[] };
 
-const CAMPOS = [
-  { id: "nombre", etiqueta: "Nombre del estacionamiento", tipo: "text" },
-  { id: "zonaHoraria", etiqueta: "Zona horaria", tipo: "text", valor: "America/Santiago" },
-  { id: "capacidadTotal", etiqueta: "Capacidad total", tipo: "number" },
-  { id: "valorHora", etiqueta: "Valor por hora (pesos)", tipo: "number" },
-  { id: "fraccionMinutos", etiqueta: "Fraccion de cobro (minutos)", tipo: "number" },
-  { id: "montoMinimo", etiqueta: "Monto minimo (pesos)", tipo: "number" },
-  { id: "emailDueno", etiqueta: "Email del dueno", tipo: "email" },
-  { id: "emailOperador", etiqueta: "Email del operador", tipo: "email" },
-] as const;
+type Campo = {
+  id: string;
+  etiqueta: string;
+  tipo: "text" | "number" | "email";
+  modo: "text" | "numeric" | "email";
+  valor?: string;
+};
 
+const GRUPOS: { titulo: string; campos: Campo[] }[] = [
+  {
+    titulo: "Estacionamiento",
+    campos: [
+      { id: "nombre", etiqueta: "Nombre", tipo: "text", modo: "text" },
+      { id: "zonaHoraria", etiqueta: "Zona horaria", tipo: "text", modo: "text", valor: "America/Santiago" },
+      { id: "capacidadTotal", etiqueta: "Cupos", tipo: "number", modo: "numeric" },
+    ],
+  },
+  {
+    titulo: "Tarifa vigente",
+    campos: [
+      { id: "valorHora", etiqueta: "Valor por hora (pesos)", tipo: "number", modo: "numeric" },
+      { id: "fraccionMinutos", etiqueta: "Fracción de cobro (minutos)", tipo: "number", modo: "numeric" },
+      { id: "montoMinimo", etiqueta: "Monto mínimo (pesos)", tipo: "number", modo: "numeric" },
+    ],
+  },
+  {
+    titulo: "Usuarios",
+    campos: [
+      { id: "emailDueno", etiqueta: "Email del dueño", tipo: "email", modo: "email" },
+      { id: "emailOperador", etiqueta: "Email del operador", tipo: "email", modo: "email" },
+    ],
+  },
+];
+
+const CAMPOS = GRUPOS.flatMap((g) => g.campos);
 const NUMERICOS = new Set(["capacidadTotal", "valorHora", "fraccionMinutos", "montoMinimo"]);
 
 export default function FormularioAlta() {
   const [estado, setEstado] = useState<Estado>({ tipo: "quieto" });
+  const formRef = useRef<HTMLFormElement>(null);
+  const errorId = useId();
 
   async function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -42,8 +73,7 @@ export default function FormularioAlta() {
     const cuerpo: Record<string, unknown> = {};
     for (const { id } of CAMPOS) {
       const bruto = String(datos.get(id) ?? "");
-      // Los numericos van como numero: el servidor rechaza el texto numerico a
-      // proposito, para que "10" y 10 no sean la misma cosa en la frontera.
+      // Los numericos van como numero; el servidor igual acepta el texto numerico.
       cuerpo[id] = NUMERICOS.has(id) ? (bruto === "" ? null : Number(bruto)) : bruto;
     }
 
@@ -61,18 +91,20 @@ export default function FormularioAlta() {
         form.reset();
         return;
       }
+      const campos = Array.isArray(respuesta?.campos) ? respuesta.campos : [];
       setEstado({
         tipo: "error",
         mensaje: respuesta?.error ?? `El alta no se pudo completar (HTTP ${r.status}).`,
-        campos: Array.isArray(respuesta?.campos) ? respuesta.campos : [],
+        campos,
       });
+      // Foco al primer campo con error: quien usa teclado o lector no tiene que
+      // recorrer ocho campos para encontrar cuál falló.
+      const primero = campos[0] ?? CAMPOS[0]?.id;
+      form.querySelector<HTMLInputElement>(`[name="${primero}"]`)?.focus();
     } catch {
-      // Sin red no se puede dar de alta, y se dice: esta pantalla no es
-      // offline-first. Lo que tiene que funcionar sin conexion es el ingreso del
-      // operador (H1), no el aprovisionamiento.
       setEstado({
         tipo: "error",
-        mensaje: "No hay conexion con el servidor. El alta necesita red.",
+        mensaje: "No hay conexión con el servidor. El alta necesita red.",
         campos: [],
       });
     }
@@ -81,40 +113,51 @@ export default function FormularioAlta() {
   const invalidos = estado.tipo === "error" ? estado.campos : [];
 
   return (
-    <form onSubmit={enviar} className="flex flex-col gap-4">
-      {CAMPOS.map(({ id, etiqueta, tipo, ...resto }) => (
-        <label key={id} className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{etiqueta}</span>
-          <input
-            name={id}
-            type={tipo}
-            defaultValue={"valor" in resto ? resto.valor : undefined}
-            aria-invalid={invalidos.includes(id) || undefined}
-            className="rounded border px-3 py-2"
-          />
-        </label>
+    <form ref={formRef} onSubmit={enviar} noValidate className="flex flex-col gap-6">
+      {GRUPOS.map((grupo) => (
+        <fieldset key={grupo.titulo} className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-5 shadow-xs">
+          <legend className="mono-caption px-1 text-subtle">{grupo.titulo}</legend>
+          {grupo.campos.map((campo) => {
+            const malo = invalidos.includes(campo.id);
+            return (
+              <label key={campo.id} className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-muted">{campo.etiqueta}</span>
+                <input
+                  name={campo.id}
+                  type={campo.tipo}
+                  inputMode={campo.modo as "text" | "numeric" | "email"}
+                  defaultValue={"valor" in campo ? campo.valor : undefined}
+                  required
+                  aria-invalid={malo || undefined}
+                  aria-describedby={malo ? errorId : undefined}
+                  className="campo"
+                />
+              </label>
+            );
+          })}
+        </fieldset>
       ))}
 
-      <button
-        type="submit"
-        disabled={estado.tipo === "enviando"}
-        className="rounded bg-black px-4 py-2 font-medium text-white disabled:opacity-50"
-      >
-        {estado.tipo === "enviando" ? "Creando..." : "Crear cliente"}
+      <button type="submit" disabled={estado.tipo === "enviando"} className="btn-primario w-full">
+        {estado.tipo === "enviando" ? "Creando cliente…" : "Crear cliente"}
       </button>
 
-      {estado.tipo === "creado" && (
-        <p role="status" className="text-sm">
-          Cliente creado: {estado.nombre}. Ya puede operar: tiene tarifa vigente,
-          dueno y operador.
-        </p>
-      )}
-      {estado.tipo === "error" && (
-        <p role="alert" className="text-sm">
-          {estado.mensaje}
-          {estado.campos.length > 0 && ` Revisa: ${estado.campos.join(", ")}.`}
-        </p>
-      )}
+      {/* Región viva permanente: anuncia la espera y el resultado sin depender de
+          que aparezca un nodo nuevo, que un lector puede no leer. */}
+      <p aria-live="polite" className="min-h-5 text-sm">
+        {estado.tipo === "enviando" && <span className="text-subtle">Creando cliente…</span>}
+        {estado.tipo === "creado" && (
+          <span className="text-success">
+            Cliente creado: {estado.nombre}. Ya puede operar: tiene tarifa vigente, dueño y operador.
+          </span>
+        )}
+        {estado.tipo === "error" && (
+          <span id={errorId} role="alert" className="text-critical">
+            {estado.mensaje}
+            {estado.campos.length > 0 && ` Revisá: ${estado.campos.join(", ")}.`}
+          </span>
+        )}
+      </p>
     </form>
   );
 }

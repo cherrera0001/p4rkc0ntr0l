@@ -257,6 +257,59 @@
     background: var(--line-strong);
   }
 
+  /* Rótulo mono en mayúsculas para contexto y metadatos —nombre de la empresa,
+     estado—. Es el mismo recurso que el sistema de diseño usa sobre las
+     superficies oscuras; el color lo pone quien la usa (sobre `--ink` va en
+     blanco tenue). */
+  .mono-caption {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--subtle);
+  }
+
+  /* Botón primario de acción: es el objetivo táctil que el operador toca de pie,
+     así que respeta `--tap` y no baja de ahí. Antes cada pantalla lo escribía a
+     mano —una llegó a usar `bg-black`, fuera del sistema (hallazgo del concilio,
+     AC-UI-1)—. */
+  .btn-primario {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: var(--tap);
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--r-xl);
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+    font-size: var(--fs-body);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out-expo);
+  }
+  .btn-primario:hover { background: var(--accent-strong); }
+  .btn-primario:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Campo de formulario: alto táctil, borde del sistema, y foco por el
+     :focus-visible global. `aria-invalid` lo tiñe de crítico sin JS. */
+  .campo {
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+    background: var(--card);
+    color: var(--ink);
+    font-size: var(--fs-body);
+    font-family: var(--font-sans);
+  }
+  .campo[aria-invalid="true"] {
+    border-color: var(--critical);
+    background: var(--critical-soft);
+  }
+
   /* Patentes e IDs: se leen carácter a carácter, y `O`/`0` tienen que
      distinguirse. Es legibilidad operativa, no estética. */
   .patente {
