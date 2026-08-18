@@ -62,3 +62,5 @@ scripts/estado/
 
 # Sondas temporales de los agentes de auditoria del concilio (no son del producto)
 _audit_*.mjs
+# Sondas de ruta que dejan los agentes de auditoria (no son del producto)
+src/app/api/_sonda*/
