@@ -49,10 +49,54 @@ function texto(v: unknown, max: number): string | null {
   return limpio.length === 0 || limpio.length > max ? null : limpio;
 }
 
-/** Entero de frontera. Rechaza `NaN`, decimales, infinitos y el texto numérico. */
+/**
+ * Email de frontera — **normalizado igual que el login, o la cuenta nace muerta.**
+ *
+ * `POST /api/login` busca por `email.trim().toLowerCase()` (`login/route.ts`).
+ * Si el alta guardara el email tal como se teclea, un `Dueño@Local.cl` con
+ * cualquier mayúscula quedaría en la base en mayúscula y el login —que baja a
+ * minúscula antes de buscar— **nunca encontraría la fila**: el cliente se
+ * provisiona «operativo» (201) con una cuenta que no puede entrar jamás, y nada
+ * avisa. Lo encontró el experto de seguridad del concilio, reproducido.
+ *
+ * Normaliza a minúscula acá, y además exige una forma de email mínima: sin esto
+ * el alta aceptaba `"no soy un email"` y dejaba una cuenta basura por cliente.
+ * No es una validación exhaustiva de RFC —eso es un pozo sin fondo—: es que
+ * tenga una `@` con algo a cada lado y un punto en el dominio.
+ */
+const FORMA_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function email(v: unknown): string | null {
+  const t = texto(v, 255);
+  if (t === null) return null;
+  const normal = t.toLowerCase();
+  return FORMA_EMAIL.test(normal) ? normal : null;
+}
+
+/**
+ * Entero de frontera. Acepta el número **como número o como texto numérico**, y
+ * rechaza lo que de verdad no es un entero: `NaN`, decimales, infinitos, texto.
+ *
+ * ## Por qué acepta el texto numérico, en contra de lo que decía antes
+ *
+ * La versión anterior rechazaba `"10"` a propósito, *«para que "10" y 10 no sean
+ * la misma cosa en la frontera»*. Esa purez­a costó un fallo real: un
+ * `<input type="number">` del navegador entrega su valor **como cadena**, y
+ * cualquier camino que no convirtiera —un bundle viejo cacheado por el service
+ * worker, un lector distinto— mandaba `"10"` y recibía un 400 que decía
+ * *«capacidad inválida»* sobre un 10 perfectamente válido.
+ *
+ * Rechazar `"10"` **no tiene ningún valor de seguridad**: un entero es un entero
+ * venga tipado como venga. Lo que sí importa —que no sea decimal, ni `NaN`, ni
+ * texto arbitrario, ni esté fuera de rango— se sigue haciendo cumplir. Robustez
+ * en la entrada, estrictez en lo que se guarda.
+ */
 function entero(v: unknown, min: number, max: number): number | null {
-  if (typeof v !== "number" || !Number.isInteger(v)) return null;
-  return v < min || v > max ? null : v;
+  // El texto se acepta solo si es EXACTAMENTE un entero: `Number("10")` es 10,
+  // pero `Number("10.5")`, `Number("1,000")` y `Number("")` no sobreviven la
+  // prueba de `Number.isInteger`, y `"  "` tampoco. No es coerción laxa.
+  const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+  if (typeof n !== "number" || !Number.isInteger(n)) return null;
+  return n < min || n > max ? null : n;
 }
 
 /**
@@ -90,8 +134,8 @@ export const POST = rutaAutenticada<unknown, "plataforma">(
     const valorHora = entero(c.valorHora, 0, 100_000_000);
     const fraccionMinutos = entero(c.fraccionMinutos, 1, 1440);
     const montoMinimo = entero(c.montoMinimo, 0, 100_000_000);
-    const emailDueno = texto(c.emailDueno, 255);
-    const emailOperador = texto(c.emailOperador, 255);
+    const emailDueno = email(c.emailDueno);
+    const emailOperador = email(c.emailOperador);
 
     // **Se reportan todos los campos inválidos, no el primero.** Un alta la hace
     // una persona llenando un formulario: devolverle un error por vez la obliga
