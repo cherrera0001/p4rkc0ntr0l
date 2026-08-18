@@ -59,3 +59,6 @@ Thumbs.db
 # Es especifico de la maquina y del origen medido: una linea base commiteada
 # produce FAIL confusos en un clon nuevo.
 scripts/estado/
+
+# Sondas temporales de los agentes de auditoria del concilio (no son del producto)
+_audit_*.mjs
