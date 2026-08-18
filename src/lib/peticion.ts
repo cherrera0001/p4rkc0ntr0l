@@ -13,6 +13,7 @@
 
 import { NextResponse } from "next/server";
 
+import { exigirRol, type SesionUsuario } from "./auth.ts";
 import { describirParaLog, ErrorConfiguracion } from "./errores.ts";
 
 export const noAutorizado = () =>
@@ -90,4 +91,80 @@ export function respuestaDeFallo(contexto: string, error: unknown): NextResponse
     },
     { status: 503, headers: { "Retry-After": "5" } },
   );
+}
+
+/**
+ * **Envoltorio de ruta autenticada — la propiedad que faltaba: todo lo que puede
+ * fallar corre dentro del `try`.**
+ *
+ * ## El defecto que cierra
+ *
+ * Las tres rutas de API llamaban a `exigirRol()` **antes** de abrir su `try`
+ * (`sesiones/route.ts:43`, `:81`, `salida/route.ts:44`). Y `exigirRol` no es una
+ * comprobación en memoria: baja por `sesionActual()` a **leer la fila de
+ * `usuario` en la base** (`auth.ts:87-89`), y antes de eso `deserializarSesion`
+ * pide `SESSION_SECRET` (`sesion-token.ts:48-51`).
+ *
+ * Consecuencia: con Railway caído, o con una variable de entorno faltante en el
+ * despliegue, **el 100% del tráfico autenticado respondía 500 sin cuerpo** — que
+ * es exactamente el defecto que INT-19/INT-20 declararon corregido y que
+ * `respuestaDeFallo` existe para evitar. El 503 tipado estaba construido y no se
+ * alcanzaba nunca, porque la excepción ocurría dos líneas antes del `catch`.
+ *
+ * ## Por qué un envoltorio y no mover tres líneas
+ *
+ * No es elegancia: es **verificabilidad**. *«La llamada está dentro del `try`»*
+ * no se puede escanear sin parsear posiciones de bloques, así que una ruta futura
+ * que se olvide no dispara nada. *«Toda ruta de `src/app/api/**` se construye con
+ * el envoltorio»* **sí** se escanea, y por exclusión: se recorre el árbol y la que
+ * llame a `exigirRol` por fuera falla.
+ *
+ * Es la misma corrección de forma que obligó a reescribir AC-SCOPE-1
+ * (`CLAUDE.md` §1): una lista blanca de tres rutas no ve la cuarta.
+ *
+ * **Lo que este envoltorio NO hace:** no garantiza la propiedad «por
+ * construcción». Es opt-in, y una ruta puede no usarlo. Lo que hace es convertir
+ * una propiedad inescaneable en una escaneable, y el guard de
+ * `verificar:endurecimiento` es el que la hace cumplir. Decir otra cosa sería
+ * vender de más.
+ *
+ * ## La asimetría del origen se conserva
+ *
+ * `GET /api/sesiones` hoy **no** comprueba origen, y no debe empezar a hacerlo en
+ * este cambio: un GET de otro sitio no lo puede leer el atacante por CORS, y
+ * cambiarlo acá sería colar una decisión de seguridad dentro de un refactor. Por
+ * eso `exigirOrigen` es explícito en cada ruta y no un default silencioso.
+ */
+export function rutaAutenticada<C = unknown>(
+  opciones: {
+    rol: SesionUsuario["rol"];
+    exigirOrigen: boolean;
+  },
+  manejador: (entrada: {
+    sesion: SesionUsuario;
+    request: Request;
+    contexto: C;
+  }) => Promise<NextResponse>,
+) {
+  return async function (request: Request, contexto: C): Promise<NextResponse> {
+    // El nombre se arma antes de todo, para que el log del fallo diga qué ruta
+    // fue incluso si la petición revienta en la primera línea.
+    let etiqueta = request.method;
+    try {
+      etiqueta = `${request.method} ${new URL(request.url).pathname}`;
+    } catch {
+      // Una URL ilegible no puede impedir que la ruta responda su 503.
+    }
+
+    try {
+      if (opciones.exigirOrigen && !origenPropio(request)) return origenAjeno();
+
+      const sesion = await exigirRol(opciones.rol);
+      if (!sesion) return noAutorizado();
+
+      return await manejador({ sesion, request, contexto });
+    } catch (error) {
+      return respuestaDeFallo(etiqueta, error);
+    }
+  };
 }

@@ -26,11 +26,15 @@
  * Requiere el servidor levantado (`npm run build && npm start`).
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import { leerJson } from "./lib/respuesta.mjs";
 import { EMAIL_DUENO, EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 import { sanearVersion } from "../src/lib/version-app.ts";
+
+const RAIZ_SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO;
@@ -367,6 +371,64 @@ try {
   comprobar("fase de navegador · completó sin excepción", false, String(e?.message ?? e).split("\n")[0]);
 } finally {
   await browser.close();
+}
+
+// --- INT-19/INT-20 · toda ruta de API resuelve la sesión DENTRO del try --------
+//
+// **Estructural y por exclusión, no una lista de rutas.** Se recorre
+// `src/app/api/` entero: la ruta que llame a `exigirRol` fuera del envoltorio
+// falla, y una ruta nueva entra sola a este control el día que se crea el
+// archivo. Es la corrección de forma que obligó a reescribir AC-SCOPE-1
+// (`CLAUDE.md` §1): una lista blanca de tres rutas no ve la cuarta.
+//
+// **Qué prueba y qué no.** Prueba que ninguna ruta resuelve la sesión por fuera
+// de `rutaAutenticada`, que es donde el `try` la cubre. NO prueba, en esta
+// corrida, que el 503 salga tipado ante una base caída: eso exige derribar la
+// base, y una prueba unitaria del envoltorio no es ejecutable acá porque
+// `next/server` no resuelve bajo `node --test`. Queda dicho en vez de fingido.
+{
+  const rutas = [];
+  const recorrer = (dir, rel) => {
+    for (const entrada of readdirSync(dir)) {
+      const completa = join(dir, entrada);
+      if (statSync(completa).isDirectory()) recorrer(completa, `${rel}/${entrada}`);
+      else if (/^route\.tsx?$/.test(entrada)) rutas.push([rel, readFileSync(completa, "utf8")]);
+    }
+  };
+  recorrer(join(RAIZ_SRC, "app", "api"), "src/app/api");
+
+  // Piso: si el escáner deja de encontrar rutas, todo lo de abajo es vacuamente
+  // verdadero — el defecto que este repo persigue desde AC-MEAS-1.
+  comprobar(
+    "INT-19 · el escáner de rutas ve la superficie de API",
+    rutas.length > 0,
+    `${rutas.length} ruta(s)`,
+  );
+
+  // La ruta de login es pública por diseño: no resuelve sesión y no tiene que
+  // pasar por el envoltorio. Se la reconoce por lo que el archivo HACE —no
+  // nombra a exigirRol— y no por su nombre, que sería enumerar otra vez.
+  const sueltas = rutas
+    .filter(([, texto]) => /\bexigirRol\s*\(/.test(texto))
+    .filter(([, texto]) => !/\brutaAutenticada\s*[(<]/.test(texto))
+    .map(([rel]) => rel);
+
+  comprobar(
+    "INT-19 · ninguna ruta de API resuelve la sesión fuera del envoltorio",
+    sueltas.length === 0,
+    sueltas.length
+      ? `fuera de rutaAutenticada: ${sueltas.join(", ")}`
+      : `${rutas.filter(([, t]) => /rutaAutenticada/.test(t)).length} envuelta(s) de ${rutas.length} ruta(s)`,
+  );
+
+  // Y el envoltorio tiene que seguir haciendo lo que dice: el catch existe.
+  const envoltorio = readFileSync(join(RAIZ_SRC, "lib", "peticion.ts"), "utf8");
+  const cuerpo = envoltorio.slice(envoltorio.indexOf("export function rutaAutenticada"));
+  comprobar(
+    "INT-20 · el envoltorio traduce el fallo a 503 tipado",
+    /catch\s*\(\s*error\s*\)\s*\{[\s\S]{0,200}respuestaDeFallo/.test(cuerpo),
+    cuerpo.includes("respuestaDeFallo") ? "catch → respuestaDeFallo" : "el catch del envoltorio se perdió",
+  );
 }
 
 const fallidos = resultados.filter((r) => !r.ok);

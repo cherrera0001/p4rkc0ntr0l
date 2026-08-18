@@ -12,15 +12,9 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { conBase, db, sesionVehiculo } from "@/db";
-import { exigirRol } from "@/lib/auth";
 import { obtenerTarifaVigente } from "@/lib/contexto";
 import { esIdValido } from "@/lib/frontera";
-import {
-  noAutorizado,
-  origenAjeno,
-  origenPropio,
-  respuestaDeFallo,
-} from "@/lib/peticion";
+import { rutaAutenticada } from "@/lib/peticion";
 import { calcularMonto } from "@/lib/tarificacion";
 import { entradaFacturable, montoAlmacenable } from "@/lib/tiempo";
 
@@ -36,22 +30,15 @@ const COLUMNAS_SALIDA = {
   estado: sesionVehiculo.estado,
 };
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  if (!origenPropio(request)) return origenAjeno();
+export const POST = rutaAutenticada<{ params: Promise<{ id: string }> }>(
+  { rol: "operador", exigirOrigen: true },
+  async ({ sesion: operador, contexto }) => {
+    const { id } = await contexto.params;
 
-  const operador = await exigirRol("operador");
-  if (!operador) return noAutorizado();
+    if (!esIdValido(id)) {
+      return NextResponse.json({ error: "Id de sesión inválido." }, { status: 400 });
+    }
 
-  const { id } = await params;
-
-  if (!esIdValido(id)) {
-    return NextResponse.json({ error: "Id de sesión inválido." }, { status: 400 });
-  }
-
-  try {
     // **Pertenencia, no solo rol** (hallazgo M-1). Antes se comprobaba que
     // quien pedía fuera operador y después se buscaba la sesión por id a secas:
     // cualquier operador podía cerrar la sesión de cualquier estacionamiento con
@@ -177,7 +164,5 @@ export async function POST(
     }
 
     return NextResponse.json({ sesion: cerrada, yaCerrada: false });
-  } catch (error) {
-    return respuestaDeFallo(`POST /api/sesiones/${id}/salida`, error);
-  }
-}
+  },
+);
