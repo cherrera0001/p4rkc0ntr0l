@@ -64,6 +64,22 @@ atacante por CORS. La asimetría es explícita en cada ruta, no un default.
 Siempre `{ "error": "<texto>" }`, a veces con campos extra: `tipo`, `modo`,
 `campos`, `esperaSegundos`, `motivo`, `duplicada`, `yaCerrada`.
 
+**Respuestas comunes a las tres rutas POST, que el contrato antes callaba**
+(hallazgo del experto de API del concilio — un contrato que calla se lee como
+completo):
+
+- **`400 { error: "Cuerpo JSON inválido." }`** si el cuerpo no parsea como JSON.
+- **`405`** con cuerpo vacío ante un método que la ruta no exporta (lo pone
+  Next). Es la única respuesta del sistema sin cuerpo `{error}`.
+- El **limitador de intentos del login bloquea también las credenciales
+  correctas**: tras la ráfaga, un login con la clave buena recibe igual `429`
+  con `Retry-After`. Es por diseño —el límite es por IP y por email, no por
+  clave equivocada— y protege contra la fuerza bruta que ya adivinó una.
+- `POST /api/sesiones` con la patente ya activa puede devolver
+  `{ sesion: null, duplicada: true, motivo: "patente-ya-activa" }`: **`sesion`
+  puede ser `null`** si la fila activa no se pudo releer. El cliente no debe
+  asumir que siempre viene el objeto.
+
 ### 1.6 · Códigos y qué significan para el cliente offline
 
 **Esta tabla es el contrato más importante del sistema**, porque la cola local
@@ -188,7 +204,8 @@ Alta de cliente. **Cuerpo:** `nombre`, `zonaHoraria`, `capacidadTotal`,
 |---|---|
 | `201 { cliente: { id, nombre } }` | creado y operativo |
 | `400 { error, campos: [...] }` | campos inválidos. **Se devuelven todos**, no el primero |
-| `409 { error, campos }` | ya existe un usuario con ese email |
+| `409 { error, campos }` | ya existe un usuario con ese email. **`campos` nombra solo el email que choca** —dueño, operador, o ambos si los dos existen— no los dos por defecto |
+| `400 { error, campos: ["emailOperador"] }` | el email del dueño y el del operador son el mismo |
 | `401` / `403` | sin rol `plataforma` / origen ajeno |
 
 Escribe **cuatro filas en una transacción** —estacionamiento, tarifa, dueño y

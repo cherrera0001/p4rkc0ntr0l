@@ -155,6 +155,15 @@ if (hoja) {
     [".patente{", "components"],
     [".cifra{", "components"],
     [".tabular{", "components"],
+    // Componentes del sistema de diseño Escudo Cognitivo (2026-08-18). Se nombran
+    // uno a uno, y no basta con que la capa exista: si alguno se moviera fuera de
+    // `@layer components` —a `base`, donde le ganaría a cualquier utilidad de
+    // Tailwind, o suelto, donde no lo pisa nadie— el botón o el campo dejarían de
+    // ser ajustables en el sitio de uso. Es el defecto que este bloque atajó para
+    // `.cifra` y que ahora cubre también lo nuevo.
+    [".mono-caption{", "components"],
+    [".btn-primario{", "components"],
+    [".campo{", "components"],
   ]) {
     const i = css.indexOf(regla);
     comprobar(

@@ -82,12 +82,14 @@ async function entrar(email) {
 
 async function limpiar() {
   await sql`DELETE FROM sesion_vehiculo WHERE patente IN (${PATENTE_A}, ${PATENTE_B})`;
-  // **El usuario de plataforma se borra tambien, y esto no es prolijidad.**
-  // La clave de acceso es compartida (piloto), asi que dejar vivo un usuario de
-  // plataforma con email predecible en una base que sirve a una URL publica es
-  // dejar abierta la ruta de alta de clientes: el privilegio mas alto del
-  // sistema. Un fixture que sobrevive a su verificador deja de ser un fixture.
-  await sql`DELETE FROM usuario WHERE email IN (${EMAIL_DUENO_B}, ${EMAIL_OPERADOR_B}, ${EMAIL_PLATAFORMA})`;
+  // **El usuario de plataforma NO se borra (hallazgo FE-3).** Es un fixture
+  // permanente que siembra `sembrar.mjs`, como operador y dueño: borrarlo dejaría
+  // un deploy limpio sin nadie que pueda dar de alta el primer cliente, que es el
+  // camino a mano que ADR-005 vino a eliminar. Su exposición no es distinta de la
+  // de operador/dueño —los tres entran con la misma `CLAVE_ACCESO` compartida—, y
+  // ese es el riesgo real (aceptado, documentado), no que exista la cuenta. Solo
+  // se barren el cliente B y sus usuarios, que este verificador sí creó.
+  await sql`DELETE FROM usuario WHERE email IN (${EMAIL_DUENO_B}, ${EMAIL_OPERADOR_B})`;
   await sql`DELETE FROM tarifa WHERE estacionamiento_id IN (SELECT id FROM estacionamiento WHERE nombre = ${NOMBRE_B})`;
   await sql`DELETE FROM estacionamiento WHERE nombre = ${NOMBRE_B}`;
 }

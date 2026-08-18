@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-17
+**Actualizado:** 2026-08-18
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -18,13 +18,14 @@
 | **FASE D** | **construida** (2026-08-16). `npm run verificar:h1` publica la mediana con su `n`, separa tres poblaciones y **falla con el banco vacío** |
 | **El bloque de §0 ya NO está todo en verde** | `verificar:h1` sale **FAIL** a propósito. **No lo “arregles”**: mientras el banco esté vacío, ese FAIL *es* la medición |
 | **Rama paralela de documentación** | T01 · **los cinco entregables cerrados** el 2026-08-15. ADR-005 queda **PROPUESTO**: adjudicarlo es decisión humana |
-| **HALLAZGO ABIERTO · alcance** | **el gate no cubre `tenant` ni `plataforma`.** Reproducido: 9/9 PASS con los dos plantados. Ver abajo |
+| **~~HALLAZGO alcance~~ · CERRADO** | el gate ya cubre la jerarquía sobre `estacionamiento` (AC-SCOPE-4, M8). Multicliente sí, multisitio no |
 | **Harness (unificación de agentes)** | **FAIL, BoundedLoop agotado** (2026-08-16). Funciona y **no se declara verificado** — igual que INT-12. Reabrirlo es decisión humana |
 | **spec-driven · huérfano declarado + tipo de AC** | cerrado en código el 2026-08-16, **SIN AUDITAR**. `verificar:ac` pasó de 5 a 9 comprobaciones |
 | **FASE D-2 · AC-H1-2** | **FAIL registrado, hito detenido** (2026-08-17). Tres ciclos, tres VETO. El último bypass publicó **10 s sobre un tecleo real de 40 s con el criterio en verde**. `AC-H1-2` **no se declara verificado**; el criterio queda escrito y su verificación, corregida para decir lo que hace. Detalle y salida técnica en `LEDGER.md` (2026-08-17) |
 | **M7 · integridad del cierre y frontera de entrada** | **PASS** (2026-08-17). La carrera del cierre está cerrada —8 de 8 respuestas la cerraban, ahora 1 de 8— y la frontera dejó de producir 5xx. AC-OP-5 y AC-API-1 nuevos en §9, **probados fallando contra el árbol sin corregir**. Cero migraciones |
 | **Hallazgo nuevo, del corpus y no de lectura** | un **byte NUL** en el email daba 503 en `/api/login`. Postgres no lo admite en `text`; atravesaba las tres validaciones y reventaba en el driver. Corregido con `esTextoAlmacenable` |
-| **Pendiente de M7 · el envoltorio de ruta** | `exigirRol()` corre **fuera del `try`** en las tres rutas: una caída de base devuelve **500 opaco** en vez del 503 tipado. Adjudicado a favor de un envoltorio único en `src/lib/peticion.ts` —para volver la propiedad escaneable por exclusión—. **Sin hacer** |
+| **M7 · el envoltorio de ruta** | **HECHO** (commit `d9df8a9`). `exigirRol` corre dentro del `try` vía `rutaAutenticada`; `verificar:endurecimiento` lo hace cumplir por exclusión (33/33). *(La línea anterior decía «sin hacer» y estaba desactualizada.)* |
+| **/loop del concilio · 6 pendientes** | **cerrados** (2026-08-18). FE-6 (guarda de vuelo + cierre diferido en `verificar:concurrencia`), FE-5 (aria + foco patente), H-5/H-6 (409 nombra solo el email que choca, carrera verificada), FE-3 (`sembrar` crea el usuario plataforma; `aislamiento` ya no lo borra — revierte `094a900`), H-7 (contrato). Probados con fallo plantado. Los 3 agentes auditores murieron por error de API; verificación hecha con evidencia real |
 | **M8 · multicliente** | **PASS** (2026-08-17). ADR-005 **ACEPTADO** en su alternativa 2 por decisión explícita y repetida del decisor. Rol `plataforma`, alta de cliente por API y pantalla, y el control negativo de aislamiento con **dos** clientes: `verificar:aislamiento` 9/9, probado fallando al borrar una cláusula real (`FUGA: ve FIXT71`) |
 | **El hueco del gate se cerró, y fue lo primero** | `AC-SCOPE-4`: el modelo no puede tener jerarquía sobre `estacionamiento`. Multicliente sí, multisitio no. Probado con `tenant` plantado: 10/11 y FALLARON |
 | **Transacciones: ya existen** | el alta escribe cuatro filas indivisibles. Es la condición de reversión que M7 declaró, y se cumplió el mismo día |
@@ -218,18 +219,18 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 <!-- EVIDENCIA:INICIO -->
 <!-- Generado por `npm run evidencia`. No editar a mano: se regenera y se desfasa. -->
 
-**Commit:** `afc0535` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-17 · **grupos:** estatico, base, servidor
+**Commit:** `1ada8af` · ⚠ **árbol sucio**: esta corrida no describe un estado reproducible · **corrido:** 2026-08-18 · **grupos:** estatico, base, servidor
 
 | Comando | Resultado | Veredicto | Nota |
 |---|---|---|---|
 | `npm run test` | `exit=0` · 122/122 | PASS |  |
-| `npm run verificar:alcance` | `exit=0` · 9/9 | PASS |  |
+| `npm run verificar:alcance` | `exit=0` · 11/11 | PASS |  |
 | `npm run verificar:alcance:prueba` | `exit=0` · 15/15 | PASS |  |
 | `npm run evidencia:prueba` | `exit=0` · 23/23 | PASS |  |
 | `npm run verificar:ac` | `exit=0` · 9/9 | PASS |  |
-| `npm run verificar:citas` | `exit=0` · 49/49 | PASS |  |
-| `npm run verificar:verificadores` | `exit=0` · 49/49 | PASS |  |
-| `npm run verificar:agentes` | `exit=0` · 20/20 | PASS |  |
+| `npm run verificar:citas` | `exit=0` · 51/51 | PASS |  |
+| `npm run verificar:verificadores` | `exit=0` · 51/51 | PASS |  |
+| `npm run verificar:agentes` | `exit=0` · 40/40 | PASS |  |
 | `npm run verificar:metrica` | `exit=0` · 4/4 | PASS |  |
 | `npm run verificar:esquema` | `exit=0` · 8/8 | PASS |  |
 | `npm run verificar:invariantes` | `exit=0` · 8/8 | PASS |  |
@@ -237,8 +238,9 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:h1` | `exit=1` · — | FAIL | ⚠ **REGRESIÓN, no el entregable.** Se esperaba `banco-vacio` y falló por `control-negativo` |
 | `npm run build` | **NO CORRIDO** · grupo `build` | — |  |
 | `npm run verificar:salida` | `exit=0` · 11/11 | PASS |  |
-| `npm run verificar:concurrencia` | `exit=0` · 6/6 | PASS |  |
-| `npm run verificar:frontera` | `exit=0` · 4/4 | PASS |  |
+| `npm run verificar:concurrencia` | `exit=0` · 7/7 | PASS |  |
+| `npm run verificar:frontera` | `exit=0` · 5/5 | PASS |  |
+| `npm run verificar:aislamiento` | `exit=0` · 9/9 | PASS |  |
 | `npm run verificar:pwa` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:op1` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:a3` | **NO CORRIDO** · grupo `navegador` | — |  |
@@ -249,7 +251,7 @@ permitió sigue abierto, y es el mismo riesgo aceptado de arriba.
 | `npm run verificar:ui` | **NO CORRIDO** · grupo `navegador` | — |  |
 | `npm run verificar:int12` | **NO CORRIDO** · grupo `navegador` | — | gate registrado **FAIL** (LEDGER 2026-08-13). Su PASS no es evidencia: el historial se puede forjar y borrar |
 
-**Cobertura de esta corrida: 16 de 26 comandos.** Los 10 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
+**Cobertura de esta corrida: 17 de 27 comandos.** Los 10 restantes dicen NO CORRIDO a propósito: un bloque que omite lo que no corrió se lee como si todo hubiera pasado.
 
 **Excluidos del catálogo a propósito (1):** `npm run evidencia`. No están medidos acá y esta línea existe para que la cobertura no baje en silencio.
 <!-- EVIDENCIA:FIN -->

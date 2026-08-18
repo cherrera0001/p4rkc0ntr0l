@@ -1055,3 +1055,36 @@ Es el mismo defecto del `21/21` publicado como *«medido hoy»* y del `6,2 s` de
 maquetas. La regla operativa que este repo ya nombró **U7** —*medí, y después buscá
 todas las ocurrencias de lo que acabás de refutar*— es la única defensa que
 funcionó, y hay que aplicarla al `grep` del **claim**, no del dato.
+
+## 2026-08-18 · Idempotencia: el caso simultáneo no la prueba; el diferido sí
+
+Un criterio de «se cierra una sola vez» que solo dispara una ráfaga **simultánea**
+no prueba idempotencia. Todos los intentos caen en la misma fracción de tiempo,
+así que un valor recalculado contra el reloj de *ahora* coincide por casualidad.
+El caso que separa lo idempotente de lo que solo lo parece es un segundo intento
+**diferido**, cuando el reloj ya cruzó el borde. **Generalizable:** todo criterio
+de idempotencia necesita un segundo intento separado en el tiempo, no solo N
+intentos a la vez. Se volvió guard: `verificar:concurrencia` agrega un cierre
+diferido y compara monto+hora contra el original.
+
+## 2026-08-18 · Un fixture que el producto necesita para operar es semilla, no basura de verificador
+
+`verificar-aislamiento` borraba el usuario de plataforma al terminar, por miedo a
+«una cuenta de alta viva en una URL pública». Pero sin ese usuario, un deploy
+limpio no puede dar de alta el primer cliente: la funcionalidad central queda
+inalcanzable. El error era tratar el síntoma equivocado — operador y dueño viven
+en la misma URL con la misma clave compartida; el riesgo real es la clave, no la
+existencia de la cuenta. **Generalizable:** antes de borrar un fixture «por
+seguridad», preguntá si el producto lo necesita para operar. Si sí, es semilla
+(va en `sembrar.mjs`), y el riesgo hay que atacarlo donde está (la clave
+compartida, aceptada), no borrando lo que hace falta.
+
+## 2026-08-18 · Un error de frontera debe nombrar exactamente el campo que falló
+
+El 409 del alta nombraba los dos emails cuando chocaba uno, y el formulario
+pintaba `aria-invalid` en ambos: el operador corregía también el campo bueno.
+**Generalizable:** un error con `campos` tiene que nombrar solo lo que de verdad
+falló, o la UI castiga al campo correcto y manda a corregir lo que estaba bien.
+Si el dato para discriminar no está en la excepción (el 23505 no dice cuál), se
+consulta antes; la consulta previa no es atómica, así que el `catch` queda como
+red de la carrera.

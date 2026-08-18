@@ -136,6 +136,10 @@ export default function PantallaOperador({
   const secuenciaLista = useRef(0);
   const sincronizando = useRef(false);
   const sincronizarDeNuevo = useRef(false);
+  /** Salidas en vuelo: corta el doble toque en el mismo frame (el ref es síncrono). */
+  const cerrandoSalidas = useRef(new Set<string>());
+  /** Copia en estado para deshabilitar el botón; el ref manda para la carrera. */
+  const [cerrando, setCerrando] = useState<Set<string>>(new Set());
   /** Sesiones cerradas en este dispositivo hace poco, con el instante del cierre. */
   const cierresRecientes = useRef(new Map<string, number>());
 
@@ -298,6 +302,11 @@ export default function PantallaOperador({
     const validacion = validarPatente(patente);
     if (!validacion.valida) {
       setError(validacion.motivo);
+      // Foco de vuelta al campo (hallazgo FE-5 del concilio). Antes el foco
+      // quedaba en «Confirmar» tras el error, así que corregir exigía volver al
+      // campo con el dedo o el tabulador. La barrera de fixtures ya lo hacía;
+      // esta rama —la de validación— quedó afuera.
+      campo.current?.focus();
       return;
     }
 
@@ -345,6 +354,17 @@ export default function PantallaOperador({
   }
 
   async function registrarSalida(vehiculo: EnPantalla) {
+    // **Guarda de vuelo (hallazgo del experto de frontend del concilio).** El
+    // resto del archivo usa refs para esto —`pidiendoLista`, `sincronizando`—;
+    // esta ruta quedó afuera. Sin la guarda, un doble toque —el gesto real de
+    // alguien apurado— dispara DOS POST. El backend ya cierra una sola vez
+    // (AC-OP-5) y el segundo devuelve el mismo monto, así que no corrompe plata;
+    // pero el segundo viaje es ruido evitable, y el ref lo corta en el acto —una
+    // señal de estado tiene la ventana de dos toques en el mismo frame que el ref
+    // no tiene—.
+    if (cerrandoSalidas.current.has(vehiculo.id)) return;
+    cerrandoSalidas.current.add(vehiculo.id);
+    setCerrando((previas) => new Set(previas).add(vehiculo.id));
     setError(null);
     try {
       const r = await fetch(`/api/sesiones/${vehiculo.id}/salida`, { method: "POST" });
@@ -373,6 +393,15 @@ export default function PantallaOperador({
       await refrescarLocales();
     } catch {
       setError("Sin conexión: la salida necesita red para calcular el monto.");
+    } finally {
+      // Se suelta pase lo que pase: si falló, el operador tiene que poder
+      // reintentar; si cerró, la fila ya salió de la lista.
+      cerrandoSalidas.current.delete(vehiculo.id);
+      setCerrando((previas) => {
+        const siguiente = new Set(previas);
+        siguiente.delete(vehiculo.id);
+        return siguiente;
+      });
     }
   }
 
@@ -474,11 +503,13 @@ export default function PantallaOperador({
             spellCheck={false}
             inputMode="text"
             maxLength={10}
-            className="patente rounded-2xl border-2 border-line-strong bg-card px-4 py-5 text-center text-3xl text-ink caret-accent focus:border-accent focus:outline-none"
+            aria-invalid={Boolean(error) || undefined}
+            aria-describedby={error ? "error-operador" : "ayuda-patente"}
+            className="patente rounded-2xl border-2 border-line-strong bg-card px-4 py-5 text-center text-3xl text-ink caret-accent focus:border-accent focus:outline-none aria-[invalid]:border-critical"
           />
           {/* AC-UX-4 — la normalización existe desde M2 y nunca se dijo en
               pantalla. Un operador que no lo sabe teclea el guion. */}
-          <p className="text-xs text-faint">Se normaliza sola. Sin guiones ni espacios.</p>
+          <p id="ayuda-patente" className="text-xs text-faint">Se normaliza sola. Sin guiones ni espacios.</p>
           <div className="flex gap-2">
             <button
               type="submit"
@@ -500,6 +531,7 @@ export default function PantallaOperador({
 
       {error && (
         <p
+          id="error-operador"
           data-testid="error"
           role="alert"
           className="rounded-xl border border-critical/20 bg-critical-soft p-3 text-sm font-medium text-critical"
@@ -557,9 +589,10 @@ export default function PantallaOperador({
               <button
                 type="button"
                 onClick={() => registrarSalida(s)}
-                className="shrink-0 rounded-xl border border-line-strong bg-canvas-2 px-5 py-3 font-medium text-ink transition-colors duration-200 active:bg-canvas-3"
+                disabled={cerrando.has(s.id)}
+                className="shrink-0 rounded-xl border border-line-strong bg-canvas-2 px-5 py-3 font-medium text-ink transition-colors duration-200 active:bg-canvas-3 disabled:opacity-50"
               >
-                Salida
+                {cerrando.has(s.id) ? "Cerrando…" : "Salida"}
               </button>
             </li>
           ))}

@@ -23,7 +23,7 @@ import postgres from "postgres";
 import * as schema from "../src/db/schema.ts";
 // Las identidades de fixture viven en un solo lugar: si `sembrar` sembrara una
 // y los verificadores intentaran entrar con otra, fallarían cinco de ellos.
-import { EMAIL_DUENO, EMAIL_OPERADOR } from "./lib/fixtures.mjs";
+import { EMAIL_DUENO, EMAIL_OPERADOR, EMAIL_PLATAFORMA } from "./lib/fixtures.mjs";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -104,7 +104,7 @@ try {
 // mover los valores a `.env` se abrió la posibilidad de sembrar un email que
 // parezca real, así que la regla pasa a ser un chequeo en vez de una convención.
 // `.invalid` está reservado por RFC 2606 y nunca resuelve.
-for (const email of [EMAIL_OPERADOR, EMAIL_DUENO]) {
+for (const email of [EMAIL_OPERADOR, EMAIL_DUENO, EMAIL_PLATAFORMA]) {
   if (!email.endsWith(".invalid")) {
     console.error(
       `FAIL · ${email} no termina en .invalid. Los fixtures deben verse como fixtures ` +
@@ -180,6 +180,27 @@ try {
     } else {
       console.log(`usuario ya existía ${rol}: ${existente.email}`);
     }
+  }
+
+  // **El usuario de plataforma — el bootstrap que faltaba (hallazgo FE-3).**
+  //
+  // Sin esto, un deploy limpio quedaba sin nadie que pudiera dar de alta el
+  // primer cliente: la pantalla `/plataforma` es inalcanzable sin una sesión de
+  // ese rol, y crearlo a mano con un INSERT es exactamente el camino que ADR-005
+  // vino a eliminar. Va SIN estacionamiento: la invariante `pertenencia_por_rol`
+  // de la base exige que el rol `plataforma` tenga `estacionamiento_id` nulo.
+  const [plataforma] = await db
+    .select()
+    .from(schema.usuario)
+    .where(eq(schema.usuario.email, EMAIL_PLATAFORMA));
+  if (!plataforma) {
+    const [u] = await db
+      .insert(schema.usuario)
+      .values({ email: EMAIL_PLATAFORMA, rol: "plataforma", estacionamientoId: null })
+      .returning();
+    console.log(`creado usuario plataforma: ${u.email}`);
+  } else {
+    console.log(`usuario ya existía plataforma: ${plataforma.email}`);
   }
 
   console.log("\nPASS · semilla de fixtures lista");

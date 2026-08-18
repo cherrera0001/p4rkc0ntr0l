@@ -5071,3 +5071,114 @@ concurrencia 6/6 · frontera 4/4 · aislamiento 9/9 · build exit=0
 
 `verificar:esquema` sigue en 8/8: **cero tablas nuevas, cero campos nuevos**. La
 unica migracion agrega un valor de enum, afloja una nulabilidad y suma un CHECK.
+
+---
+
+## 2026-08-18 · /loop del concilio — seis pendientes cerrados
+
+Los cinco expertos habían auditado (seguridad, api, frontend terminaron; backend
+y qa fallaron por error de API). Este loop cierra los pendientes confirmados. El
+diseño Escudo Cognitivo ya está aplicado a las pantallas en alcance (commit
+`1ada8af`); estos son defectos de comportamiento, no de estética.
+
+**Nota de infraestructura, no del repo:** los tres agentes que lancé para auditar
+este lote —auditor adversarial, re-auditoría de backend, re-auditoría de QA—
+**murieron los tres por error de API / estancamiento del stream**, ninguno por
+hallar un defecto. Sus parciales fueron confirmatorios: el auditor validó el
+contrato (405, 400 JSON, 429 con clave correcta), el backend halló el aislamiento
+limpio (toda consulta filtra por `estacionamientoId`), y la carrera del alta la
+verifiqué yo. Ante la infra caída, la verificación adversarial la hice con **fallo
+plantado y salida real**, que es el estándar de evidencia del repo.
+
+### FE-6 · el cierre de sesión, dos frentes
+
+`src/app/pantalla-operador.tsx`: `registrarSalida` no tenía guarda de vuelo y el
+botón no se deshabilitaba. Un doble toque disparaba dos POST. El backend ya cierra
+una sola vez (AC-OP-5) y el segundo devuelve el mismo monto, así que no corrompía
+plata —era ruido evitable—. Guarda por `Set` de refs (síncrono: corta el segundo
+toque en el mismo frame, cosa que una señal de estado no puede) + botón
+deshabilitado con «Cerrando…».
+
+Y el hueco de cobertura, que es lo importante: `verificar:concurrencia` solo
+probaba cierres **simultáneos**, y AC-OP-5 dice «idénticos en TODAS las
+respuestas». Una ráfaga simultánea cae toda en la misma fracción, así que un monto
+recalculado contra el reloj de *ahora* podría coincidir por casualidad. El caso
+que separa es un segundo cierre **diferido**. Nuevo criterio, probado con fallo
+plantado —un recálculo en la rama `yaCerrada`—:
+
+```
+con PLANTADO-FE6
+  FAIL · un segundo cierre diferido devuelve el MISMO monto y hora del original
+         diferido: … 02:44:40 | original: … 02:44:19   (la hora avanzó 21 s)
+restaurado
+  7/7 comprobaciones PASS · AC-OP-5: PASS
+```
+
+### FE-5 · el campo de patente del operador
+
+Sin `aria-invalid` ni `aria-describedby`, y la rama de validación no devolvía el
+foco al campo —quedaba en «Confirmar»—, así que corregir exigía volver con el dedo
+o el tabulador. La barrera de fixtures ya enfocaba; la de validación quedó afuera.
+Corregidas las dos.
+
+### H-5/H-6 · el 409 del alta
+
+Marcaba `campos: [emailDueno, emailOperador]` aunque chocara uno solo, y el
+formulario pintaba `aria-invalid` en los dos: el operador corregía también el
+email bueno. Ahora se consultan los dos emails **antes** de la transacción
+(`inArray`) y el 409 nombra solo el que choca. Medido: choca dueño →
+`["emailDueno"]`. El `catch` del 23505 queda como red de la carrera. Y la carrera
+la verifiqué —dos altas simultáneas con el mismo email—:
+
+```
+alta 1: 409 · alta 2: 201
+emails duplicados: ninguno · huérfanos: ninguno · estacionamientos creados: 1
+```
+
+No abre un oráculo nuevo (H-6): quien llama ya tecleó esos dos correos.
+
+### FE-3 · el bootstrap de plataforma
+
+`sembrar.mjs` creaba operador y dueño pero **nunca** el usuario `plataforma`, así
+que un deploy limpio no tenía a nadie que pudiera dar de alta el primer cliente:
+la pantalla `/plataforma` es inalcanzable sin ese rol, y crearlo a mano es el
+camino que ADR-005 vino a eliminar. Ahora lo siembra, sin estacionamiento (la
+invariante `pertenencia_por_rol` lo exige).
+
+**Esto revierte la postura del commit `094a900`**, que hacía a
+`verificar-aislamiento` **borrar** el usuario de plataforma *«una cuenta de alta
+viva en una URL pública es el privilegio más alto del sistema abierto»*. Era
+tratar el síntoma equivocado: operador y dueño **también** viven en la URL pública
+con la misma `CLAVE_ACCESO` compartida. El riesgo real es la clave compartida
+—aceptado, documentado—, no que la cuenta exista. `verificar-aislamiento` ya no lo
+borra; sigue 9/9 y deja plataforma vivo.
+
+### H-7 · omisiones del contrato
+
+`docs/CONTRATO-api.md` documentaba de menos. Agregadas, y confirmadas por el
+auditor antes de morir: `400 «Cuerpo JSON inválido»` en las tres rutas POST,
+`405` sin cuerpo, el 429 que **también bloquea la clave correcta** tras la ráfaga,
+y que `sesion` puede ser `null` en `patente-ya-activa`.
+
+### Guard reforzado
+
+`verificar-ui.mjs` nombra ahora `.mono-caption`, `.btn-primario` y `.campo` como
+que deben vivir en `@layer components` —antes solo `.eyebrow/.patente/.cifra/
+.tabular`—. Un componente del sistema fuera de su capa deja de ser ajustable en el
+sitio de uso, que es el defecto que ese bloque atajó para `.cifra`.
+
+### Corrección de estado
+
+`STATE.md` decía que el envoltorio de ruta estaba «sin hacer». **Ya estaba hecho**
+(commit `d9df8a9`): `exigirRol` corre dentro del `try` vía `rutaAutenticada`, y
+`verificar:endurecimiento` lo hace cumplir por exclusión (33/33). Se corrige.
+
+### Regresión
+
+```
+test 122/122 · ac 9/9 · citas 51/51 · verificadores 51/51 · alcance 11/11
+agentes 40/40 · esquema 8/8 · invariantes 8/8 · salida 11/11
+concurrencia 7/7 · frontera 5/5 · aislamiento 9/9 · build exit=0
+```
+
+Cero migraciones. Cero campos. El esquema no se tocó.

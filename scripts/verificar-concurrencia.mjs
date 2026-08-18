@@ -175,6 +175,32 @@ try {
       : "la sesión no está en la base",
   );
 
+  // --- Cierre DIFERIDO, no solo simultáneo (hallazgo FE-6 del concilio) --------
+  //
+  // AC-OP-5 dice «idénticos en TODAS las respuestas», y una ráfaga simultánea no
+  // lo prueba entero: sus cierres caen todos en la misma fracción, así que un
+  // monto que se recalculara contra el reloj de *ahora* podría coincidir por
+  // casualidad. El caso que lo separa es un segundo cierre **más tarde**, cuando
+  // el reloj ya cruzó el borde de la fracción: si la salida no es idempotente,
+  // devuelve un monto y una hora nuevos. Debe devolver los del ganador original.
+  //
+  // Se espera ~1.2 s para no depender de la fracción de tarifa (que puede ser de
+  // minutos): lo que importa es que `salida_at` avanzó entre los dos intentos, y
+  // el segundo NO puede reflejarlo.
+  await new Promise((r) => setTimeout(r, 1200));
+  const rDiferido = await fetch(`${URL_BASE}/api/sesiones/${id}/salida`, { method: "POST", headers: cabeceras });
+  const cuerpoDiferido = await leerJson(rDiferido);
+  const montoDif = cuerpoDiferido?.sesion?.montoCalculado ?? "sin-monto";
+  const salidaDif = cuerpoDiferido?.sesion?.salidaAt ? new Date(cuerpoDiferido.sesion.salidaAt).toISOString() : "sin-salida";
+  comprobar(
+    "un segundo cierre diferido devuelve el MISMO monto y la misma hora del original",
+    rDiferido.status === 200 &&
+      cuerpoDiferido?.yaCerrada === true &&
+      montoDif === montoRespuesta &&
+      salidaDif === salidaRespuesta,
+    `diferido: HTTP ${rDiferido.status} · yaCerrada=${cuerpoDiferido?.yaCerrada} · ${montoDif} · ${salidaDif} | original: ${montoRespuesta} · ${salidaRespuesta}`,
+  );
+
   await sql`DELETE FROM sesion_vehiculo WHERE patente = ${PATENTE}`;
 } catch (e) {
   comprobar("la corrida llegó al final", false, e.message);

@@ -33,6 +33,7 @@
  * camino, y `AC-ISO-2` lo hace cumplir desde afuera.
  */
 
+import { inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { conBase, db, estacionamiento, tarifa, usuario } from "@/db";
@@ -167,6 +168,34 @@ export const POST = rutaAutenticada<unknown, "plataforma">(
       );
     }
 
+    // **El 409 nombra SOLO el email que choca (hallazgo del experto de API).**
+    // Antes el `catch` del 23505 devolvía `campos: [emailDueno, emailOperador]`
+    // aunque colisionara uno solo, y el formulario pintaba `aria-invalid` en los
+    // dos: el operador corregía también el email bueno. Se consulta cuál existe
+    // antes de la transacción y se responde con el que corresponde.
+    //
+    // No abre un oráculo nuevo: quien llama ya tecleó esos dos correos, así que
+    // el 409 no le dice nada que no supiera. Y el `catch` del 23505 se mantiene
+    // como red de la carrera —dos altas simultáneas con el mismo email— porque
+    // esta consulta previa no es atómica con el INSERT.
+    const chocan = await conBase(() =>
+      db
+        .select({ email: usuario.email })
+        .from(usuario)
+        .where(inArray(usuario.email, [emailDueno!, emailOperador!])),
+    );
+    if (chocan.length > 0) {
+      const existentes = new Set(chocan.map((u) => u.email));
+      const campos = [
+        ...(existentes.has(emailDueno!) ? ["emailDueno"] : []),
+        ...(existentes.has(emailOperador!) ? ["emailOperador"] : []),
+      ];
+      return NextResponse.json(
+        { error: "Ya existe un usuario con ese email.", campos },
+        { status: 409 },
+      );
+    }
+
     try {
       const creado = await conBase(() =>
         db.transaction(async (tx) => {
@@ -196,8 +225,10 @@ export const POST = rutaAutenticada<unknown, "plataforma">(
 
       return NextResponse.json({ cliente: creado }, { status: 201 });
     } catch (error) {
-      // Email repetido: es un error del que da de alta, no del servicio. Sale
-      // 409 y no 503, porque reintentarlo igual nunca va a funcionar.
+      // **Red de la carrera**, no el camino normal: el 409 lo emite ahora la
+      // consulta previa. Acá solo cae una segunda alta que pasó la consulta y
+      // perdió la carrera del INSERT contra otra simultánea. Como no se sabe cuál
+      // de los dos emails chocó, se nombran ambos —es el caso raro, no el común—.
       if (error instanceof ErrorBaseDatos && error.codigo === "23505") {
         return NextResponse.json(
           { error: "Ya existe un usuario con ese email.", campos: ["emailDueno", "emailOperador"] },
