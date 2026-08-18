@@ -40,6 +40,24 @@ export const EMAIL_OPERADOR = leer("EMAIL_OPERADOR", "operador@fixture.invalid")
 export const EMAIL_DUENO = leer("EMAIL_DUENO", "duena@fixture.invalid");
 
 /**
+ * Fixtures de multicliente (ADR-005). El usuario de plataforma y el segundo
+ * cliente que `verificar:aislamiento` da de alta y borra.
+ *
+ * Van por variable de entorno como el resto, y por una razon que no es de
+ * estilo: el correo de plataforma identifica al rol que **da de alta clientes**,
+ * el privilegio mas alto del sistema. Quemarlo en el fuente publicaba en el
+ * repositorio el nombre exacto de esa cuenta. En `.env` —que esta en
+ * `.gitignore`— no.
+ *
+ * El dominio `.invalid` esta reservado por RFC 2606: nunca resuelve, asi que
+ * ningun fixture puede parecerse a un correo real (spec.md §11).
+ */
+export const EMAIL_PLATAFORMA = leer("EMAIL_PLATAFORMA", "plataforma@fixture.invalid");
+export const EMAIL_DUENO_B = leer("EMAIL_DUENO_B", "duena-b@fixture.invalid");
+export const EMAIL_OPERADOR_B = leer("EMAIL_OPERADOR_B", "operador-b@fixture.invalid");
+export const NOMBRE_CLIENTE_B = leer("NOMBRE_CLIENTE_B", "Estacionamiento B (fixture)");
+
+/**
  * Sub-prefijo reservado del **banco de medición de H1** (FASE D).
  *
  * ## Por qué el banco necesita sobrevivir a la limpieza

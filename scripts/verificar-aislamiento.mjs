@@ -37,16 +37,22 @@
 
 import postgres from "postgres";
 
-import { EMAIL_OPERADOR } from "./lib/fixtures.mjs";
+import {
+  EMAIL_DUENO_B,
+  EMAIL_OPERADOR,
+  EMAIL_OPERADOR_B,
+  EMAIL_PLATAFORMA,
+  NOMBRE_CLIENTE_B,
+} from "./lib/fixtures.mjs";
 import { leerJson } from "./lib/respuesta.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const CLAVE = process.env.CLAVE_ACCESO ?? "";
 
-const EMAIL_PLATAFORMA = "plataforma@fixture.invalid";
-const NOMBRE_B = "FIXTURE Cliente B";
-const EMAIL_DUENO_B = "dueno-b@fixture.invalid";
-const EMAIL_OPERADOR_B = "operador-b@fixture.invalid";
+// Los correos y el nombre del cliente B viven en fixtures.mjs (y de ahi en
+// .env): el correo de plataforma identifica al rol de mayor privilegio y no se
+// quema en un archivo versionado.
+const NOMBRE_B = NOMBRE_CLIENTE_B;
 const PATENTE_A = "FIXT70";
 const PATENTE_B = "FIXT71";
 

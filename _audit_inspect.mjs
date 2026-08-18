@@ -1,0 +1,12 @@
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import * as schema from "./src/db/schema.ts";
+const c = postgres(process.env.DATABASE_URL, { max: 1 });
+const db = drizzle(c, { schema });
+const est = await db.select().from(schema.estacionamiento);
+const us = await db.select().from(schema.usuario);
+console.log("ESTACIONAMIENTOS:");
+for (const e of est) console.log(" ", e.id, "|", e.nombre);
+console.log("USUARIOS:");
+for (const u of us) console.log(" ", u.email, "|", u.rol, "|", u.estacionamientoId);
+await c.end();
