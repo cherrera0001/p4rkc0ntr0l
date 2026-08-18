@@ -475,6 +475,29 @@ export default function PantallaOperador({
         </div>
       </section>
 
+      {/* Banner de tranquilidad del diseño 1b. Aparece cuando hay registros sin
+          subir: le dice al operador que lo que registró NO se perdió y que puede
+          seguir trabajando. Es contenido de confianza, no un error —por eso el
+          tono ámbar del sistema, no el crítico—, y sostiene H1: si el operador
+          no confía en la app sin señal, vuelve al cuaderno. */}
+      {sinSincronizar > 0 && (
+        <section
+          role="status"
+          className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning-soft p-4"
+        >
+          <span aria-hidden className="mt-1.5 size-2 shrink-0 rounded-full bg-warning" />
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium text-warning">
+              {sinSincronizar} {sinSincronizar === 1 ? "registro espera" : "registros esperan"} red
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              Se guardaron en este equipo. Suben solos al reconectar; podés seguir
+              registrando.
+            </p>
+          </div>
+        </section>
+      )}
+
       {!tecleando ? (
         <button
           type="button"
