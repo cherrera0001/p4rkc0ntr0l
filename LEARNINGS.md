@@ -1088,3 +1088,153 @@ falló, o la UI castiga al campo correcto y manda a corregir lo que estaba bien.
 Si el dato para discriminar no está en la excepción (el 23505 no dice cuál), se
 consulta antes; la consulta previa no es atómica, así que el `catch` queda como
 red de la carrera.
+
+## 2026-08-19 · Sustituir una lista por otra lista no es escanear por exclusión
+
+Corregí `AC-ISO-2` para que dejara de enumerar **dos rutas** y pasara a escanear
+la superficie de plataforma. Lo escribí citando la lección de AC-SCOPE-1. Y lo
+que hice fue cambiar *una lista de rutas* por *una lista de dos directorios*:
+
+```js
+const SUPERFICIE_PLATAFORMA = ["src/app/plataforma", "src/app/api/plataforma"];
+```
+
+El auditor lo rompió en vivo, con la fuga reproducida y el guard en 12/12 verde:
+un helper en `src/lib/` —fuera de los dos directorios— más una ruta cuyo `GET`
+devuelve `{ok:true}` limpio y cuyo **`POST`** reparte todas las patentes. Tres
+huecos, uno por pieza: el escaneo estático no sigue imports, el barrido dinámico
+solo hacía GET, y la superficie era una enumeración disfrazada.
+
+**La lección generalizable, que es la que cuesta:** *«por exclusión»* no es una
+propiedad del texto que uno escribe, es una propiedad de **qué se recorre**. La
+pregunta que la distingue no es «¿enumeré rutas o carpetas?» sino **«¿qué hecho
+del código define la superficie?»**. Acá el hecho no es la ubicación del archivo:
+es **declarar `rol: "plataforma"`**. Un archivo con ese rol en cualquier carpeta
+es superficie; uno sin él, en `src/app/plataforma/`, no lo es. Descubrir por la
+propiedad y no por la ruta es lo único que cierra el hueco.
+
+**Corolario que ya se pagó dos veces en este repo:** citar la lección correcta no
+protege de repetirla. La cité en el comentario del propio código que la violaba.
+
+## 2026-08-19 · Un 201 puede mentir: verificar el efecto, no el código de estado
+
+`verificar:tarifas` probado con el fallo plantado: la ruta respondía **HTTP 201**
+sin insertar nada. Cuatro comprobaciones fallaron igual, porque miran el
+**histórico en la base** —creció o no creció— y no la respuesta.
+
+Un verificador que hubiera afirmado *«PASS · la ruta responde 201»* habría dado
+verde sobre una ruta que no hace nada. El código de estado es lo que el servidor
+**dice**; el efecto es lo que **hizo**.
+
+## 2026-08-19 · Una superficie nueva rompe el piso de otro verificador, y eso es la señal
+
+`POST /api/tarifas` exige rol `dueño`. `verificar:frontera` tenía sesiones de
+`operador` y `plataforma`, así que la ruta respondía 401 en el 100% de sus casos
+y **su piso lo delató**: 4/5, *«ninguna quedó en 401/403 el 100%»*.
+
+El descubrimiento de rutas por exclusión funcionó —la ruta entró sola—, pero
+descubrirla no es probarla: sin una sesión que atraviese la puerta, se prueba la
+puerta y no la validación. **Toda ruta nueva con un rol nuevo trae consigo la
+obligación de una sesión nueva en `verificar:frontera`.** El piso ya lo hace
+cumplir; conviene saberlo antes de que falle.
+
+## 2026-08-19 · Las pestañas comparten el frasco de cookies
+
+Un verificador con dos roles en el mismo navegador: entrar como operador pisó la
+sesión del dueño, y el `POST` siguiente devolvió 401 sobre un permiso que sí
+existía. Media hora buscando un defecto de autorización que era del instrumento.
+
+**Un contexto de navegador por rol** (`browser.createBrowserContext()`), o el
+verificador mide el orden de sus propios logins en vez de medir el producto.
+
+## 2026-08-19 · Un corpus más grande no es más cobertura si la sonda no llega
+
+Agregué cuatro fechas fuera de rango al corpus de `verificar:frontera` para
+cubrir un 503 real. Después medí con el fallo plantado —cota de rango quitada
+del producto— y el verificador siguió dando **5/5 PASS**.
+
+La causa no era el corpus: es **la forma de la sonda**. Manda el mismo valor
+degenerado en *todos* los campos a la vez, así que `validarPatente` rechaza con
+400 y **todo lo que está aguas abajo de la primera guarda queda sin ejercitar**.
+Un corpus de N valores sobre M campos parece cobertura de N×M y es cobertura de
+*la primera validación que rechaza*.
+
+**La lección:** antes de declarar que un caso está cubierto, hay que comprobar
+que la sonda **alcanza el código** que lo trata. Agregar el valor es barato;
+llegar hasta él puede exigir rediseñar la sonda —acá exigiría mandar un cuerpo
+válido con un solo campo degenerado, y eso crea filas reales en cada petición—.
+
+**El corolario que se aplicó:** cuando la sonda de caja negra no llega, la
+propiedad se prueba donde sí se puede — la guarda se movió a `src/lib/frontera.ts`
+y se probó con `npm test`, determinista y sin servidor. Falla con la cota quitada
+(3 pruebas en rojo, medido). *Consolidar la guarda donde vive el resto de la
+frontera no fue estética: fue lo que la volvió verificable.*
+
+## 2026-08-19 · Tres verificadores de navegador fallan en lote y pasan aislados
+
+Medido hoy, tres veces, en tres scripts distintos:
+
+| Verificador | En lote | Aislado |
+|---|---|---|
+| `verificar:temporizador` | 10/14 | 14/14 |
+| `verificar:op1` | 10/12 | 12/12 |
+| `verificar:m4` | 28/29 | 29/29 |
+
+Cada uno falló en aserciones distintas, y ninguna correspondía a un defecto del
+código que se acababa de tocar. Corridos solos, los tres pasan.
+
+**No es "flakiness" a secas: es que los verificadores de navegador no están
+aislados entre sí.** Comparten la base, el servidor y el estado que dejan las
+corridas anteriores, y varios leen instantes cerca de un cruce de minuto.
+
+**Por qué importa más de lo que parece:** un rojo que es ruido enseña a
+desconfiar del verificador, y un verificador del que se desconfía deja de
+detener un hito. Este repo ya escribió esa lección para los fixtures —*«un FAIL
+falso enseña a desconfiar del verificador, que es peor que no tenerlo»*
+(`scripts/lib/fixtures.mjs`)— y hoy se repitió en otra forma: no por datos
+previos, sino por **contención entre corridas**.
+
+Queda **sin corregir y declarado**: la corrección no es un `Start-Sleep` más
+largo, es decidir si la suite de navegador corre en serie con una barrera
+explícita entre scripts, o si cada uno se aísla de verdad. Es una decisión de
+diseño de la suite, no un ajuste.
+
+---
+
+## 2026-08-20 · Un guard que lee texto tiene que decidir qué texto NO cuenta
+
+Dos guards rotos el mismo día, con la misma forma: **comparar dos formas
+distintas del mismo texto y creer que son la misma comparación.**
+
+1. `scripts/lib/metrica.mjs` normalizaba la clave de búsqueda y **no** las claves
+   del `Map`. `has()` no acertaba nunca. El síntoma es reconocible y conviene
+   nombrarlo: **dos comprobaciones contradiciéndose sobre el mismo hecho** —la
+   misma resta «sin declarar» y a la vez «declarada que sobra»—. Cuando eso pasa,
+   el defecto no está en ninguna de las dos: está en lo que ambas usan.
+2. `scripts/verificar-h1.mjs` buscaba `["'`]FIXTB` sobre el fuente **crudo**, y el
+   backtick de un JSDoc contó como comilla de literal. Los dos archivos acusados
+   de invadir el espacio de nombres del banco lo hacían en **comentarios que
+   explican que no lo invaden**.
+
+**La lección generalizable, que es la segunda:** un guard que escanea texto tiene
+que declarar qué texto no cuenta. Si no lo hace, **documentar la regla se vuelve
+una forma de violarla** — y el incentivo que crea es borrar la explicación, que
+es exactamente lo contrario de lo que este repo intenta.
+
+El mecanismo ya existía en el mismo archivo, dos funciones más arriba, con su
+motivo escrito. Estaba **inline y sin extraer**, así que el segundo escaneo no lo
+heredó. Es *media extracción es peor que ninguna* otra vez, en su versión más
+barata de evitar.
+
+### Y el hallazgo de proceso, que vale más que las dos correcciones
+
+`verificar:metrica` **ya estaba** en el `CATALOGO` de `evidencia.mjs:147`.
+`verificar:reportes` **ya estaba** declarado soltado en `verificar-ac.mjs:290`.
+**El mecanismo que habría detectado MET-1 el mismo día en que nació existía y no
+se corrió:** el bloque de regresión del ledger del 19 se tecleó a mano y lista 22
+verificadores sin `metrica`.
+
+No hace falta un guard nuevo: hace falta que **el bloque de regresión del ledger
+sea la salida de `npm run evidencia`** y no un texto que alguien escribe. *Una
+regresión que no se corre no existe* — y una que se transcribe a mano tampoco,
+porque la mano elige qué copiar.

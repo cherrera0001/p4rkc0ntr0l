@@ -5182,3 +5182,615 @@ concurrencia 7/7 · frontera 5/5 · aislamiento 9/9 · build exit=0
 ```
 
 Cero migraciones. Cero campos. El esquema no se tocó.
+
+---
+
+## 2026-08-19 · Capa administrativa de plataforma · **PASS** · y Directus **rechazado con medición**
+
+**Pedido:** una primera capa de administración de la base apoyada en **MCP
+Directus**, spec-driven.
+
+### Lo que se rechazó, y por qué no es una opinión
+
+**No se adoptó Directus.** Tres razones, la primera medida y no argumentada:
+
+1. **Rompe AC-DATA-1, y se reprodujo.** Directus crea su esquema de sistema en
+   `public`. Con **dos** de sus tablas plantadas —de las ~25 que instala— el
+   verificador real dice:
+
+   ```
+   FAIL · AC-DATA-1 · están las cuatro tablas de spec.md §4, y ninguna más ·
+          directus_collections, directus_permissions, estacionamiento,
+          sesion_vehiculo, tarifa, usuario
+   7/8 comprobaciones PASS · exit=1
+   ```
+
+   Borradas las dos tablas, vuelve a `8/8 PASS · exit=0`. La base quedó como
+   estaba.
+2. **Abre un camino a `patente` fuera de AC-ISO-2.** Una consola genérica sobre
+   la base llega a `sesion_vehiculo` por diseño, y acotarla sería configuración
+   guardada en las tablas de Directus: la invariante se mudaría del código —donde
+   un comando la verifica— a una consola donde ninguno la mira. Es exactamente el
+   patrón que INT-12 dejó como riesgo aceptado.
+3. **Es un segundo servicio y un segundo sistema de autenticación**, contra el
+   criterio rector de ADR-002, y sus escrituras no pasan por las seis cláusulas
+   de aislamiento ni por la transacción del alta (AC-ADM-1).
+
+Además, **el servidor MCP de Directus no está configurado en este entorno**: no
+hay `.mcp.json` y `directus` no aparece ni una vez en el árbol. Adoptarlo va por
+ADR; la pregunta bloqueante quedó formulada para el decisor.
+
+### Lo que sí se construyó
+
+**AC-ISO-2 pasó de enumeración a exclusión.** El criterio dice *«por ninguna
+ruta»* y lo verificaban **dos peticiones escritas a mano**. Una ruta nueva bajo
+`src/app/plataforma/` o `src/app/api/plataforma/` nacía sin control — el mismo
+defecto de forma que obligó a reescribir AC-SCOPE-1. Ahora la superficie se
+descubre del árbol: ningún archivo de plataforma toca `sesion_vehiculo`, y
+ninguna de sus URL devuelve una patente.
+
+**Probado con el fallo plantado**, que es lo que da valor al cambio: con
+`src/app/api/plataforma/sonda-plantada/route.ts` repartiendo patentes,
+
+```
+PASS · AC-ISO-2 · el rol plataforma no obtiene patentes por el listado · HTTP 401
+PASS · AC-ISO-2 · el rol plataforma tampoco llega a una patente por la ruta de salida · HTTP 401
+FAIL · AC-ISO-2 · ninguna pieza de la superficie de plataforma toca la tabla donde vive la patente · FUGA: src/app/api/plataforma/sonda-plantada/route.ts
+FAIL · AC-ISO-2 · ninguna URL de la superficie de plataforma devuelve una patente · /plataforma → 200 · /api/plataforma/clientes → 405 · /api/plataforma/sonda-plantada → 200 · FUGA
+10/12
+```
+
+**Las dos comprobaciones viejas siguieron en PASS mientras la fuga estaba
+abierta.** Eso es la medición de lo que faltaba. Ruta plantada eliminada.
+
+**Listado de clientes** (SPEC-005 §3.1, capacidades 2 y 3), en `/plataforma`:
+nombre, capacidad, zona horaria, fecha de alta y **cantidad** de usuarios, con
+estado `Operativo` / `Incompleto` derivado de las mismas tres condiciones que
+AC-ADM-1 exige del alta. Consulta en el componente de servidor, patrón del panel
+del dueño; **sin ruta de API nueva**, para no abrir otra superficie JSON sobre la
+tabla de usuarios.
+
+**Lo que NO se construyó, y va escrito para que la omisión sea visible:**
+ocupación, ingresos, descuadre o cualquier vista de operación del cliente
+(SPEC-005 §3.2); **los correos** de los usuarios —`{{PLAZO_RETENCION_USUARIO}}`
+sigue abierto, así que se cuenta y no se lista—; edición de tarifa desde
+plataforma (es H-08, del dueño); baja de usuario (H-10, le falta columna de
+estado —que rompería AC-DATA-1— y `{{ACTOR_BAJA_USUARIO}}`).
+
+### Regresión
+
+```
+test 122/122 · alcance 11/11 · alcance:prueba 15/15 · ac 9/9 · citas 51/51
+verificadores 51/51 · esquema 8/8 · invariantes 8/8 · salida 11/11
+concurrencia 7/7 · frontera 5/5 · op1 11/11 · meas1 PASS · meas2 10/10
+a3 11/11 · pwa 13/13 · m4 29/29 · ui 21/21 · endurecimiento 33/33
+temporizador 14/14 · aislamiento 12/12 (era 9/9) · build exit=0
+h1 FAIL — el banco sigue vacío, y ese FAIL *es* la medición (STATE.md)
+```
+
+`temporizador` dio **10/14 en la primera corrida** del lote y **14/14 aislado**:
+estado de la corrida anterior, la clase de FAIL falso que `scripts/lib/fixtures.mjs`
+documenta. No lo toca este cambio — la pantalla del operador no se modificó.
+
+Cero migraciones. Cero campos. Cero dependencias nuevas. El esquema no se tocó.
+
+---
+
+## 2026-08-19 · Maqueta `1e` implementada + diagnóstico integral del concilio
+
+### Lo construido — `1e` Tarifas (M6 FASE C)
+
+El lienzo de Claude Design se importó por `DesignSync` (proyecto
+`964c3090-9776-4aa0-a79f-816b50244a83`, *«PWA estacionamientos por tenant»*) y
+resultó ser **el mismo que `docs/diseno-2026-08-12-traduccion.md` ya tradujo**:
+turno 1, artboards `1a`–`1n`. No se re-derivó el veredicto; se usó el escrito.
+
+De las tres pantallas construibles pendientes se construyó `1e`, veredicto
+**DENTRO**: pantalla del dueño con la tarifa vigente, simulador, histórico y
+carga de una versión nueva.
+
+| Capa | Archivo |
+|---|---|
+| API | `src/app/api/tarifas/route.ts` **(nuevo)** — `POST`, rol `dueño`, INSERT y nunca UPDATE |
+| Backend | `src/lib/frontera.ts` — `enteroDeFrontera()` extraído; el alta de cliente ahora lo reutiliza |
+| Frontend | `src/app/dueno/tarifas/{page,formulario-tarifa}.tsx` **(nuevos)** |
+| Frontend | `src/app/dueno/page.tsx` — enlace; `src/app/plataforma/formulario-alta.tsx` — `router.refresh()` |
+| Verificación | `scripts/verificar-tarifas.mjs` **(nuevo)** + `verificar-ac.mjs` (declarado soltado con motivo) |
+| Docs | `docs/CONTRATO-api.md`, `src/lib/roles.ts` |
+
+**El simulador no tiene un solo número escrito a mano:** corre `calcularMonto`,
+la función que `AC-OP-2` prueba. Medido contra la maqueta con `valor_hora 2000 ·
+fracción 15 · mínimo 1000`: los cinco casos coinciden, **incluido `9 H 20` →
+$19.000 / 570 min**. La discrepancia que `docs/diseno-2026-08-12-traduccion.md:208`
+registró (maqueta 18.667 vs AC-OP-2 19.000) **ya no existe: el lienzo se corrigió
+aguas arriba.** Se deja anotado porque ese documento sigue afirmándola.
+
+**Del diseño NO se implementó, y queda escrito para que la omisión sea decisión:**
+los chips de tres estacionamientos (**multisitio**, fuera por ADR-001/004 y
+`AC-SCOPE-4`), y *«aplicada a 1.412 salidas»* (**no derivable**: haría falta
+`sesion_vehiculo.tarifa_id`, que rompe `AC-DATA-1` y **va por ADR**).
+
+### Probado con el fallo plantado
+
+Ruta que responde **201 sin versionar** (no destructivo a propósito: borrar el
+histórico dejaría al estacionamiento sin tarifa vigente):
+
+```
+FAIL · POST /api/tarifas crea una version nueva · HTTP 201
+FAIL · INSERTA, no pisa: el historico crecio en 1 (AC-UX-6) · 1 -> 1
+FAIL · la pantalla refleja la version nueva · $ 1.000
+FAIL · la version anterior queda en el historico · 0 anterior(es)
+7/11
+```
+Revertido → **11/11 PASS**. El verificador mira el **efecto en la base**, no el
+código de estado: por eso un 201 mentiroso no lo engaña.
+
+### Regresión rota y reparada en el mismo hito
+
+`POST /api/tarifas` exige rol `dueño` y `verificar:frontera` no tenía esa sesión:
+la ruta quedaba 401 en el 100% de sus casos y **su piso la delató — 4/5**.
+Corregido agregando la sesión de dueño. Ahora **5/5**, con la ruta nueva
+descubierta sola y **231 casos degenerados sin un solo 5xx**.
+
+### AC-OP-1 dejó de tener un `true` escrito a mano
+
+`scripts/verificar-op1.mjs:155` decía `comprobar("la UI muestra el vehículo
+aunque no haya red", true)`. Una constante, dentro del criterio que protege el
+registro sin conexión. Y **AC-UX-1** (el contador *«N esperando red»*) estaba
+construido y no lo verificaba ningún script — medido: cero apariciones en
+`scripts/`. Con el fallo plantado en el producto: **10/12, fallando exactamente
+las dos nuevas**; el resto, incluido el `waitForSelector` viejo, en verde — o sea
+que antes nada lo habría detectado. Árbol limpio: **12/12**.
+
+### Diagnóstico del concilio — hallazgos ABIERTOS, no corregidos
+
+Cinco auditorías con evidencia reproducida. **Ninguno se corrigió en este hito**
+(WIP=1); quedan registrados con su evidencia:
+
+| ID | Hallazgo | Evidencia |
+|---|---|---|
+| **API-1** | `POST /api/sesiones` devuelve **404** cuando el `id` existe bajo otro estacionamiento; `esRechazoDefinitivo` solo trata 400/403 como definitivos → la cola **corta el lote para siempre** | reproducido con dos operadores y el mismo `id` |
+| **API-2** | Fecha fuera de rango → **503**, no 400: dato que la base nunca aceptará, reintentado infinitamente | `tecleoInicioAt:"-010000-01-01"` → 503 `22009`. `verificar:frontera` da PASS: su corpus no tiene fechas |
+| **SEG-1** | **DoS de cuenta sin autenticar**: 6 POST bloquean el login del operador real; el backoff llega a 15 min y se sostiene con 1 intento cada 15 min | 6×401 → 429, y la clave correcta también recibe 429 |
+| **SEG-2** | `identificarCliente` confía en `X-Forwarded-For` del cliente sin salto de confianza | confirmado en local; **no medido contra producción — declarado como duda** |
+| **SEG-3** | Sin `Cache-Control` en respuestas con dato personal o cookie | confirmado en vivo; hoy mitigado porque el `fetch` del producto usa `no-store` |
+| **BE-1** | Sin `statement_timeout` ni `idle_in_transaction_session_timeout`: una fila trabada espera **sin techo** | medido: `pg_settings` los tres en 0; waiter bloqueado **14,6 s** con un holder de prueba |
+| **BE-2** | `pertenencia_por_rol` **no está** en la lista de restricciones de `verificar:invariantes`, y esa lista comprueba el **nombre**, no la definición | probado que la invariante sí funciona hoy (23514 en los dos sentidos) |
+| **BE-3** | `tarifa` sin índice sobre `estacionamiento_id`: `Seq Scan` en el camino de cobro | `EXPLAIN` real; hoy 0,04 ms, es riesgo de crecimiento |
+| **FE-1** | **Doble toque en «Confirmar» duplica el ingreso**: sin guarda de reentrancia, a diferencia de todos los demás botones mutadores. Sin red la ocupación queda inflada todo el corte | lectura de código; `verificar:op1` hace un solo click |
+| **QA-1** | El barrido «por exclusión» de AC-ISO-2 era una enumeración de dos carpetas | **fuga reproducida con guard en 12/12 verde** |
+| **TMP-1** | **`verificar:temporizador`: la fila muestra `0 min` en el primer pintado** y se corrige después | `pantalla "0 min" · entrada_at implica "2 h 20 min"`, y acto seguido `"0 min" → "2 h 20 min"`. Preexistente: `pantalla-operador.tsx` idéntico a HEAD |
+
+### Directus / MCP — sigue rechazado
+
+Sin cambios respecto del 2026-08-19 anterior. La medición se mantiene.
+
+### Regresión final
+
+```
+test 122/122 · alcance 11/11 · alcance:prueba 15/15 · ac 9/9 · citas 51/51
+verificadores 53/53 · agentes 40/40 · esquema 8/8 · invariantes 8/8
+metrica 4/4 · frontera 5/5 (era 4/5) · salida 11/11 · concurrencia 7/7
+aislamiento 12/12 · op1 12/12 · tarifas 11/11 (nuevo) · meas1 PASS
+meas2 10/10 · a3 11/11 · pwa 13/13 · m4 29/29 · ui 21/21 · build exit=0
+temporizador 11/14 — ver TMP-1, defecto real y preexistente
+h1 FAIL — banco vacío; ese FAIL *es* la medición
+```
+
+`op1` dio 10/12 dentro del lote y **12/12 aislado** (contención de navegadores
+consecutivos, la clase que `scripts/lib/fixtures.mjs` documenta).
+
+Cero migraciones. Cero campos. Cero dependencias nuevas. El esquema no se tocó.
+
+---
+
+## 2026-08-19 (cont.) · FE-1 cerrado + lote de endurecimiento transversal
+
+### FE-1 — el doble toque duplicaba el ingreso · **PASS**
+
+Corregido en `src/app/pantalla-operador.tsx` con **el mismo patrón que ya usaba
+`registrarSalida`** (`useRef` síncrono + `disabled` de espejo, soltado en
+`finally`). No se inventó un patrón: se replicó el que el concilio ya auditó en
+el mismo archivo. El `finally` es lo que impide que un fallo de red deje el botón
+muerto — offline-first no se toca.
+
+**Medido antes y después, sin plantar nada: revertir a HEAD *es* el fallo.**
+
+```
+SIN la corrección:  FAIL · FE-1 · el doble toque no duplica el ingreso · 2 registro(s) para FIXT40
+                    FAIL · FE-1 · y la ocupación no queda inflada · 2 fila(s) en pantalla   → 12/14
+CON la corrección:  PASS · 1 registro(s) · PASS · 1 fila(s)                                  → 14/14
+```
+
+El verificador nuevo vive en `verificar-op1.mjs`, al final y con patente propia
+(`FIXT40`) para no mover los conteos de las aserciones existentes. Se prueba
+**sin red a propósito**: con red el índice único INT-15 tapa el defecto y lo
+vuelve invisible desde la base.
+
+### Endurecimiento transversal — cuatro correcciones de raíz, un punto cada una
+
+| Capa | Corrección | Dónde |
+|---|---|---|
+| Seguridad / sesión | `Cache-Control: private, no-store` en **todos** los caminos de salida | `src/lib/peticion.ts` (envoltorio) + `api/login` (fija la cookie fuera de él) |
+| Backend / concurrencia | `statement_timeout: 8s` · `idle_in_transaction_session_timeout: 5s` | `src/db/index.ts` |
+| API / frontera | cota de rango de fecha: **503 → 400** | guarda movida a `src/lib/frontera.ts` |
+| Arquitectura | `enteroDeFrontera` y `fechaDeFrontera` consolidados donde vive la frontera; el alta de cliente dejó de tener su copia | `src/lib/frontera.ts` |
+
+La cabecera va envolviendo **cada** `return` del envoltorio —incluidos 401, 403 y
+el 503 tipado—, no solo el del manejador: dos caminos con cabecera y dos sin ella
+es la clase de agujero por enumeración que este repo viene cerrando.
+
+Los timeouts salen de una medición, no de una recomendación: `pg_settings` tenía
+los tres en `0`, y un waiter esperó **14,6 s** contra un holder de prueba. Sin
+techo, una instancia serverless reciclada a mitad de transacción bloquea la fila
+para siempre — y desde M8 la base es compartida entre clientes.
+
+### El hallazgo incómodo: mi propia corrección del corpus no cubría nada
+
+Agregué cuatro fechas fuera de rango a `verificar-frontera.mjs` y **medí que no
+alcanzan**: con la cota quitada del producto, el criterio seguía dando **5/5
+PASS**. La sonda manda el mismo valor degenerado en todos los campos a la vez, y
+`validarPatente` rechaza antes.
+
+**No era el corpus: es la forma de la sonda.** Toda validación aguas abajo de la
+primera guarda que rechaza queda sin ejercitar — y eso explica por qué AC-API-1
+daba verde sobre un 503 reproducible. El comentario del corpus se corrigió para
+decir exactamente eso en vez de afirmar una cobertura que no tiene.
+
+La propiedad quedó probada donde sí se puede: **`src/lib/frontera.test.ts`**, 12
+casos deterministas sin servidor ni base. Probado con el fallo plantado: quitada
+la cota, **3 pruebas en rojo**; restaurada, 134/134.
+
+### Bloqueados por decisión humana — NO implementados
+
+- **API-1** (404 de `POST /api/sesiones` mal clasificado por la cola). La
+  corrección obvia —agregar 404 a `esRechazoDefinitivo`— **introduce un riesgo
+  peor que el que quita**: durante un despliegue en el que la ruta no exista
+  todavía, un 404 haría que la cola **descarte los ingresos del turno** en vez de
+  reintentarlos. Elegir entre «bloqueo permanente» y «pérdida en deploy skew» es
+  decisión de producto, no de implementación.
+- **SEG-1** (DoS de cuenta: 6 peticiones sin autenticar bloquean el login del
+  operador real). El propio auditor lo declaró trade-off explícito entre
+  severidad de fuerza bruta y disponibilidad, de la misma familia que el riesgo
+  ya aceptado de `CLAVE_ACCESO` compartida.
+- **QA-1** (AC-ISO-2 por exclusión real: descubrir la superficie por el rol que
+  declara, no por la carpeta). Sigue abierto.
+- **SEG-2**, **BE-2**, **BE-3**, **API-1**, **TMP-1**: abiertos, con evidencia en
+  la entrada anterior.
+
+### Regresión final
+
+```
+test 134/134 (eran 122) · alcance 11/11 · ac 9/9 · citas 51/51 · verificadores 53/53
+esquema 8/8 · invariantes 8/8 · frontera 5/5 (315 casos) · salida 11/11
+concurrencia 7/7 · aislamiento 12/12 · tarifas 11/11 · op1 14/14 (eran 12)
+meas1 PASS · meas2 10/10 · a3 11/11 · pwa 13/13 · m4 29/29 · ui 21/21
+endurecimiento 33/33 · build exit=0
+```
+
+`m4` dio 28/29 en lote y **29/29 aislado**; ver la entrada de `LEARNINGS.md` sobre
+los tres verificadores de navegador que fallan en lote y pasan solos.
+
+Cero migraciones. Cero campos. Cero dependencias nuevas. El esquema no se tocó.
+
+---
+
+## 2026-08-20 · Maqueta `1g` (Reportes) — el dashboard por período · **PASS**
+
+Entra por una corrección del decisor: *«las funciones son propias del rol;
+dashboard y otros aún no los veo desarrollados, por ende son pendientes»*. Tenía
+razón — la respuesta anterior contestó *quién ve todo* en vez de *qué falta por
+rol*, y el inventario contra el árbol lo confirma: solo existían 6 páginas.
+
+### El lienzo se corrigió aguas arriba, otra vez
+
+`docs/diseno-2026-08-12-traduccion.md:231` registró que el *«tecleo mediano
+6,2 s»* de `1g` era **«el más peligroso: se lee como un resultado medido de H1»**.
+**El lienzo actual ya no lo dice.** Muestra `—` con *«sin línea base»*, y su panel
+de H1 dice *«Sin mediciones. H1 no está medido todavía»*, con `{{ phUmbralH1 }}` y
+`{{ phLineaBase }}` sin rellenar. Es el segundo caso —tras el `9 H 20` de `1e`—
+en que la maqueta se corrigió y el documento de traducción quedó viejo. **Los dos
+quedan anotados; el documento no se reescribe acá.**
+
+### Construido
+
+`/dueno/reportes` (rol `dueño`): sesiones, ingresos observados y permanencia media
+de **7 días**, gráfico de sesiones por día, y el panel de evidencia de H1.
+
+**Consolidación, no copia:** `offsetMinutos` e `inicioDelDia` vivían privadas
+dentro de `src/app/dueno/page.tsx`. La segunda pantalla que necesita el mismo
+corte de día habría sido su primera copia — y dos pantallas del mismo dueño
+mostrando días distintos es peor que no tener reportes. Se extrajeron a
+`src/lib/zona.ts`, con `inicioHaceDias` nuevo que resta sobre el **calendario
+local** y no en milisegundos: un día con cambio de hora dura 23 o 25 h, y restar
+`N × 24 h` correría el corte justo en la semana que el dueño mira.
+
+### Lo que NO se tomó del diseño
+
+- **«3 estacionamientos apilados»** en el gráfico: es multisitio. Fuera por
+  ADR-001/004, hecho cumplir por `AC-SCOPE-4`. Una sola serie.
+- **La exportación CSV.** Su propia regla
+  (`docs/diseno-2026-08-12-traduccion.md:272`) dice *«agregados sin patente, o no
+  se construye hasta que `{{PLAZO_RETENCION_PATENTE}}` y `{{BASE_LICITUD}}` estén
+  resueltos»*. **Siguen sin resolver: no se construye.**
+- **El «tecleo mediano» va vacío**, y por dos razones distintas: faltan los
+  umbrales (§12), y **la métrica de H1 tiene un solo dueño** —`verificar:h1`—.
+  Calcular acá una segunda mediana agregaría una divergencia posible a `AC-H1-2`,
+  que está registrado **NO VERIFICADO**.
+
+### Verificación — `npm run verificar:reportes`, 10/10
+
+La propiedad que hace exigible es **que las cifras se deriven de la base y no
+estén escritas a mano**, que es el riesgo específico de esta pantalla: la maqueta
+trae `842 sesiones`, `$ 2,4 M` y `1 h 45` dibujados.
+
+```
+PASS · las sesiones del periodo salen de la base, no de la maqueta · pantalla 6 · base 6
+PASS · los ingresos observados coinciden con la suma real · pantalla 6000 · base 6000
+PASS · la permanencia media es la que implican las salidas reales · pantalla "25 min" · base 25.2 min
+PASS · las barras por dia suman exactamente la cifra de sesiones · barras 6 · cifra 6
+PASS · la pantalla de reportes no muestra ninguna patente
+PASS · el tecleo mediano sigue sin publicar un numero · "—"
+PASS · un operador NO llega a los reportes del dueno · /
+10/10
+```
+
+**Dos defectos del propio verificador, encontrados corriéndolo y anotados en su
+fuente** —porque los dos son fáciles de repetir—:
+
+1. El parser leía `«1 h 15»` como 60 min (buscaba el sufijo `min`, que el formato
+   de la maqueta no lleva cuando hay horas) y **reportaba como defecto del
+   producto un dato correcto**. Un verificador que no sabe leer lo que mide
+   inventa hallazgos.
+2. La permanencia se comparaba contra una **constante** —el promedio de lo
+   sembrado— y falló cuando el período incluyó salidas de otros verificadores,
+   que la pantalla —bien— cuenta. Se pasó a comparar **contra la base**, que es
+   lo que las otras dos comprobaciones ya hacían.
+
+### Documentación puesta al día
+
+Corregidas las líneas desactualizadas que decían *«faltan 3 pantallas»*:
+`STATE.md` (dos lugares + fecha), `README.md` (estado, tabla de verificadores) y
+`CLAUDE.md` §2 (estado de hitos, huérfanos declarados y los dos hallazgos
+bloqueados por decisión humana).
+
+---
+
+## 2026-08-20 (noche) · M-1 (MET-1) — CERRADO. El FAIL de H1 volvió a ser el suyo
+
+**Meta:** `METAS.md` M-1. **Condición de término:** `verificar:metrica` PASS **y**
+`verificar:h1` fallando **por banco vacío**, no por métrica divergente. **Las dos
+se cumplieron y se corrieron.**
+
+### Lo que estaba roto — dos guards, el mismo defecto de familia
+
+**MET-1a · `scripts/lib/metrica.mjs` · la búsqueda normalizaba un solo lado.**
+`clave()` devolvía la forma normalizada —guion ASCII, minúsculas— y las claves de
+`OTRO_DOMINIO` estaban escritas crudas con **U+2212**, así que `Map.has()` **no
+acertaba nunca**. El comentario del propio archivo afirmaba lo contrario:
+*«`clave()` normaliza los dos lados antes de comparar»*.
+
+Síntoma, y es lo que lo delata: **dos comprobaciones contradiciéndose sobre el
+mismo hecho** — la misma resta salía a la vez *«sin declarar»* y *«declarada que
+sobra»*. Salida antes de tocar nada:
+
+```
+FAIL · toda resta ... · 1 sin declarar: scripts/verificar-reportes.mjs: «salida_at - entrada_at»
+FAIL · ninguna declaración de otro dominio sobra · ya no existen en el código y siguen declaradas:
+       scripts/verificar-reportes.mjs :: salida_at − entrada_at
+3/5 comprobaciones PASS
+```
+
+**Corrección:** el índice se construye normalizando la clave y conservando el
+texto original para poder imprimirlo. La declaración se sigue **escribiendo** con
+U+2212 —si llevara guion ASCII se auto-matchearía al escanear `metrica.mjs`, que
+está en `PUBLICAN_H1`— y se **busca** normalizada. `normalizar` subió sobre
+`clave` porque el índice se construye en carga de módulo.
+
+**MET-1b · `scripts/verificar-h1.mjs` · un guard que castiga documentar la regla.**
+Con MET-1a corregido, `verificar:h1` pasó a `CAUSA: control-negativo`:
+
+```
+FAIL · ningún verificador usa una patente FIXTB… · verificar-concurrencia.mjs, verificar-op1.mjs
+```
+
+**Falso positivo.** Las dos coincidencias son **comentarios que explican que esos
+archivos NO usan el prefijo del banco** (`verificar-op1.mjs:27`,
+`verificar-concurrencia.mjs:39`): el matcher busca `["'`]FIXTB` sobre el fuente
+crudo y el backtick de un JSDoc cuenta como comilla de literal.
+
+El mismo archivo ya descartaba comentarios **dos funciones más arriba** para el
+escaneo de borrados, citando `verificar-verificadores.mjs:57`. Se extrajo
+`sinComentarios()` una sola vez y se usa en los dos escaneos — media extracción
+es peor que ninguna.
+
+### Probado con el fallo plantado — tres plants, salida real
+
+| Plant | Qué se plantó | Resultado |
+|---|---|---|
+| **A** | `scripts/verificar-plantado.mjs` con `ORDER BY EXTRACT(EPOCH FROM (salida_at - entrada_at))`, sin declarar | **4/5**, falla *solo* la comprobación por exclusión y **nombra el archivo plantado**. Las otras cuatro verdes |
+| **B** | la declaración apuntando a `scripts/verificar-PLANTADO.mjs`, que no existe | **3/5** — reproduce **exactamente** el síntoma original, confirmando que la causa era el desajuste de normalización y no otra cosa |
+| **C** | `scripts/verificar-plantado.mjs` con el literal real `"FIXTB99"` | `CAUSA: control-negativo`. Al borrarlo, vuelve a `CAUSA: banco-vacio` |
+
+### Evidencia de cierre — salida real de esta corrida
+
+```
+verificar:metrica → 5/5 comprobaciones PASS · COMPROBACIONES DE METRICA: PASS
+verificar:h1     → 9 comprobaciones de control PASS · CAUSA: banco-vacio · AC-H1-1: FAIL
+```
+
+Regresión de los grupos **estático** y **base** (los de servidor y navegador
+exigen `npm run build` + `npm start` y son la meta **M-3**; **no se corrieron en
+esta sesión y se dice**):
+
+```
+PASS  test            PASS  verificar:ac            PASS  verificar:esquema
+PASS  verificar:alcance        PASS  verificar:citas         PASS  verificar:invariantes
+PASS  verificar:alcance:prueba PASS  verificar:verificadores PASS  verificar:meas1
+PASS  evidencia:prueba         PASS  verificar:agentes       PASS  verificar:metrica
+FAIL  verificar:h1  (exit 1)  ← EL DELIBERADO: CAUSA banco-vacio
+```
+
+**12/13. El único FAIL es el que tiene que estar.** Que `verificar:h1` falle por
+banco vacío **es la medición**, no una regresión: `STATE.md` ya lo declara y no
+se «arregla».
+
+### Hallazgo de proceso, que vale más que las dos correcciones
+
+`verificar:metrica` **ya estaba** en el `CATALOGO` de `scripts/evidencia.mjs:147`,
+y `verificar:reportes` **ya estaba** declarado soltado en
+`scripts/verificar-ac.mjs:290`. **El mecanismo que habría detectado MET-1 existía
+y no se corrió:** la regresión publicada en el ledger del 19 se tecleó a mano y
+lista 22 verificadores sin `metrica`.
+
+**No hace falta un guard nuevo. Hace falta que el bloque de regresión del ledger
+sea salida de `npm run evidencia` y no texto escrito por alguien.**
+
+### Fuera de alcance, declarado
+
+- **AC-H1-2 sigue SIN VERIFICAR** (`spec.md` §9, LEDGER 2026-08-17). Esta entrada
+  **no lo declara verificado**: `verificar:metrica` en verde cubre la mediana por
+  su forma exacta más un punto de la consulta real; el mínimo, el máximo, el
+  estadístico y toda transformación monótona siguen fuera. C-1 de `METAS.md`.
+- Cero cambios en `src/`. Cero migraciones. Ningún `{{placeholder}}` se rellenó.
+
+---
+
+## 2026-08-20 (noche) · Validación de los dos documentos escritos hoy · **PASS**
+
+**Pedido:** *«siempre debe haber validación a cada uno de los spec que has
+construido, luego avanzar»*. Correcto, y el hueco era real.
+
+### El hallazgo: los dos documentos estaban fuera de todo comando
+
+`METAS.md` y `PROMPT-PARKCONTROL-MOVIL.md` se escribieron en la **raíz**, y
+`verificar:citas` barría `docs/data`, `docs`, `docs/adr` y `spec.md`. **Ninguna de
+sus afirmaciones la sostenía un comando** — exactamente el defecto que los dos
+documentos predican contra sí mismos, y la misma forma que ya obligó a ampliar
+este guard el 2026-08-16, cuando barría solo `docs/data`.
+
+### Lo que se hizo — mecanismo, no lectura
+
+1. **Los dos documentos entran al barrido**, nombrados uno por uno
+   (`scripts/verificar-citas.mjs`). No se amplió a toda la raíz a propósito:
+   `LEDGER.md` es append-only e **histórico**, y sus citas viejas deben poder
+   apuntar a líneas que ya se movieron. Un guard que las prohibiera obligaría a
+   reescribir la historia.
+2. **Comprobación nueva: todo `npm run …` citado existe en `package.json`.** Es
+   la promesa central de `METAS.md` —una meta = un comando— y no la sostenía
+   nadie. `verificar:ac` ya impide esto en `spec.md` §9; fuera de §9 no había
+   equivalente.
+3. **Una cita propia mal formada, corregida:** `METAS.md` decía
+   `cola-local.ts:276-278`, que el guard **no puede resolver** porque no arranca
+   con `src/`. Ahora es `src/lib/cola-local.ts:276`, comprobada: esa línea es
+   `esRechazoDefinitivo`, que es lo que el párrafo afirma.
+
+**Medido antes de agregar la comprobación**, que es lo que este repo exige antes
+de subir un criterio: **98 invocaciones `npm run` citadas en 25 documentos, 0
+inexistentes.** Nace en verde porque la propiedad hoy se cumple, no porque no
+pueda fallar.
+
+### Probado con el fallo plantado — cuatro plants, dos por documento
+
+```
+FAIL · METAS.md · todas las citas archivo:línea resuelven · 1/2 rotas · src/lib/no-existe-plantado.ts:9999
+FAIL · METAS.md · todo comando 'npm run' citado existe en package.json · 1/8: verificar:inexistente-plantado
+FAIL · PROMPT-PARKCONTROL-MOVIL.md · todas las citas archivo:línea resuelven · 1/1 rotas
+FAIL · PROMPT-PARKCONTROL-MOVIL.md · todo comando 'npm run' citado existe · 1/1: verificar:otro-inexistente
+80/84 comprobaciones PASS
+```
+
+Plants revertidos. Estado final, corrido:
+
+```
+verificar:citas → 84/84 comprobaciones PASS · CITAS: PASS
+verificar:ac · verificar:verificadores · verificar:alcance · evidencia:prueba → PASS
+```
+
+### Límite declarado, porque callarlo sería el defecto que este guard persigue
+
+Sobre **`PROMPT-PARKCONTROL-MOVIL.md`, dos de las cinco comprobaciones pasan sobre
+el conjunto vacío**: cita este repo por sección y no por `archivo:línea` (0 citas)
+y no invoca comandos de este repo (0 comandos). Ahí el guard **solo muerde** en
+los cuatro mermaid y en los `{{placeholder}}`. Es la distinción universal /
+existencial de `spec.md` §9 aplicada a un documento propio: **pasa, y hay que
+saber sobre qué pasa.**
+
+Lo que ese documento sí exige está adentro de él (§1): quien trabaje en
+ParkControl produce su tabla de premisas contra **su** árbol. Ningún comando de
+este repo puede validar afirmaciones sobre un repositorio que no está acá — y
+fingir lo contrario sería inventar cobertura.
+
+---
+
+## 2026-08-20 (noche) · Regresión completa contra servidor de producción · **1 defecto**
+
+Corrida con `npm run build` + `npm start` —**no** con `next dev`—, contra la base
+de Railway. Salida real, por grupo:
+
+```
+ESTÁTICO + BASE   test · alcance · alcance:prueba · evidencia:prueba · ac · citas ·
+                  verificadores · agentes · esquema · invariantes · meas1 · metrica  → PASS
+                  h1 → FAIL (CAUSA: banco-vacio · DELIBERADO)
+
+SERVIDOR          salida 11/11 · concurrencia 7/7 · aislamiento 12/12 ·
+                  tarifas 11/11 · reportes 10/10                                    → 5/5 PASS
+
+NAVEGADOR         pwa 13/13 · op1 14/14 · a3 11/11 · m4 29/29 · meas2 10/10 ·
+                  endurecimiento 33/33 · ui 21/21                                   → 7/8
+                  temporizador 11/14 → FAIL (TMP-1)
+
+CITAS             108/108 (incluye METAS.md, PROMPT-PARKCONTROL-MOVIL.md,
+                  parkcontrol/ y ADR-006)
+```
+
+### M-2 · FRO-1 — **no reproduce.** Se reclasifica
+
+El 503 de `POST /api/sesiones/[id]/salida` que `STATE.md` registró el 2026-08-20
+**no aparece**, con el mismo código de producto:
+
+| Corrida | Modo | Resultado |
+|---|---|---|
+| 1 | `build` + `start` | **5/5 · 315 casos · sin 5xx** |
+| 2 | `next dev` | **5/5 · 315 casos · sin 5xx** |
+
+La hipótesis del build queda **refutada por medición**. Candidato que sobrevive:
+un **503 transitorio de infraestructura** durante una tanda de 315 peticiones
+contra una base remota por proxy público — encaja con lo que `STATE.md` anotó:
+*«a mano, como `operador`, da 400»*.
+
+**El defecto entonces no está en la API: está en la sonda**, que no distingue un
+5xx causado por el dato de uno causado por la infraestructura. **No se arregla con
+un reintento ciego** —el hallazgo del byte NUL fue justamente un 503 causado por
+un dato, y un retry lo habría tapado—. Se arregla **reenviando el caso fallido
+aislado**: si reproduce es violación de AC-API-1; si no, se reporta como
+transitorio, con su salida, **sin silenciarlo nunca**. Pasa a **M-6**.
+
+### TMP-1 — confirmado, reproducible, y **no diagnosticado**
+
+`verificar:temporizador` 11/14. Las tres que fallan son la misma causa:
+
+```
+FAIL · FIXT51 · el transcurrido es exactamente el que implica su entrada_at ·
+       pantalla "0 min" · entrada_at implica "2 h 20 min"
+FAIL · con dos activas, cada fila muestra su propio tiempo y no el de la otra
+FAIL · la que lleva horas adentro muestra más tiempo que la recién entrada · 0 min vs 5 min
+```
+
+**Descartado con evidencia:** no es el servidor. La comprobación *«el servidor
+lista las dos sesiones con el `entrada_at` que se ancló»* **pasa**, así que la
+referencia que llega al navegador es correcta y el defecto está del lado del
+cliente.
+
+**No se diagnostica por lectura de código.** La asimetría —`FIXT50` correcta y
+`FIXT51` en cero— no se explica ni por el orden del merge (el servidor pisa al
+dispositivo por `id`) ni por `duracion()`, que recomputa en cada render. Hay que
+**instrumentar**: volcar IndexedDB y el DOM en el instante de la lectura. Es la
+próxima meta, y se declara sin diagnóstico en vez de publicar una hipótesis como
+causa.
+
+### Estado para M-3
+
+**Dos FAIL, los dos explicados**: `h1` es la medición y `temporizador` es TMP-1,
+preexistente y registrado. Ningún FAIL sin explicar. **La condición de M-3 se
+cumple**; el commit espera decisión humana.

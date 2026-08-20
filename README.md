@@ -175,6 +175,9 @@ comando que lo ejercita contra la app corriendo, y su salida se registra en
 | `npm run verificar:m4` | el dispositivo no conserva lo que ya salió |
 | `npm run verificar:salida` | ciclo ingreso→salida y control de acceso |
 | `npm run verificar:meas2` | el panel del dueño refleja lo registrado, punta a punta |
+| `npm run verificar:tarifas` | la carga de tarifa **versiona en vez de pisar**: el histórico crece, y una salida vieja se puede recalcular con la tarifa que regía |
+| `npm run verificar:reportes` | las cifras del período **se derivan de la base**, no de la maqueta — y nadie publica un número de H1 sin su umbral |
+| `npm run verificar:aislamiento` | con **dos** clientes sembrados, ninguno alcanza al otro; y `plataforma` no obtiene una patente por ninguna ruta |
 | `npm run verificar:pwa` | manifiesto + service worker registrado y controlando |
 | `npm run verificar:endurecimiento` | CSP, límite de intentos, sesión, CSRF, minimización |
 | `npm run verificar:ui` | el **estilo computado por el navegador**, no el fuente |
@@ -202,9 +205,10 @@ es un comando que falla si alguien vuelve a atar un criterio a un nombre.
 |---|---|
 | Hitos M0–M5 | **cerrados y desplegados** |
 | Endurecimiento en producción | **30/30** contra la URL viva |
-| Capa de presentación (SPEC-004) | **18/18**, medido en el navegador |
+| Capa de presentación (SPEC-004) | **21/21**, medido en el navegador (estilo computado, no el fuente) |
 | Hallazgo INT-12 | **FAIL registrado** — la corrección funciona y está observada en producción; el *gate* que debería seguir vigilándola no es confiable |
-| Hito M6 | **detenido** |
+| Hito M6 · pantallas del diseño | `1e` **tarifas** y `1g` **reportes** construidas y verificadas (2026-08-19/20). Queda `1l` |
+| Multicliente (M8) | **PASS** — aislamiento probado con **dos** clientes sembrados, y `AC-ISO-2` por exclusión sobre toda la superficie de plataforma |
 
 ### Lo que falta, sin adornos
 
@@ -215,8 +219,9 @@ es un comando que falla si alguien vuelve a atar un criterio a un nombre.
 2. **Mecanismo de retención de patente (INT-7).** Bloqueado por dos decisiones
    humanas. El esquema **sí** lo admite; lo que falta es la decisión y la tarea
    de purga.
-3. **Tres pantallas construibles sin decisión nueva**: tarifas, reportes e
-   ingreso a pantalla completa.
+3. **Una pantalla construible sin decisión nueva**: `1l`, el ingreso del operador
+   a pantalla completa — que la traducción de diseño llama *«la mejor expresión
+   de H1 del set»*. Tarifas (`1e`) y reportes (`1g`) ya están.
 4. **Deploy por `git push`** — hoy corre por CLI de Vercel.
 
 ---

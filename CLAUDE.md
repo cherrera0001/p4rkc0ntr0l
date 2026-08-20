@@ -109,7 +109,34 @@ amplía a `docs/revision-seguridad-2026-08-09.md`.
 Tras **cada** corrección se corre la regresión completa. Si una corrección rompe
 un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 
-**Estado al 2026-08-13: M0–M5 cerrados y DESPLEGADOS. M6 en curso.**
+**Estado al 2026-08-20: M0–M5 cerrados y DESPLEGADOS. M7 y M8 PASS. M6 en curso.**
+
+> **2026-08-20, tarde — ÁRBOL EN ROJO Y SIN COMMITEAR. Leé `STATE.md` antes de
+> tocar nada.** La regresión corrida hoy sobre el árbol de trabajo da **dos FAIL
+> que el ledger no registra**: `verificar:metrica` **3/4** (MET-1: la resta
+> `salida_at - entrada_at` de `verificar-reportes.mjs`, sin commitear, se lee como
+> métrica de H1 divergente — y **tapa** el FAIL por banco vacío de
+> `verificar:h1`) y `verificar:frontera` **4/5** (503 en
+> `POST /api/sesiones/[id]/salida`, **sin diagnosticar**: a mano, como `operador`,
+> da 400). **No commitees sobre rojo.** Orden: MET-1 → el 503 → commit → `1l`.
+>
+> Y una regla de operación que costó una corrida entera: **los verificadores de
+> navegador exigen `npm run build` + `npm start`.** Con `next dev`,
+> `verificar:ui` da 12/21 y el fallo es del servidor, no del código.
+
+De las pantallas construibles del diseño (`docs/diseno-2026-08-12-traduccion.md`
+§1) quedan **una**: `1l`, el ingreso del operador a pantalla completa. `1e`
+(tarifas) y `1g` (reportes) se construyeron el 2026-08-19/20, cada una con su
+verificador —`verificar:tarifas` y `verificar:reportes`—, los dos **declarados
+como huérfanos con su motivo** en `scripts/verificar-ac.mjs`: hacen exigible una
+maqueta, no una afirmación de `spec.md` §1–§8, y subirlos a §9 sería autorar
+requisitos.
+
+**Dos hallazgos del concilio quedan ABIERTOS y bloqueados por decisión humana**,
+no por falta de trabajo: el 404 de `POST /api/sesiones` mal clasificado por la
+cola local (corregirlo cambia «bloqueo permanente» por «pérdida de ingresos si la
+ruta 404ea durante un deploy») y el DoS de cuenta del login. Están en `LEDGER.md`
+con su evidencia reproducida.
 **URL viva: https://estacionamiento-three.vercel.app — sirve el código endurecido
 y la capa de presentación.** Medido contra la URL viva:
 `verificar:endurecimiento` da **30/30** (por la mañana daba 10/29).

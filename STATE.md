@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-18
+**Actualizado:** 2026-08-20
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -29,8 +29,152 @@
 | **M8 · multicliente** | **PASS** (2026-08-17). ADR-005 **ACEPTADO** en su alternativa 2 por decisión explícita y repetida del decisor. Rol `plataforma`, alta de cliente por API y pantalla, y el control negativo de aislamiento con **dos** clientes: `verificar:aislamiento` 9/9, probado fallando al borrar una cláusula real (`FUGA: ve FIXT71`) |
 | **El hueco del gate se cerró, y fue lo primero** | `AC-SCOPE-4`: el modelo no puede tener jerarquía sobre `estacionamiento`. Multicliente sí, multisitio no. Probado con `tenant` plantado: 10/11 y FALLARON |
 | **Transacciones: ya existen** | el alta escribe cuatro filas indivisibles. Es la condición de reversión que M7 declaró, y se cumplió el mismo día |
+| **M6 · maqueta `1e` (Tarifas)** | **PASS** (2026-08-19). El dueño ya puede cargar una versión nueva de tarifa: pantalla, ruta, histórico y simulador que corre `calcularMonto` (sin un solo número escrito a mano). `verificar:tarifas` **11/11**, probado con el fallo plantado (201 sin versionar → 7/11) |
+| **M6 · maqueta `1g` (Reportes)** | **PASS** (2026-08-20). El «dashboard por período» que faltaba: sesiones, ingresos observados y permanencia media de 7 días, más el gráfico por día. Las tres cifras se comparan **contra la base**, no contra la maqueta: `verificar:reportes` **10/10**. El «tecleo mediano» va vacío A PROPÓSITO —el diseño lo pide así y la métrica de H1 tiene un solo dueño, `verificar:h1`— y el verificador **falla si alguien publica un número ahí**. Sin CSV: sacaría dato personal fuera de todo control de retención (INT-7). **Queda solo `1l`** |
+| **AC-OP-1 tenía un `true` escrito a mano** | corregido (2026-08-19). `verificar-op1.mjs:155` afirmaba *«la UI muestra el vehículo aunque no haya red»* con una **constante**. Y AC-UX-1 estaba construido sin verificar. Con el fallo plantado: 10/12, fallando solo las dos nuevas. Ahora **12/12** |
+| **`verificar:frontera` 4/5 → 5/5** | la ruta nueva exigía rol `dueño` y el verificador no tenía esa sesión: **su piso la delató**. Corregido; 231 casos degenerados sin 5xx |
+| **FE-1 · doble toque** | **CERRADO** (2026-08-19). Guarda de reentrancia en `confirmar`, mismo patrón que `registrarSalida`. Medido: `2 registros / 2 filas` antes, `1 / 1` después. `verificar:op1` 12/12 → **14/14** |
+| **Endurecimiento transversal** | **PASS** (2026-08-19). `Cache-Control: private, no-store` en todos los caminos de salida del envoltorio + login · `statement_timeout 8s` / `idle_in_transaction 5s` en `src/db/index.ts` (medido: waiter esperaba **14,6 s sin techo**) · cota de rango de fecha **503 → 400** · `enteroDeFrontera`/`fechaDeFrontera` consolidados en `src/lib/frontera.ts` con **`frontera.test.ts`** nuevo (134 pruebas, eran 122) |
+| **Hallazgo sobre la propia suite** | el corpus de `verificar:frontera` **no alcanza** las validaciones aguas abajo de la primera guarda: manda el mismo degenerado en todos los campos y `validarPatente` corta antes. Medido con la cota quitada: **5/5 PASS igual**. Por eso AC-API-1 daba verde sobre un 503 real. Rediseñar la sonda es decisión, no ajuste |
+| **BLOQUEADOS por decisión humana** | **API-1**: agregar 404 a `esRechazoDefinitivo` cambia «bloqueo permanente de la cola» por «pérdida de ingresos si la ruta 404ea en un deploy» — es decisión de producto. **SEG-1**: el DoS de cuenta es trade-off entre fuerza bruta y disponibilidad, misma familia que `CLAVE_ACCESO` compartida |
+| **CONCILIO · hallazgos ABIERTOS** | diagnóstico integral con evidencia reproducida, **ninguno corregido** (WIP=1). Los tres de mayor riesgo: **API-1/API-2** (la cola offline se bloquea para siempre por un 404 mal clasificado y por un 503 sobre fecha fuera de rango), **SEG-1** (DoS de cuenta: 6 peticiones sin autenticar bloquean el login del operador real) y **FE-1** (doble toque en «Confirmar» duplica el ingreso). Detalle y evidencia en `LEDGER.md` (2026-08-19) |
+| **TMP-1 · defecto real, preexistente** | `verificar:temporizador` 11/14: una fila muestra **`0 min`** en el primer pintado y se corrige después (`pantalla "0 min" · entrada_at implica "2 h 20 min"`). No lo introdujo este hito |
+| **Capa administrativa de plataforma** | **PASS** (2026-08-19). `AC-ISO-2` pasó de **enumerar dos rutas** a escanear **por exclusión** toda la superficie de plataforma: `verificar:aislamiento` 9/9 → **12/12**, probado con una ruta plantada que repartía patentes —las dos comprobaciones viejas seguían en PASS—. Y el **listado de clientes** de SPEC-005 §3.1 (sin ocupación, sin ingresos, sin patentes, sin correos) |
+| **Directus / MCP · RECHAZADO, no pendiente** | rompe `AC-DATA-1` y se midió: con dos tablas `directus_*` plantadas, `verificar:esquema` da **7/8 exit=1**; borradas, vuelve a 8/8. Además no hay servidor MCP de Directus configurado en el entorno. Adoptarlo **va por ADR**: la pregunta está formulada en `LEDGER.md` (2026-08-19) |
 | **Contrato de API** | `docs/CONTRATO-api.md`, derivado del código, con su sección de lo que NO cubre |
 | **Placeholders** | ninguno se rellenó. `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}` bloquean el **encendido**, no la construcción: se opera con `OPERACION_REAL_HABILITADA=false` |
+
+## 2026-08-20 (noche) — M-1 (MET-1) CERRADO · el FAIL de H1 volvió a ser el suyo
+
+**Esto reemplaza a los puntos 1 y 2 del bloque de la tarde.** MET-1 está
+corregido y `verificar:h1` volvió a fallar **por banco vacío**, que es su FAIL
+deliberado. Evidencia completa en `LEDGER.md` (2026-08-20, noche).
+
+```
+verificar:metrica → 5/5 PASS
+verificar:h1      → 9 comprobaciones de control PASS · CAUSA: banco-vacio · AC-H1-1: FAIL
+regresión estático+base → 12/13 PASS · el único FAIL es verificar:h1, el deliberado
+```
+
+Eran **dos** guards rotos, no uno, y del mismo defecto de familia —comparar
+formas distintas del mismo texto—:
+
+1. **MET-1a** · `scripts/lib/metrica.mjs`: la búsqueda normalizaba **un solo
+   lado**, así que `OTRO_DOMINIO.has()` no acertaba nunca. La misma resta salía a
+   la vez «sin declarar» y «declarada que sobra».
+2. **MET-1b** · `scripts/verificar-h1.mjs`: el control de invasores del banco leía
+   el fuente **crudo** y contaba el backtick de un JSDoc como comilla de literal.
+   Los dos «invasores» eran **comentarios que explican que no invaden**. Un guard
+   que cuenta menciones en comentarios castiga documentar la regla.
+
+Probado con **tres fallos plantados** (A: resta divergente sin declarar → 4/5 ·
+B: declaración rancia → 3/5, reproduce el síntoma original · C: literal `FIXTB99`
+real → `CAUSA: control-negativo`). Los tres revertidos.
+
+**No se corrieron** los grupos de servidor y navegador: exigen `npm run build` +
+`npm start` y son la meta **M-3**. **AC-H1-2 sigue SIN VERIFICAR.**
+
+> **Próximo paso: M-2** (el 503 de `POST /api/sesiones/[id]/salida`), y su primer
+> acto es **reproducirlo con los tres roles**, no corregir. Después M-3 y recién
+> ahí el commit. Las metas, con su condición de término, están en `METAS.md`.
+
+## 2026-08-20 (tarde) — REANUDACIÓN: leé esto primero
+
+**Sesión cortada por reinicio.** No se commiteó nada y no se corrigió nada. Lo
+que sigue es **medición real de hoy**, no lectura del ledger.
+
+### Cómo correr la regresión (esto costó una corrida entera)
+
+Los verificadores de navegador exigen **producción**, no `next dev`:
+
+```powershell
+npm run build ; npm start          # y recién entonces los verificadores
+```
+
+Con `next dev`, `verificar:ui` da **12/21** y el fallo es del servidor, no del
+código. Con `npm start`, **21/21**. Si el puerto 3000 quedó tomado por una
+corrida anterior, `npm start` muere con `EADDRINUSE` y el `curl` de humo sigue
+dando 200 **desde el servidor viejo**: matá el listener antes.
+
+### Baseline medido hoy sobre el árbol SIN COMMITEAR
+
+```
+test 134/134 · build exit=0 · alcance PASS · ac PASS · citas PASS
+verificadores PASS · esquema PASS · invariantes PASS · salida PASS
+concurrencia PASS · aislamiento PASS · tarifas PASS · reportes PASS
+op1 PASS · meas1 PASS · meas2 PASS · a3 PASS · m4 PASS · pwa PASS
+endurecimiento PASS · ui 21/21 · temporizador 14/14
+```
+
+### Tres cosas que el ledger NO dice y la medición sí
+
+1. **MET-1 · `verificar:metrica` 3/4 FAIL.** Regresión **introducida por el
+   trabajo sin commitear**: `scripts/verificar-reportes.mjs` usa
+   `salida_at - entrada_at` (permanencia media, legítima) y el guard la lee como
+   métrica de H1 divergente. Salida real:
+   `FAIL · toda resta entre columnas de tiempo es la métrica declarada · 1 divergente(s): scripts/verificar-reportes.mjs: «salida_at - entrada_at»`
+   **Por qué pasó:** la regresión final del ledger de ayer lista 22 verificadores
+   y **`metrica` no está entre ellos**. La lección es del tipo que hay que
+   convertir en guard: *una regresión que no se corre no existe.*
+2. **`verificar:h1` ya NO falla por banco vacío.** Falla con
+   `CAUSA: metrica-divergente`, o sea **MET-1 está tapando al FAIL que
+   `STATE.md` declara deliberado**. Cuando MET-1 cierre, `verificar:h1` tiene
+   que volver a fallar por banco vacío — y eso hay que comprobarlo corriéndolo,
+   no suponerlo.
+3. **`verificar:frontera` 4/5 FAIL** — `POST /api/sesiones/[id]/salida` devuelve
+   **503** con byte NUL y con año fuera del rango de Postgres, dos veces cada
+   uno. Es 5xx en el camino del dinero, y un 5xx **bloquea la cola del turno
+   entero** (`cola-local.ts:276-278`).
+   **OJO, no está diagnosticado:** reproducido a mano **como `operador` da 400**,
+   no 503 —`{"error":"Id de sesión inválido."}`, `esIdValido` corta bien—. El
+   verificador entra con **tres** roles (operador, dueño, plataforma) y cada caso
+   falló **dos veces**: el 503 sale por los otros roles, no por el operador. El
+   sospechoso es el usuario `plataforma`, que se siembra con
+   `estacionamiento_id NULL`. **Hay que reproducirlo con los tres roles antes de
+   tocar nada.** El repro a medio escribir quedó en el scratchpad y se perdió:
+   se reescribe con `import postgres` resuelto desde el repo, no desde `$TEMP`
+   (ahí falla con `ERR_MODULE_NOT_FOUND`).
+
+### Orden acordado, por riesgo real
+
+**MET-1** → **el 503 de `salida`** → **commit de todo lo verificado** → **`1l`**
+→ el resto de los hallazgos abiertos (QA-1, BE-2, BE-3, SEG-2).
+
+**Nada se commitea sobre rojo.** El árbol tiene 21 archivos modificados y 7 sin
+rastrear (tarifas, reportes, endurecimiento transversal, `frontera.test.ts`,
+`zona.ts`) que **son trabajo verificado de las sesiones del 19 y 20**, no de
+ésta.
+
+### Trabajo en vuelo que el reinicio se llevó
+
+- Un `implementador` estaba corrigiendo **MET-1** (hacer que el guard distinga
+  una resta publicada como H1 de una resta de otro dominio **declarada con su
+  motivo**, al estilo de los huérfanos declarados de `verificar-ac.mjs`, sin
+  debilitar la propiedad). **Sin auditar y sin verificar: hay que rehacerlo o
+  revisar si dejó cambios en el árbol.**
+- Un agente estaba extrayendo la maqueta **`1l`** del lienzo de Claude Design
+  (`DesignSync`, proyecto `964c3090-9776-4aa0-a79f-816b50244a83`, archivo
+  `Plataforma Estacionamientos.dc.html`) para poder construirla sin inventar
+  textos ni cifras. **No entregó, y por un motivo que hay que saber antes de
+  reintentarlo: `DesignSync` NO está disponible dentro de un subagente.** Lo
+  buscó cuatro veces por `ToolSearch` y no aparece ni por `select:` ni por
+  palabras clave. **La extracción del lienzo la tiene que hacer el agente
+  principal**, guardando el `.dc.html` en el scratchpad y recorriéndolo con
+  grep/sed para no volcarlo entero en contexto. `1l` es la **única** pantalla
+  construible que falta.
+
+  Lo único literal de `1l` que el repo preservó son tres cadenas, ya presentes
+  en el código de `1b` (`src/app/pantalla-operador.tsx:560`, `:496`, `:616`):
+  *«Se normaliza sola. Sin guiones ni espacios.»* (AC-UX-4), el badge **Sin
+  conexión** y *«2 registros esperando red»* (AC-UX-1). **Lo que `1l` agrega
+  sobre `1b` —el teclado, el tamaño del campo, la jerarquía sin lista de
+  permanencia— no está escrito en ninguna parte del repo: sin el lienzo,
+  construirlo es inventarlo.**
+
+### Sin cambios
+
+Ningún `{{placeholder}}` se rellenó. Gate ADR-001/004 intacto. Cero migraciones.
+
 
 ## FASE D (2026-08-16) — «SIN DATOS» dejó de ser una frase y pasó a ser un FAIL
 
@@ -403,14 +547,16 @@ no se aplicaba, con AC-UI-1/2/3/4 en verde** — tres miran el fuente y el cuart
 mira la CSP. Por eso `verificar-ui.mjs` mide el **estilo computado**.
 
 Pantallas con el sistema aplicado: `login`, operador, panel del dueño, descuadre,
-cerrar sesión. Faltan las 3 construibles: `1e` (tarifas), `1g` (reportes), `1l`
-(ingreso a pantalla completa). `1l` y `1g` son parte de FASE D.
+cerrar sesión, plataforma (alta + listado), **`1e` tarifas** y **`1g` reportes**.
+
+**Queda UNA construible: `1l`** (operador · ingreso a pantalla completa), que la
+traducción llama *«la mejor expresión de H1 del set»*.
 
 ## Estado de hitos
 
 - M0–M4 — **cerrados**. v1 desplegada y verificada punta a punta.
 - M5 Endurecimiento — **cerrado en código y desplegado**. INT-12 como riesgo aceptado.
-- M6 Presentación — **en curso**. SPEC-004 entregado; faltan 3 pantallas.
+- M6 Presentación — **en curso**. SPEC-004 entregado; `1e` y `1g` construidas y verificadas (2026-08-19/20). **Falta `1l`.**
 - M7 Plataforma — **bloqueado** por las precondiciones de ADR-004.
 
 ## ADR-004 — decidido (2026-08-13)
