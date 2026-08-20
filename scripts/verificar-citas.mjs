@@ -38,7 +38,10 @@ const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  */
 const OBJETIVOS = process.argv[2]
   ? [process.argv[2]]
-  : ["docs/data", "docs", "docs/adr", "spec.md"];
+  : ["docs/data", "docs", "docs/adr", "spec.md", "METAS.md", "PROMPT-PARKCONTROL-MOVIL.md", "parkcontrol"];
+
+/** Los scripts declarados en `package.json`: la única fuente de qué se puede correr. */
+const SCRIPTS = JSON.parse(readFileSync(resolve(RAIZ, "package.json"), "utf8")).scripts ?? {};
 
 const resultados = [];
 const comprobar = (nombre, ok, detalle = "") => {
@@ -121,6 +124,29 @@ for (const doc of docs) {
     `${corto} · ningún {{placeholder}} quedó con un valor asignado`,
     inventados.length === 0,
     inventados.slice(0, 3).join(" | "),
+  );
+
+  // --- 4. Todo comando citado existe ---
+  //
+  // Un documento derivado vale por lo que se puede **correr** desde él. Una cita
+  // a `npm run verificar:algo` que no está en `package.json` es una promesa: el
+  // lector no puede distinguirla de un comando real hasta que la tipea y falla.
+  //
+  // Es el mismo defecto que `verificar:ac` ya impide en `spec.md` §9 —«ningún
+  // criterio apunta a un script inexistente»— y que acá no cubría nadie. Se
+  // agrega cuando entran `METAS.md` y el prompt de ParkControl, que **citan un
+  // comando por meta**: sin esto, su promesa central no la sostiene nada.
+  //
+  // Medido antes de escribirlo, que es lo que este repo exige: 98 invocaciones
+  // en 25 documentos, **0 inexistentes**. Nace en verde y puede fallar.
+  const invocados = [...new Set([...texto.matchAll(/npm run ([a-z0-9:-]+)/g)].map((m) => m[1]))];
+  const inexistentes = invocados.filter((s) => !SCRIPTS[s]);
+  comprobar(
+    `${corto} · todo comando 'npm run' citado existe en package.json`,
+    inexistentes.length === 0,
+    inexistentes.length
+      ? `${inexistentes.length}/${invocados.length} inexistente(s): ${inexistentes.slice(0, 3).join(", ")}`
+      : `${invocados.length} comando(s) citado(s)`,
   );
 }
 

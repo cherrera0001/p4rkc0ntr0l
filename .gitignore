@@ -64,3 +64,6 @@ scripts/estado/
 _audit_*.mjs
 # Sondas de ruta que dejan los agentes de auditoria (no son del producto)
 src/app/api/_sonda*/
+
+# logs de corridas locales del servidor (no son artefacto del repo)
+*.log
