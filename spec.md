@@ -346,9 +346,25 @@ operador en el hito anterior. *Verificación: `npm run verificar:meas2`* (§9).
 > ADR-003 movió la base a **Postgres en Railway** el 2026-08-09 y estas dos
 > menciones quedaron sin actualizar. §3 ya lo reflejaba.
 >
-> **Deuda declarada, no criterio cumplido:** el deploy corre hoy por **CLI de
-> Vercel**, no por `git push`. El repositorio remoto existe
-> (`cherrera0001/p4rkc0ntr0l`) pero no está conectado al proyecto de Vercel.
+> **~~Deuda declarada~~ — SALDADA y medida (2026-08-20).** Esta sección decía que
+> el deploy corría por **CLI de Vercel** y que el repositorio remoto *«existe pero
+> no está conectado al proyecto de Vercel»*. **Es falso hoy**, y se comprobó
+> intentando conectarlo:
+>
+> ```
+> $ vercel git connect --yes
+> > cherrera0001/p4rkc0ntr0l is already connected to your project.
+> ```
+>
+> El `git push` de las 7 unidades de hoy disparó un despliegue **Ready ·
+> Production · 23 s**, y las rutas nuevas responden en la URL viva
+> (`/dueno/tarifas` 307 · `/dueno/reportes` 307 · `/api/tarifas` 405). El
+> criterio *«deploy por `git push`»* **está cumplido**.
+>
+> Se deja escrito cómo se descubrió, porque es el modo de falla que este
+> documento persigue: **una deuda declarada que nadie volvió a medir se lee como
+> vigente para siempre.** No hay comando que vigile esta afirmación; si el
+> proyecto se desconectara, `spec.md` volvería a mentir sin que nada lo note.
 
 ---
 

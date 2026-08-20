@@ -127,6 +127,57 @@ Tres respuestas posibles, y cada una elige sola su alternativa:
 
 ---
 
+## 4 bis. Directus **como proveedor de identidad y sesiones** — es otra pregunta
+
+Se preguntó por *«Directus para manejo de sesiones, entre otros»*. **No es una
+variante de §3: es una decisión distinta y más cara**, porque una consola que
+falla deja a alguien sin ver datos, y un proveedor de identidad que falla **deja
+al operador sin poder registrar un auto**.
+
+### Lo que resolvería, y no es poco
+
+El agujero real de identidad de este sistema está medido y escrito: **no existe
+credencial por usuario.** `src/lib/auth.ts` compara contra una `CLAVE_ACCESO`
+**compartida**. De ahí se siguen tres cosas:
+
+- suspender a un usuario **no revoca nada**: entra con otro email y la misma clave;
+- por eso `usuario.estado` fue **rechazado** en `docs/data/MER.md` §5 —daría la
+  apariencia de revocación sin la revocación—;
+- y es el muro que bloquea el eje de más clientes
+  (`docs/analisis-escalamiento-2026-08-16.md` §2.2).
+
+Un proveedor de identidad —Directus u otro— trae credencial por usuario, roles,
+recuperación de clave y refresco de sesión. **La intuición apunta a un hueco
+real.**
+
+### Lo que costaría, y por qué la respuesta probablemente no es ésta
+
+| | Credencial por usuario en el esquema actual | Directus como proveedor de identidad |
+|---|---|---|
+| Alcance | una columna, una migración, un ADR | segundo servicio **en el camino crítico de cada petición** |
+| Offline-first | intacto | **una dependencia nueva justo donde el producto promete resistir sin red** |
+| Verificación | la suite entera sigue valiendo | AC-ISO-1/2, AC-ADM-1 y el aislamiento **se mudan a configuración de Directus**, donde ningún comando los mira |
+| ADR-002 | se respeta | tercer proveedor que administrar |
+| Reversión | trivial | alta: la identidad es lo más difícil de sacar una vez puesto |
+
+La fila que decide es la tercera, y es la misma razón por la que se rechazó la
+consola en `public`: **la invariante se muda del código —donde un comando la
+verifica— a una consola donde ninguno la mira.** En identidad eso pesa más,
+porque el aislamiento entre clientes *es* el producto.
+
+### Recomendación explícita, para que la decisión no quede colgada
+
+1. **Credencial por usuario primero**, dentro del esquema actual. Destraba
+   revocación, auditoría por persona y el eje de más clientes, sin agregar un
+   servicio. Es el movimiento 3 de `docs/analisis-escalamiento-2026-08-16.md` §4.
+2. **Directus, si entra, para administrar contenido — no para autenticar.**
+3. **MCP no cambia esta decisión.** Un servidor MCP es una herramienta del
+   agente, no una pieza del producto: acceder a Directus por MCP no lo pone menos
+   en el camino crítico ni menos fuera de la verificación. **Conviene no
+   confundir "lo puedo manejar desde el agente" con "está bajo control".**
+
+---
+
 ## 5. Consecuencias que la decisión arrastra
 
 - **Ley 21.719.** Cualquier consola sobre la base alcanza `patente`, que es dato
