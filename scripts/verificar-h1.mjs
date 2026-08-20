@@ -297,6 +297,20 @@ try {
   ];
   const DELIBERADO = /BORRA-BANCO-A-PROPOSITO/;
 
+  /**
+   * Los comentarios describen reglas; no las ejecutan ni las violan.
+   *
+   * Se extrae en vez de repetirse porque **los dos escaneos de abajo la
+   * necesitan y solo uno la tenía**: el control de invasores leía el fuente
+   * crudo y contaba el backtick de un JSDoc como comilla de literal. Medido el
+   * 2026-08-20: `verificar-op1.mjs:27` y `verificar-concurrencia.mjs:39` —dos
+   * comentarios que explican **que no usan el prefijo del banco**— hacían fallar
+   * el control, y ese FAIL tapaba al de banco vacío.
+   *
+   * Un guard que cuenta menciones en comentarios castiga documentar la regla.
+   */
+  const sinComentarios = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
   const desprotegidos = [];
   let borradosVistos = 0;
   let vistosEnLaLimpieza = 0;
@@ -304,9 +318,7 @@ try {
     // Los comentarios se descartan: describen borrados, no los ejecutan. Sin
     // esto, este mismo archivo se delataba a sí mismo por el texto de la
     // explicación de arriba. Mismo criterio que `verificar-verificadores.mjs:57`.
-    const texto = readFileSync(ruta, "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const texto = sinComentarios(readFileSync(ruta, "utf8"));
     for (const m of texto.matchAll(INICIO_BORRADO)) {
       // **La sentencia termina donde termina, no 400 caracteres después.**
       //
@@ -361,7 +373,7 @@ try {
   // verificadores usan FIXT + dos dígitos; el banco usa FIXT + B.
   const invasores = readdirSync(DIR)
     .filter((f) => f.startsWith("verificar-") && f.endsWith(".mjs") && f !== "verificar-h1.mjs")
-    .filter((f) => new RegExp(`["'\`]${PREFIJO_BANCO}`).test(readFileSync(join(DIR, f), "utf8")));
+    .filter((f) => new RegExp(`["'\`]${PREFIJO_BANCO}`).test(sinComentarios(readFileSync(join(DIR, f), "utf8"))));
   comprobar(
     `ningún verificador usa una patente ${PREFIJO_BANCO}…`,
     invasores.length === 0,

@@ -47,8 +47,70 @@ export const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const COLUMNAS = "tecleo_inicio_at|tecleo_fin_at|salida_at|entrada_at";
 const RESTA = new RegExp(`(${COLUMNAS})\\s*-\\s*(${COLUMNAS})`, "gi");
 
-/** El menos de la spec es U+2212; el de SQL es un guion. Se comparan expresiones, no tipografía. */
+/**
+ * Archivos por los que **se publica el número de H1**. Ninguna resta divergente
+ * que viva acá se puede declarar de otro dominio: sería exactamente la evasión
+ * que este guard existe para impedir —publicar otra duración como si fuera la
+ * métrica— firmada por quien la publica. La declaración de abajo no los alcanza.
+ */
+const PUBLICAN_H1 = new Set(["scripts/lib/metrica.mjs", "scripts/verificar-h1.mjs"]);
+
+/**
+ * Restas entre columnas de tiempo que **no son la métrica de H1 y no pretenden
+ * serlo**, declaradas una por una con su motivo.
+ *
+ * ## Por qué existe este mapa
+ *
+ * La comprobación por exclusión de más abajo no distingue *«alguien cambió la
+ * métrica de H1»* de *«alguien midió otra cosa, que es otra cosa»*. El
+ * 2026-08-20, al entrar la maqueta 1g, `verificar:reportes` empezó a calcular
+ * **permanencia media** —`salida_at − entrada_at`, que es legítima y nunca fue
+ * H1— y el guard la reportó como divergente. Consecuencia medida: `verificar:h1`
+ * salió `CAUSA: metrica-divergente` en vez de `CAUSA: banco-vacio`, o sea **un
+ * FAIL nuevo tapando al FAIL que sí es la medición**.
+ *
+ * Debilitar el guard a «cualquier resta vale» perdería la propiedad entera. La
+ * regla, calcada de `SOLTADOS` en `scripts/verificar-ac.mjs`: **nadie está
+ * obligado a medir solo H1; todos están obligados a declarar qué miden.** Una
+ * resta declarada acá, con archivo, expresión y motivo, es legítima. Una resta
+ * divergente **no declarada** es FAIL, y una declaración que ya no corresponde a
+ * ninguna resta real también.
+ *
+ * La clave es `«ruta :: expresión»`: declarar no es una licencia para el
+ * archivo, es una licencia para *esa* resta en *ese* archivo. Cambiar la
+ * expresión vuelve a activar el FAIL.
+ *
+ * El menos de las claves es **U+2212**, como el de `PARES` y el de `spec.md`, y
+ * no por tipografía: con un guion ASCII la declaración se matchearía a sí misma
+ * al escanear este archivo —que está en `PUBLICAN_H1`— y el guard fallaría por
+ * su propia lista.
+ *
+ * **Por eso la declaración se ESCRIBE con U+2212 y se BUSCA normalizada**, y el
+ * índice se construye normalizando la clave y conservando el texto original para
+ * poder imprimirlo: una declaración cuyo motivo nadie lee es una lista blanca con
+ * otro nombre, y una que no se puede citar no se puede auditar.
+ *
+ * Está escrito así porque la versión anterior normalizaba **un solo lado**:
+ * `clave()` devolvía la forma normalizada y las claves del `Map` quedaban crudas,
+ * de modo que `has()` **no acertaba nunca**. Consecuencia medida el 2026-08-20:
+ * la misma resta salía a la vez *«sin declarar»* y *«declarada que sobra»* —dos
+ * comprobaciones contradiciéndose sobre el mismo hecho—, y ese FAIL **tapó al
+ * FAIL por banco vacío de `verificar:h1`, que es la medición**.
+ */
 const normalizar = (s) => s.replace(/[−–—]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
+
+const clave = (ruta, expresion) => normalizar(`${ruta} :: ${expresion}`);
+
+const OTRO_DOMINIO = new Map(
+  [
+    [
+      "scripts/verificar-reportes.mjs :: salida_at − entrada_at",
+      "permanencia media de la maqueta 1g (docs/diseno-2026-08-12-traduccion.md:47), " +
+        "no la duración del tecleo: mide cuánto estuvo el auto, no cuánto tardó el operador. " +
+        "El verificador está declarado soltado en scripts/verificar-ac.mjs (SOLTADOS)",
+    ],
+  ].map(([texto, motivo]) => [normalizar(texto), { texto, motivo }]),
+);
 
 const sinComentarios = (t) =>
   t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/^\s*\*.*$/gm, "");
@@ -240,22 +302,57 @@ export function comprobarMetrica() {
   if (!declarada) return r;
 
   // --- 1 · Por exclusión: ninguna resta entre columnas de tiempo diverge -------
-  const divergentes = [];
+  //
+  // «Diverge» significa **se publica como si fuera la duración del tecleo**. Una
+  // resta de otro dominio —la permanencia de los reportes— no diverge: está
+  // declarada en `OTRO_DOMINIO` con su motivo, y esa declaración no vale en los
+  // archivos de `PUBLICAN_H1`.
+  const noDeclaradas = [];
+  const declaradasVistas = new Set();
   let restasVistas = 0;
   for (const [nombre, ruta] of fuentes()) {
     const texto = sinComentarios(readFileSync(ruta, "utf8"));
     for (const m of texto.matchAll(RESTA)) {
       restasVistas++;
-      if (normalizar(m[0]) !== normalizar(declarada)) divergentes.push(`${nombre}: «${m[0].trim()}»`);
+      if (normalizar(m[0]) === normalizar(declarada)) continue;
+      const k = clave(nombre, m[0]);
+      if (OTRO_DOMINIO.has(k) && !PUBLICAN_H1.has(nombre)) {
+        declaradasVistas.add(k);
+        continue;
+      }
+      noDeclaradas.push(
+        `${nombre}: «${m[0].trim()}»` +
+          (PUBLICAN_H1.has(nombre) && OTRO_DOMINIO.has(k) ? " (declarada, pero este archivo publica H1)" : ""),
+      );
     }
   }
 
   r.push({
-    nombre: "toda resta entre columnas de tiempo es la métrica declarada",
-    ok: divergentes.length === 0,
-    detalle: divergentes.length
-      ? `${divergentes.length} divergente(s): ${[...new Set(divergentes)].slice(0, 3).join(" | ")}`
-      : `${restasVistas} resta(s) revisada(s) en scripts/, src/ y drizzle/`,
+    nombre: "toda resta entre columnas de tiempo es la métrica declarada o está declarada de otro dominio",
+    ok: noDeclaradas.length === 0,
+    detalle: noDeclaradas.length
+      ? `${noDeclaradas.length} sin declarar: ${[...new Set(noDeclaradas)].slice(0, 3).join(" | ")}` +
+        " → o es la métrica de §6, o entra a OTRO_DOMINIO (scripts/lib/metrica.mjs) con su motivo"
+      : `${restasVistas} resta(s) revisada(s) en scripts/, src/ y drizzle/ · ` +
+        `${declaradasVistas.size} de otro dominio, declarada(s) con motivo`,
+  });
+
+  // El espejo, calcado de `verificar-ac.mjs`: una declaración que ya no describe
+  // ninguna resta real es ruido, y el ruido es lo que deja pasar a la siguiente.
+  // Las claves del índice ya están normalizadas, igual que las de `declaradasVistas`:
+  // comparar formas distintas del mismo texto fue el defecto que esta corrida arregló.
+  const declaracionesDeMas = [...OTRO_DOMINIO.keys()]
+    .filter((k) => !declaradasVistas.has(k))
+    .map((k) => OTRO_DOMINIO.get(k).texto);
+  r.push({
+    nombre: "ninguna declaración de otro dominio sobra",
+    ok: declaracionesDeMas.length === 0,
+    // El motivo se imprime junto al PASS: una declaración cuyo motivo nadie lee
+    // es una lista blanca con otro nombre.
+    detalle: declaracionesDeMas.length
+      ? `ya no existen en el código y siguen declaradas: ${declaracionesDeMas.join(" | ")}`
+      : [...OTRO_DOMINIO.values()].map((d) => `${d.texto} → ${d.motivo}`).join(" | ") ||
+        "no hay declaraciones",
   });
 
   // --- 2 · Anclada: la MEDIANA se computa con esa expresión --------------------
