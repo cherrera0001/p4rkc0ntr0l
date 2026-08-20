@@ -5794,3 +5794,76 @@ causa.
 **Dos FAIL, los dos explicados**: `h1` es la medición y `temporizador` es TMP-1,
 preexistente y registrado. Ningún FAIL sin explicar. **La condición de M-3 se
 cumple**; el commit espera decisión humana.
+
+---
+
+## 2026-08-20 (noche) · TMP-1 — **CERRADO. Era la sonda, no el producto**
+
+`verificar:temporizador` **15/15**. El defecto que `STATE.md` arrastraba desde el
+2026-08-19 como *«defecto real, preexistente»* **no existía en el producto**.
+
+### Cómo se supo, y no fue leyendo código
+
+La salida completa —que hasta hoy solo se había mirado filtrada por `FAIL`— tenía
+la respuesta adentro:
+
+```
+FAIL · FIXT50 · el transcurrido es exactamente el que implica su entrada_at · pantalla "0 min" · entrada_at implica "5 min"
+FAIL · FIXT51 · el transcurrido es exactamente el que implica su entrada_at · pantalla "0 min" · entrada_at implica "2 h 20 min"
+PASS · FIXT50 · el temporizador avanza solo · "0 min" → "5 min"
+PASS · FIXT51 · el temporizador avanza solo · "0 min" → "2 h 20 min"
+```
+
+**Las mismas dos filas fallan al leer temprano y pasan con el valor EXACTO al leer
+después.** Dos lecturas del mismo hecho discrepando: la que no esperó estaba mal.
+
+### La causa
+
+`scripts/verificar-temporizador.mjs` hacía:
+
+```js
+await page.reload({ waitUntil: "networkidle2" });
+await page.waitForSelector('[data-testid="lista-activas"] li');
+```
+
+**Los `<li>` salen de IndexedDB**, no del servidor — eso es offline-first
+funcionando: la pantalla no espera a la red para mostrar lo que el dispositivo
+sabe. La lista del servidor llega después y la pisa. Y como la prueba retrasa
+`entrada_at` **por SQL, a espaldas de la app**, el valor del dispositivo es
+deliberadamente distinto del anclado: **ningún cliente puede conocerlo antes de
+que el servidor se lo diga.**
+
+`networkidle2` no alcanza: se cumple **antes** de que React hidrate y dispare su
+fetch, así que la respuesta que importa todavía no salió.
+
+### La corrección, y por qué no ablanda nada
+
+Se espera la respuesta `GET /api/sesiones` **y** que el pintado se asiente, con
+comprobación propia y piso: si la lista no llega o el pintado no se asienta en 8 s,
+**falla**. La igualdad exacta contra `entrada_at` queda intacta: solo deja de
+medirse en vuelo.
+
+`PLAN` ganó su entrada —el guard de este verificador rechaza toda comprobación no
+declarada, y la primera corrida dio `comprobación fuera del PLAN declarado`—.
+
+### Probado con el fallo plantado **en el producto**
+
+`duracion()` con `+ 420000` (7 min), reconstruido y desplegado local:
+
+```
+FAIL · FIXT51 · el valor nuevo es exactamente el que implica su entrada_at · pantalla "2 h 28 min" · entrada_at implica "2 h 21 min"
+10/15 comprobaciones PASS
+FALLARON: las cuatro de correspondencia + las dos de valor nuevo
+```
+
+La comprobación nueva **pasó** durante el plant —la lista sí había llegado— y las
+de valor delataron el desvío: **la espera no tapa un valor equivocado**.
+Revertido, reconstruido, **15/15**.
+
+### Lo que esto cambia en el estado
+
+`STATE.md` listaba TMP-1 como defecto de producto. **No lo es.** Con esto, y con
+M-2 reclasificada esta misma noche, **el producto no tiene ningún defecto abierto
+medido**: los dos que quedaban eran de instrumentos. La cuenta de `METAS.md` —
+siete de doce metas son sobre los instrumentos y no sobre el estacionamiento —
+sube a ocho de doce.

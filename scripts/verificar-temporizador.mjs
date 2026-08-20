@@ -215,6 +215,10 @@ const PLAN = [
   "el operador llega a su pantalla",
   "las dos sesiones activas del operador llegaron a la base",
   "el servidor lista las dos sesiones con el entrada_at que se ancló",
+  // Va ANTES de las de correspondencia porque es su precondición: sin la lista
+  // del servidor aplicada, lo que se mida es el primer pintado —el que sale de
+  // IndexedDB— y no lo que la app sabe. Ver el bloque de la segunda pintada.
+  "la lista del servidor llegó y el navegador la pintó antes de medir",
   ...[RECIENTE, ANTIGUA].flatMap((p) => [
     `${p} · el formato es el que promete la pantalla`,
     `${p} · el transcurrido es exactamente el que implica su entrada_at`,
@@ -407,8 +411,41 @@ try {
   );
 
   // ---- Lo que el navegador RENDERIZA --------------------------------------
+  //
+  // **La lista se pinta DOS veces, y hay que asertar sobre la segunda.**
+  //
+  // Los `<li>` salen primero de IndexedDB —eso es offline-first, y es correcto:
+  // la pantalla no espera a la red para mostrar lo que el dispositivo sabe—. La
+  // lista del servidor llega después y la pisa. En esta prueba el `entrada_at`
+  // se retrasó **por SQL, a espaldas de la app**, así que el valor del
+  // dispositivo es deliberadamente distinto del anclado: ningún cliente puede
+  // conocerlo antes de que el servidor se lo diga.
+  //
+  // La sonda anterior esperaba `lista-activas li` y leía ahí. Eso es leer el
+  // primer pintado y reportar como defecto del producto **un estado
+  // intermedio**: daba 11/14 con las dos filas en "0 min", y las mismas dos
+  // comprobaciones de "avanza solo" —que leen más tarde— pasaban con el valor
+  // exacto. Dos lecturas del mismo hecho discrepando: la que no esperó estaba mal.
+  //
+  // `networkidle2` no alcanza: se cumple antes de que React hidrate y dispare su
+  // fetch, así que la respuesta que importa todavía no salió.
+  //
+  // Lo que sigue **no ablanda ninguna aserción de valor**: la igualdad exacta
+  // contra `entrada_at` queda intacta. Solo deja de medirse en vuelo. Y tiene
+  // piso: si la lista del servidor no llega, o el pintado no se asienta dentro
+  // del límite, se **falla** — un temporizador que nunca se asienta también es
+  // un defecto.
+  const listaDelServidor = page.waitForResponse(
+    (r) =>
+      r.url().includes("/api/sesiones") &&
+      r.request().method() === "GET" &&
+      r.status() === 200,
+    { timeout: 20_000 },
+  );
   await page.reload({ waitUntil: "networkidle2" });
   await page.waitForSelector('[data-testid="lista-activas"] li');
+
+  // La espera vive más abajo, después de `leerFila`: necesita leer el DOM.
 
   /**
    * Texto del transcurrido de UNA fila, identificada por su patente.
@@ -432,6 +469,41 @@ try {
         leidoEn: Date.now(),
       };
     }, patente);
+
+  // ---- La segunda pintada: se espera a que la lista del servidor esté aplicada
+  //
+  // Ver el bloque de arriba. Acá se consuma la espera, ahora que `leerFila`
+  // existe. Tiene piso propio: si la lista no llega o el pintado no se asienta,
+  // esta comprobación **falla** en vez de dejar medir en vuelo.
+  let listaAplicada = false;
+  try {
+    await listaDelServidor;
+    // La respuesta llegó; falta que la app lea el cuerpo y que React pinte. Se
+    // espera a que el texto de la fila deje de cambiar dos lecturas seguidas.
+    // **La estabilidad no puede tapar un valor equivocado**: el valor se compara
+    // igual, contra `entrada_at`, en `comprobarCorrespondencia`.
+    const arranque = Date.now();
+    let previo = null;
+    while (Date.now() - arranque < 8_000) {
+      const actual = (await leerFila(ANTIGUA))?.texto ?? null;
+      if (actual !== null && actual === previo) {
+        listaAplicada = true;
+        break;
+      }
+      previo = actual;
+      await esperar(250);
+    }
+  } catch {
+    listaAplicada = false;
+  }
+
+  comprobar(
+    "la lista del servidor llegó y el navegador la pintó antes de medir",
+    listaAplicada,
+    listaAplicada
+      ? "GET /api/sesiones 200 y el transcurrido se asentó"
+      : "no llegó la lista, o el pintado no se asentó en 8 s: lo que se mida desde acá es un estado intermedio",
+  );
 
   /**
    * Lectura tomada DENTRO de la ventana segura (ver cabecera). Devuelve también

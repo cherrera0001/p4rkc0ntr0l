@@ -1238,3 +1238,46 @@ No hace falta un guard nuevo: hace falta que **el bloque de regresión del ledge
 sea la salida de `npm run evidencia`** y no un texto que alguien escribe. *Una
 regresión que no se corre no existe* — y una que se transcribe a mano tampoco,
 porque la mano elige qué copiar.
+
+---
+
+## 2026-08-20 · Una app offline-first pinta dos veces, y la sonda tiene que saber cuál mira
+
+TMP-1 estuvo dos días anotado como *«defecto real, preexistente»* del producto.
+No lo era. La sonda leía el **primer pintado** —el que sale de la base local— y
+lo comparaba contra un `entrada_at` que se había retrasado **por SQL, a espaldas
+de la app**.
+
+**La lección general, que vale para cualquier verificador de una app
+offline-first:** la pantalla se pinta dos veces por diseño —primero con lo que el
+dispositivo sabe, después con lo que el servidor dice—, y **una aserción tiene que
+declarar sobre cuál de las dos habla**. Si no lo declara, mide una carrera.
+
+`networkidle2` **no** es esa señal: se cumple antes de que el cliente hidrate y
+dispare su fetch. Esperar a que aparezca el primer `<li>` tampoco: ese `li` es
+exactamente la evidencia de que el dispositivo respondió sin la red.
+
+### El síntoma que lo delata, y conviene saber reconocerlo
+
+**Dos comprobaciones del mismo hecho discrepando dentro de la misma corrida.**
+Acá: *«el transcurrido es el que implica entrada_at»* fallaba y *«el temporizador
+avanza solo»* pasaba con el valor exacto, sobre las mismas dos filas. Cuando eso
+aparece, el defecto no está en ninguna de las dos: está en lo que las separa —y
+lo que las separaba era el tiempo de espera.
+
+Es la misma forma que MET-1a había mostrado horas antes, con las dos
+comprobaciones que se contradecían sobre la misma resta. **Dos veces el mismo día,
+y las dos veces el defecto estaba en el instrumento.**
+
+### Y el corolario que ordena la prioridad del proyecto
+
+De los dos «defectos de producto» que quedaban abiertos esta noche, **los dos
+resultaron ser de las sondas**: el 503 de frontera no reproduce, y el `0 min` del
+temporizador era una lectura en vuelo. *Un instrumento que reporta defectos
+inexistentes cuesta lo mismo que uno que los oculta:* las dos veces se trabaja
+sobre algo que no es.
+
+**Esperar una señal determinista no ablanda una aserción.** Lo que la ablandaría
+es comparar contra menos, o contra otra cosa. Acá se siguió comparando con
+igualdad exacta contra `entrada_at` — y se probó plantando `+7 min` en el
+producto, que hizo caer seis comprobaciones.
