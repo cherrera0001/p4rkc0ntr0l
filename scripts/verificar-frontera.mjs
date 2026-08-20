@@ -42,7 +42,7 @@ import { fileURLToPath } from "node:url";
 
 import postgres from "postgres";
 
-import { EMAIL_OPERADOR, EMAIL_PLATAFORMA } from "./lib/fixtures.mjs";
+import { EMAIL_DUENO, EMAIL_OPERADOR, EMAIL_PLATAFORMA } from "./lib/fixtures.mjs";
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..");
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
@@ -105,6 +105,28 @@ const DEGENERADOS = [
   // que es la clase de daño colateral que un verificador no debe causar. Y es
   // el caso que encontró el 503 del login, que nadie sabía que existía.
   ["byte NUL", `a${String.fromCharCode(0)}b`],
+  // **Fechas fuera de rango.** Se agregan al corpus, pero hay que decir lo que
+  // se midió y no lo que uno querría: **por sí solas NO alcanzan el parseo de
+  // fechas de `POST /api/sesiones`**. Este verificador manda el mismo valor
+  // degenerado en TODOS los campos a la vez, así que `validarPatente` rechaza
+  // con 400 antes. Reproducido: con la cota de rango quitada del producto, este
+  // criterio seguía dando **5/5 PASS**.
+  //
+  // O sea: el hueco no era el corpus, es **la forma de la sonda** — toda
+  // validación aguas abajo de la primera guarda que rechaza queda sin
+  // ejercitar. Cerrarlo exige mandar un cuerpo por lo demás VÁLIDO con un solo
+  // campo degenerado, y eso crearía filas reales en cada petición (sesiones,
+  // versiones de tarifa): es un cambio de diseño de este verificador, con su
+  // decisión de contaminación, no un ajuste.
+  //
+  // Mientras tanto la propiedad la sostiene `src/lib/frontera.test.ts`, que
+  // llega a `fechaDeFrontera` directo y falla si se le quita la cota (medido:
+  // 3 pruebas en rojo). Se dejan igual acá porque sí ejercitan las rutas cuya
+  // primera guarda no es la patente.
+  ["año fuera del rango de Postgres", "-010000-01-01T00:00:00.000Z"],
+  ["borde superior de Date", "+275760-09-13T00:00:00.000Z"],
+  ["borde inferior de Date", "-271821-04-20T00:00:00.000Z"],
+  ["fecha con forma válida e imposible", "9999-99-99T99:99:99.999Z"],
 ];
 
 /** Campos que las rutas leen del cuerpo. Se envían todos a todas: una ruta que
@@ -156,7 +178,16 @@ try {
   // **Una sesión por rol.** Antes se entraba solo como operador, y toda ruta que
   // exige otro rol respondía 401 antes de validar nada. Se prueba cada ruta con
   // cada rol; basta que UNA sesión alcance su frontera para haberla probado.
-  const sesiones = [{ rol: "operador", cookie: await entrar(EMAIL_OPERADOR) }];
+  // El dueño es fixture permanente igual que el operador (lo siembra
+  // `sembrar.mjs`), así que no hay que crearlo acá. Se agrega porque la carga de
+  // una versión nueva de tarifa (`POST /api/tarifas`) exige ese rol: sin esta
+  // sesión la ruta respondía 401 en el 100% de sus casos y **el piso de abajo lo
+  // delató** —4/5, «ninguna quedó en 401/403 el 100%»— que es exactamente para lo
+  // que ese piso existe.
+  const sesiones = [
+    { rol: "operador", cookie: await entrar(EMAIL_OPERADOR) },
+    { rol: "dueño", cookie: await entrar(EMAIL_DUENO) },
+  ];
   if (sql) {
     await sql`
       INSERT INTO usuario (email, rol, estacionamiento_id)

@@ -24,7 +24,11 @@
  * 2. Siembra una sesion en A y otra en B.
  * 3. Con la sesion del operador de A, intenta llegar a lo de B por los caminos
  *    que existen: el listado y el cierre de salida.
- * 4. Con la sesion de plataforma, comprueba que no obtiene ninguna patente.
+ * 4. Con la sesion de plataforma, comprueba que no obtiene ninguna patente: por
+ *    las dos rutas del producto, y ademas **por exclusion** sobre toda la
+ *    superficie de plataforma descubierta del arbol — porque el criterio dice
+ *    «por ninguna ruta» y una lista escrita a mano no ve la ruta que se agrega
+ *    manana.
  *
  * ## Es existencial: sin dos clientes no prueba nada
  *
@@ -34,6 +38,10 @@
  *
  * Uso:  npm run verificar:aislamiento [url]
  */
+
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import postgres from "postgres";
 
@@ -92,6 +100,82 @@ async function limpiar() {
   await sql`DELETE FROM usuario WHERE email IN (${EMAIL_DUENO_B}, ${EMAIL_OPERADOR_B})`;
   await sql`DELETE FROM tarifa WHERE estacionamiento_id IN (SELECT id FROM estacionamiento WHERE nombre = ${NOMBRE_B})`;
   await sql`DELETE FROM estacionamiento WHERE nombre = ${NOMBRE_B}`;
+}
+
+// --- La superficie de plataforma, descubierta y no enumerada ------------------
+
+const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * **AC-ISO-2 se comprobaba enumerando dos rutas, y enumerar deja agujeros.**
+ *
+ * Las dos comprobaciones dinamicas de mas abajo piden `/api/sesiones` y la ruta
+ * de salida con la sesion de plataforma. Las dos son correctas y las dos siguen
+ * ahi — pero el criterio dice *«por NINGUNA ruta»*, y una ruta nueva bajo
+ * `src/app/plataforma/` o `src/app/api/plataforma/` no aparecia en ninguna
+ * lista: nacia sin control.
+ *
+ * Es exactamente el defecto que `CLAUDE.md` §1 documenta para la version
+ * enumerada de AC-SCOPE-1 —*«una ruta nueva evade cualquier lista blanca»*— y
+ * que el gate de alcance ya corrigio escaneando por exclusion. AC-ISO-2 no habia
+ * recibido ese tratamiento, y es el criterio que protege al rol de mayor
+ * privilegio del sistema.
+ *
+ * Aca la superficie se **descubre del arbol**: lo que se agregue manana entra
+ * solo.
+ */
+const SUPERFICIE_PLATAFORMA = ["src/app/plataforma", "src/app/api/plataforma"];
+
+/**
+ * La tabla donde vive el dato personal, y las formas de sacarle la columna.
+ *
+ * Se busca el **identificador**, no la palabra: `patente` en una frase de la
+ * interfaz —*«este rol no accede a patentes»*— es copy, no es un acceso. Lo que
+ * importa es tocar `sesion_vehiculo`: sin esa tabla no hay patente que devolver.
+ */
+const ACCESO_A_PATENTE = /\bsesionVehiculo\b|\bsesion_vehiculo\b|\.patente\b|["']patente["']|\bpatente\s*:/;
+
+const FUENTES = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
+
+/** Archivos de fuente de un arbol, con ruta relativa a la raiz, en POSIX. */
+function archivosDe(raizRelativa) {
+  const salida = [];
+  const abs = join(RAIZ, raizRelativa);
+  if (!existsSync(abs)) return salida;
+  const recorrer = (dir) => {
+    for (const entrada of readdirSync(dir)) {
+      const ruta = join(dir, entrada);
+      if (statSync(ruta).isDirectory()) recorrer(ruta);
+      else if (FUENTES.includes(ruta.slice(ruta.lastIndexOf("."))))
+        salida.push(relative(RAIZ, ruta).replace(/\\/g, "/"));
+    }
+  };
+  recorrer(abs);
+  return salida;
+}
+
+/**
+ * El fuente sin comentarios. Los comentarios de este repo **nombran** lo
+ * prohibido a proposito —explican por que este rol no ve patentes—, y un guard
+ * que los cuente obliga a dejar de documentar la razon.
+ */
+const sinComentarios = (texto) =>
+  texto
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*(\/\/|\*).*$/gm, "");
+
+/**
+ * La URL que sirve cada archivo de superficie. `page.tsx` y `route.ts` son las
+ * dos formas del App Router que responden a una peticion; los demas archivos
+ * (componentes, helpers) no tienen URL propia y por eso solo los cubre la
+ * comprobacion estatica.
+ */
+function urlDe(rutaArchivo) {
+  const m = rutaArchivo.match(/^src\/app\/(.*)\/(page|route)\.(tsx?|jsx?|mjs)$/);
+  if (!m) return null;
+  // Los grupos de ruta `(nombre)` no aparecen en la URL.
+  const segmentos = m[1].split("/").filter((s) => !/^\(.*\)$/.test(s));
+  return `/${segmentos.join("/")}`;
 }
 
 /** Siembra una sesion activa directamente, para no depender del flujo de ingreso. */
@@ -224,6 +308,64 @@ try {
     "AC-ISO-2 · el rol plataforma tampoco llega a una patente por la ruta de salida",
     rSalidaPlataforma.status !== 200 && !cuerpoSalidaP.includes(PATENTE_B),
     `HTTP ${rSalidaPlataforma.status}`,
+  );
+
+  // --- AC-ISO-2 · POR EXCLUSION sobre toda la superficie de plataforma --------
+  // Las dos comprobaciones de arriba enumeran; estas dos descubren. Ver el
+  // comentario de SUPERFICIE_PLATAFORMA: el criterio dice "por ninguna ruta", y
+  // eso no se sostiene con una lista escrita a mano.
+
+  const superficie = SUPERFICIE_PLATAFORMA.flatMap(archivosDe);
+
+  // Piso: si la superficie estuviera vacia, las dos comprobaciones que siguen
+  // serian ciertas por vacio — el defecto que la columna "tipo" de spec.md §9
+  // existe para nombrar.
+  comprobar(
+    "AC-ISO-2 · hay superficie de plataforma que escanear (piso: sobre cero archivos esto pasa por vacio)",
+    superficie.length > 0,
+    `${superficie.length} archivo(s)`,
+  );
+
+  const tocanLaTabla = superficie.filter((r) =>
+    ACCESO_A_PATENTE.test(sinComentarios(readFileSync(join(RAIZ, r), "utf8"))),
+  );
+  comprobar(
+    "AC-ISO-2 · ninguna pieza de la superficie de plataforma toca la tabla donde vive la patente",
+    tocanLaTabla.length === 0,
+    tocanLaTabla.length ? `FUGA: ${tocanLaTabla.join(", ")}` : `${superficie.length} archivo(s) limpios`,
+  );
+
+  // Y la mitad dinamica: cada URL de esa superficie, pedida con la sesion de
+  // plataforma, no devuelve ninguna de las dos patentes sembradas.
+  const urls = [...new Set(superficie.map(urlDe).filter((u) => u !== null))];
+  const ejercitadas = [];
+  const sinEjercitar = [];
+  const fugas = [];
+
+  for (const u of urls) {
+    // Un segmento dinamico no se puede pedir sin inventar un valor. **No se
+    // salta en silencio**: se declara, porque una cobertura recortada sin decirlo
+    // se lee como cobertura completa.
+    if (u.includes("[")) {
+      sinEjercitar.push(u);
+      continue;
+    }
+    const r = await fetch(`${URL_BASE}${u}`, { headers: cabPlataforma });
+    const cuerpo = await r.text();
+    ejercitadas.push(`${u} → ${r.status}`);
+    if (cuerpo.includes(PATENTE_A) || cuerpo.includes(PATENTE_B)) fugas.push(u);
+  }
+
+  comprobar(
+    "AC-ISO-2 · ninguna URL de la superficie de plataforma devuelve una patente",
+    fugas.length === 0 && ejercitadas.length > 0,
+    [
+      ejercitadas.length ? ejercitadas.join(" · ") : "ninguna URL ejercitada",
+      fugas.length ? `FUGA: ${fugas.join(", ")}` : "",
+      sinEjercitar.length ? `sin ejercitar (segmento dinamico): ${sinEjercitar.join(", ")}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
   );
 
   await limpiar();

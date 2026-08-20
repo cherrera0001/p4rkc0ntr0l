@@ -287,6 +287,14 @@ const SOLTADOS = new Map([
     "spec.md §9, nota de FASE C (2026-08-14) + LEDGER 2026-08-14: además su gate está registrado FAIL como riesgo aceptado",
   ],
   [
+    "verificar:reportes",
+    "spec.md §9, misma nota de FASE C que verificar:ui: los reportes nacen de la maqueta 1g (docs/diseno-2026-08-12-traduccion.md:47), posterior a la spec. §6 enuncia ocupación e ingresos observados, pero no la vista por período: subir un AC nuevo sería autorar requisitos, y eso va por ADR",
+  ],
+  [
+    "verificar:tarifas",
+    "spec.md §9, misma nota de FASE C que verificar:ui: la carga de tarifas nace de la maqueta 1e (docs/diseno-2026-08-12-traduccion.md:45), posterior a la spec. §4 dice que los tres valores los carga el dueño, pero §1–§8 nunca enunció la pantalla ni la ruta: subir un AC nuevo sería autorar requisitos, y eso va por ADR",
+  ],
+  [
     "verificar:temporizador",
     "docs/data/matriz-trazabilidad.md:96 (2026-08-14): AC-OP-3 no se escribe hasta que el comando sostenga lo que el criterio afirmaría; el verificador está VETADO",
   ],

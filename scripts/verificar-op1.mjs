@@ -21,6 +21,12 @@ import { EMAIL_OPERADOR, limpiarFixtures } from "./lib/fixtures.mjs";
 
 const URL_BASE = process.argv[2] ?? "http://localhost:3000";
 const PATENTE_FIXTURE = "FIXT00";
+/**
+ * Patente propia para la comprobación del doble toque (FE-1), al final del
+ * archivo. `FIXT` + dos dígitos, que es lo que mantiene el espacio de los
+ * verificadores disjunto del banco de H1 (`FIXTB…`, ver `scripts/lib/fixtures.mjs`).
+ */
+const PATENTE_DOBLE = "FIXT40";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -152,7 +158,34 @@ try {
     } ms`,
   );
 
-  comprobar("la UI muestra el vehículo aunque no haya red", true);
+  // Antes esto era `comprobar(..., true)`: una constante sin antecedente,
+  // que no lee el DOM y no puede fallar nunca. El waitForSelector de arriba
+  // solo prueba que existe ALGÚN <li> —un residuo de una corrida anterior lo
+  // satisface igual—, así que la aserción real tiene que mirar la patente
+  // del fixture puntualmente, no la mera presencia de un ítem en la lista.
+  const patentesEnListaOffline = await page.$$eval(
+    '[data-testid="lista-activas"] li',
+    (nodos) => nodos.map((n) => n.getAttribute("data-patente")),
+  );
+  comprobar(
+    "la UI muestra el vehículo aunque no haya red",
+    patentesEnListaOffline.includes(PATENTE_FIXTURE),
+    `patentes en lista: ${patentesEnListaOffline.join(", ") || "(ninguna)"}`,
+  );
+
+  // AC-UX-1 (docs/diseno-2026-08-12-traduccion.md:135): con un ingreso local
+  // pendiente y sin red, el contador de pendientes es contenido de primer
+  // nivel, no un ícono — el operador tiene que poder leer cuántos registros
+  // le quedan esperando sin adivinar.
+  const pendientesEl = await page.$('[data-testid="pendientes"]');
+  const textoPendientes = pendientesEl
+    ? await page.$eval('[data-testid="pendientes"]', (el) => el.textContent.trim())
+    : null;
+  comprobar(
+    "el contador de pendientes (AC-UX-1) muestra 1 esperando red",
+    textoPendientes === "1 esperando red",
+    textoPendientes ?? "(no existe el elemento)",
+  );
 
   const enServidorOffline = await contarEnServidor();
   comprobar(
@@ -203,9 +236,63 @@ try {
     trasRecarga === 1,
     `${trasRecarga} fila(s)`,
   );
+
+  // --- FE-1 · el doble toque no duplica el ingreso ---------------------------
+  //
+  // **Va al final y con patente propia** para no mover los conteos de arriba,
+  // que esperan exactamente una fila de PATENTE_FIXTURE.
+  //
+  // Se prueba SIN RED a propósito. Con red el servidor tapa el defecto: el
+  // índice único INT-15 rechaza el segundo y responde `duplicada: true`, así que
+  // la duplicación se vuelve invisible desde la base. Sin red no hay servidor
+  // que la tape ni GET que reconcilie, y el registro sobrante queda en el
+  // dispositivo —y en la ocupación que ve el operador— todo lo que dure el
+  // corte. La ocupación es la cifra contra la que el panel del dueño mide el
+  // descuadre (`spec.md` §6): inflarla es corromper la señal, no la interfaz.
+  //
+  // Los dos clicks van SIN await entre medio: esperar entre uno y otro probaría
+  // dos ingresos consecutivos, que es otra cosa y siempre pasa.
+  await page.setOfflineMode(true);
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase("estacionamiento");
+      req.onsuccess = req.onerror = req.onblocked = () => resolve(undefined);
+    });
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="nuevo-ingreso"]');
+  await page.click('[data-testid="nuevo-ingreso"]');
+  await page.waitForSelector('[data-testid="campo-patente"]');
+  await page.type('[data-testid="campo-patente"]', PATENTE_DOBLE, { delay: 10 });
+
+  await page.evaluate(() => {
+    const boton = document.querySelector('[data-testid="confirmar-ingreso"]');
+    boton.click();
+    boton.click();
+  });
+  await esperar(1200);
+
+  const trasDobleToque = (await leerIndexedDB()).filter((s) => s.patente === PATENTE_DOBLE);
+  comprobar(
+    "FE-1 · el doble toque en Confirmar no duplica el ingreso",
+    trasDobleToque.length === 1,
+    `${trasDobleToque.length} registro(s) para ${PATENTE_DOBLE}`,
+  );
+
+  const filasEnPantalla = await page.$$eval(
+    '[data-testid="lista-activas"] li',
+    (nodos, patente) =>
+      nodos.filter((n) => n.getAttribute("data-patente") === patente).length,
+    PATENTE_DOBLE,
+  );
+  comprobar(
+    "FE-1 · y la ocupación que ve el operador no queda inflada",
+    filasEnPantalla === 1,
+    `${filasEnPantalla} fila(s) en pantalla`,
+  );
 } finally {
   if (browser) await browser.close();
-  await sql`DELETE FROM sesion_vehiculo WHERE patente = ${PATENTE_FIXTURE}`;
+  await sql`DELETE FROM sesion_vehiculo WHERE patente IN (${PATENTE_FIXTURE}, ${PATENTE_DOBLE})`;
   await sql.end();
 }
 
