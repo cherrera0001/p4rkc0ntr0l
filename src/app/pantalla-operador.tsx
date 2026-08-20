@@ -140,6 +140,10 @@ export default function PantallaOperador({
   const cerrandoSalidas = useRef(new Set<string>());
   /** Copia en estado para deshabilitar el botón; el ref manda para la carrera. */
   const [cerrando, setCerrando] = useState<Set<string>>(new Set());
+  /** Ingreso en vuelo: mismo patrón que `cerrandoSalidas` (hallazgo FE-1). */
+  const confirmando = useRef(false);
+  /** Copia en estado para deshabilitar «Confirmar»; el ref manda para la carrera. */
+  const [guardandoIngreso, setGuardandoIngreso] = useState(false);
   /** Sesiones cerradas en este dispositivo hace poco, con el instante del cierre. */
   const cierresRecientes = useRef(new Map<string, number>());
 
@@ -299,58 +303,79 @@ export default function PantallaOperador({
   async function confirmar(evento: React.FormEvent) {
     evento.preventDefault();
 
-    const validacion = validarPatente(patente);
-    if (!validacion.valida) {
-      setError(validacion.motivo);
-      // Foco de vuelta al campo (hallazgo FE-5 del concilio). Antes el foco
-      // quedaba en «Confirmar» tras el error, así que corregir exigía volver al
-      // campo con el dedo o el tabulador. La barrera de fixtures ya lo hacía;
-      // esta rama —la de validación— quedó afuera.
-      campo.current?.focus();
-      return;
+    // **Guarda de reentrancia (hallazgo FE-1 del concilio), mismo patrón que
+    // `cerrandoSalidas`/`registrarSalida` más abajo.** Sin esto, un doble toque
+    // en «Confirmar» —el gesto real de alguien apurado— corre `confirmar()` dos
+    // veces en el mismo frame; cada corrida genera su propio
+    // `crypto.randomUUID()`, así que quedan DOS registros `activa` en
+    // IndexedDB por un solo vehículo. El estado de React no alcanza para esto:
+    // dos toques en el mismo tick leen el mismo valor viejo antes de que el
+    // primer `setState` se aplique. El ref es síncrono y corta la segunda
+    // corrida en el acto.
+    if (confirmando.current) return;
+    confirmando.current = true;
+    setGuardandoIngreso(true);
+    try {
+      const validacion = validarPatente(patente);
+      if (!validacion.valida) {
+        setError(validacion.motivo);
+        // Foco de vuelta al campo (hallazgo FE-5 del concilio). Antes el foco
+        // quedaba en «Confirmar» tras el error, así que corregir exigía volver al
+        // campo con el dedo o el tabulador. La barrera de fixtures ya lo hacía;
+        // esta rama —la de validación— quedó afuera.
+        campo.current?.focus();
+        return;
+      }
+
+      // Barrera de datos personales, PRIMERA línea (hallazgo A-3).
+      //
+      // Tiene que estar acá, antes de `guardar()`. La barrera del servidor llega
+      // tarde: para cuando responde 403 el dato ya se escribió en el dispositivo,
+      // y bajo la Ley 21.719 recolectar y almacenar localmente ya es tratamiento.
+      // Rechazar antes de persistir es la diferencia entre no tratar el dato y
+      // tratarlo mal.
+      if (!operacionReal && !esPatenteFixture(validacion.patente)) {
+        setError(
+          "El piloto solo acepta patentes de prueba. Esta patente no se registró " +
+            "ni se guardó en el dispositivo.",
+        );
+        // Se limpia el campo: si era una patente real, tampoco tiene por qué
+        // quedar a la vista. El formulario sigue abierto para volver a intentar.
+        setPatente("");
+        campo.current?.focus();
+        return;
+      }
+
+      const ahora = new Date().toISOString();
+      const sesion: SesionLocal = {
+        id: crypto.randomUUID(),
+        patente: validacion.patente,
+        entradaAt: ahora,
+        tecleoInicioAt: tecleoInicioAt.current ?? ahora,
+        tecleoFinAt: ahora,
+        estado: "activa",
+        syncEstado: "local",
+        montoCalculado: null,
+        salidaAt: null,
+      };
+
+      // Primero al disco local. Recién después la red. Ese orden es el que hace
+      // que el registro no dependa de la señal.
+      await guardar(sesion);
+      cancelar();
+      // La fila aparece con lo local, sin esperar al servidor: el operador ve el
+      // ingreso al instante, haya red o no.
+      await refrescarLocales();
+
+      void sincronizarYRefrescar();
+    } finally {
+      // Se suelta pase lo que pase —éxito, validación fallida o error de
+      // red/disco—: si el guardado local fallara y la guarda no se soltara acá,
+      // el botón quedaría muerto para siempre, y offline-first exige que el
+      // ingreso sin red siga funcionando igual.
+      confirmando.current = false;
+      setGuardandoIngreso(false);
     }
-
-    // Barrera de datos personales, PRIMERA línea (hallazgo A-3).
-    //
-    // Tiene que estar acá, antes de `guardar()`. La barrera del servidor llega
-    // tarde: para cuando responde 403 el dato ya se escribió en el dispositivo,
-    // y bajo la Ley 21.719 recolectar y almacenar localmente ya es tratamiento.
-    // Rechazar antes de persistir es la diferencia entre no tratar el dato y
-    // tratarlo mal.
-    if (!operacionReal && !esPatenteFixture(validacion.patente)) {
-      setError(
-        "El piloto solo acepta patentes de prueba. Esta patente no se registró " +
-          "ni se guardó en el dispositivo.",
-      );
-      // Se limpia el campo: si era una patente real, tampoco tiene por qué
-      // quedar a la vista. El formulario sigue abierto para volver a intentar.
-      setPatente("");
-      campo.current?.focus();
-      return;
-    }
-
-    const ahora = new Date().toISOString();
-    const sesion: SesionLocal = {
-      id: crypto.randomUUID(),
-      patente: validacion.patente,
-      entradaAt: ahora,
-      tecleoInicioAt: tecleoInicioAt.current ?? ahora,
-      tecleoFinAt: ahora,
-      estado: "activa",
-      syncEstado: "local",
-      montoCalculado: null,
-      salidaAt: null,
-    };
-
-    // Primero al disco local. Recién después la red. Ese orden es el que hace
-    // que el registro no dependa de la señal.
-    await guardar(sesion);
-    cancelar();
-    // La fila aparece con lo local, sin esperar al servidor: el operador ve el
-    // ingreso al instante, haya red o no.
-    await refrescarLocales();
-
-    void sincronizarYRefrescar();
   }
 
   async function registrarSalida(vehiculo: EnPantalla) {
@@ -537,9 +562,10 @@ export default function PantallaOperador({
             <button
               type="submit"
               data-testid="confirmar-ingreso"
-              className="flex-1 rounded-2xl bg-accent px-4 py-4 text-lg font-semibold text-white transition-colors duration-200 active:bg-accent-strong"
+              disabled={guardandoIngreso}
+              className="flex-1 rounded-2xl bg-accent px-4 py-4 text-lg font-semibold text-white transition-colors duration-200 active:bg-accent-strong disabled:opacity-60"
             >
-              Confirmar
+              {guardandoIngreso ? "Guardando…" : "Confirmar"}
             </button>
             <button
               type="button"

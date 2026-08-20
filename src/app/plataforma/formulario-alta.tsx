@@ -25,6 +25,7 @@
  * `aria-describedby` al mensaje, `aria-live` para el resultado.
  */
 
+import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 
 type Campo = {
@@ -76,6 +77,7 @@ type Estado =
   | { tipo: "error"; mensaje: string; campos: string[] };
 
 export default function FormularioAlta() {
+  const router = useRouter();
   const [paso, setPaso] = useState(0);
   const [valores, setValores] = useState<Record<string, string>>(valoresIniciales);
   const [estado, setEstado] = useState<Estado>({ tipo: "quieto" });
@@ -124,6 +126,14 @@ export default function FormularioAlta() {
         setEstado({ tipo: "creado", nombre: respuesta?.cliente?.nombre ?? "" });
         setValores(valoresIniciales());
         setPaso(0);
+        // **Sin esto la pantalla se contradice a sí misma.** `Plataforma` es un
+        // componente de servidor y consulta el listado una sola vez, al
+        // renderizar: el aviso decía «Cliente creado» y la lista de abajo no lo
+        // mostraba hasta recargar a mano. Y el daño no era cosmético — al no
+        // verlo, quien da de alta puede concluir que falló y repetirla, y el
+        // servidor la acepta como un cliente distinto (no hay deduplicación por
+        // nombre). Hallazgo del experto de frontend del concilio.
+        router.refresh();
         return;
       }
       const campos: string[] = Array.isArray(respuesta?.campos) ? respuesta.campos : [];

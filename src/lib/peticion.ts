@@ -159,11 +159,38 @@ export function rutaAutenticada<C = unknown, R extends Rol = Rol>(
       // Una URL ilegible no puede impedir que la ruta responda su 503.
     }
 
+    /**
+     * **Ninguna respuesta de una ruta autenticada se cachea. Acá, en un solo
+     * lugar, y por TODOS los caminos de salida.**
+     *
+     * Lo que sale de estas rutas es dato personal —patentes activas— o va
+     * acompañado de la cookie de sesión. Hoy el único consumidor real
+     * (`pantalla-operador.tsx`) pide `cache: "no-store"` por su cuenta, así que
+     * el flujo del producto no está expuesto; **pero la prohibición vivía en el
+     * cliente y no en el servidor**, y eso significa que cualquier consumidor
+     * futuro —otra pantalla, un `fetch` sin la opción, un proxy corporativo—
+     * hereda permiso para cachear patentes por defecto.
+     *
+     * Es el escenario que INT-8 ya declaró real: **el dispositivo lo comparten
+     * los turnos**.
+     *
+     * Va envolviendo **cada** `return`, no solo el del manejador: un 401 o un
+     * 403 tampoco tienen por qué quedar cacheados, y dejar dos caminos con la
+     * cabecera y dos sin ella es exactamente la clase de agujero por enumeración
+     * que este repo viene cerrando. Es la misma decisión de forma que hizo
+     * verificable a `exigirRol`: una propiedad que se cumple por construcción no
+     * depende de que la próxima ruta se acuerde.
+     */
+    const sinCache = (respuesta: NextResponse): NextResponse => {
+      respuesta.headers.set("Cache-Control", "private, no-store");
+      return respuesta;
+    };
+
     try {
-      if (opciones.exigirOrigen && !origenPropio(request)) return origenAjeno();
+      if (opciones.exigirOrigen && !origenPropio(request)) return sinCache(origenAjeno());
 
       const sesion = await exigirRol(opciones.rol);
-      if (!sesion) return noAutorizado();
+      if (!sesion) return sinCache(noAutorizado());
 
       // **Estado imposible, no error de usuario.** La base garantiza
       // `pertenencia_por_rol`: un rol de recinto siempre tiene estacionamiento.
@@ -174,13 +201,15 @@ export function rutaAutenticada<C = unknown, R extends Rol = Rol>(
         throw new Error("usuario de recinto sin estacionamiento: viola pertenencia_por_rol");
       }
 
-      return await manejador({
+      const respuesta = await manejador({
         sesion: sesion as R extends "plataforma" ? SesionUsuario : SesionDeRecinto,
         request,
         contexto,
       });
+
+      return sinCache(respuesta);
     } catch (error) {
-      return respuestaDeFallo(etiqueta, error);
+      return sinCache(respuestaDeFallo(etiqueta, error));
     }
   };
 }

@@ -61,6 +61,39 @@ function crear(): BaseDatos {
     max: 1,
     idle_timeout: 20,
     connect_timeout: 10,
+    /**
+     * **Techo a toda consulta y a toda transacción abierta.**
+     *
+     * Medido contra la base real: `statement_timeout`,
+     * `idle_in_transaction_session_timeout` y `lock_timeout` estaban los tres en
+     * `0` —deshabilitados—, ni del lado del cliente ni del servidor. Reproducido
+     * con dos procesos: uno abre `BEGIN; UPDATE …` y se congela sin cerrar; el
+     * otro, corriendo el mismo `UPDATE` que usa el cierre de salida, **esperó
+     * 14,6 s sin ningún error**. Si el primero nunca cierra —que es justo lo que
+     * hace una instancia serverless reciclada a mitad de trabajo— el segundo
+     * espera **sin techo**.
+     *
+     * Por qué duele acá y no en cualquier app: el camino afectado es el cierre de
+     * salida, que es el que le dice al operador cuánto cobrar en efectivo, y el
+     * alta de cliente, que escribe cuatro filas en una transacción. Y desde M8 la
+     * base es **compartida entre clientes** (`max_connections` = 100 medido): un
+     * puñado de instancias colgadas en el mismo patrón agota el pool para todos,
+     * no solo para el estacionamiento afectado.
+     *
+     * Los valores son parámetro de ingeniería, no un `{{placeholder}}` de
+     * negocio: 8 s cubre con holgura la consulta más lenta del producto —el
+     * agregado por hora del panel— y 5 s es más de lo que cualquier transacción
+     * del sistema necesita, ya que la más larga escribe cuatro filas.
+     *
+     * Efecto medido del mecanismo antes de proponerlo: la consulta abortada sale
+     * con `code=57014`, que `ErrorBaseDatos` ya sanea y `respuestaDeFallo`
+     * convierte en 503 con `Retry-After` — recuperable para la cola, que es el
+     * comportamiento correcto para un timeout.
+     */
+    connection: {
+      statement_timeout: 8_000,
+      idle_in_transaction_session_timeout: 5_000,
+    },
     // El log del driver imprimiría la consulta y sus parámetros: en esta base
     // los parámetros son patentes (dato personal, Ley 21.719).
     debug: false,

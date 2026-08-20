@@ -41,9 +41,17 @@ export const PERMISOS: Record<Rol, readonly string[]> = {
     "ver las sesiones activas de SU estacionamiento",
     "cerrar una salida y ver el monto a cobrar en efectivo",
   ],
-  "dueño": ["ver ocupacion, ingresos observados y descuadre de SU estacionamiento"],
+  "dueño": [
+    "ver ocupacion, ingresos observados y descuadre de SU estacionamiento",
+    // Maqueta `1e`. Versiona, no pisa: el historico es lo que permite recalcular
+    // una salida vieja con la tarifa que regia entonces (AC-UX-6).
+    "cargar una version nueva de la tarifa de SU estacionamiento",
+  ],
   plataforma: [
     "dar de alta un cliente nuevo: estacionamiento, tarifa, dueno y operador",
+    // SPEC-005 §3.1 capacidad 2 y 3. Lo que el listado NO muestra esta en §3.2 y
+    // es la mitad que importa: ni ocupacion, ni ingresos, ni patentes.
+    "ver el listado de clientes con su estado de alta: nombre, capacidad, zona horaria, fecha y CANTIDAD de usuarios",
     // Va escrito como permiso negado a proposito: es AC-ISO-2, y el rol con mas
     // privilegio del sistema tiene que llevar su limite a la vista.
     "NO accede a ninguna patente por ninguna ruta",

@@ -14,7 +14,7 @@ import { conBase, db, sesionVehiculo } from "@/db";
 import { operacionRealHabilitada } from "@/lib/env";
 import { ErrorBaseDatos } from "@/lib/errores";
 import { esPatenteFixture } from "@/lib/fixtures";
-import { esIdValido } from "@/lib/frontera";
+import { esIdValido, fechaDeFrontera } from "@/lib/frontera";
 import { validarPatente } from "@/lib/patente";
 import { respuestaDeFallo, rutaAutenticada } from "@/lib/peticion";
 import { sanearIngreso } from "@/lib/tiempo";
@@ -67,12 +67,6 @@ export const GET = rutaAutenticada(
   },
 );
 
-function fechaValida(valor: unknown): Date | null {
-  if (typeof valor !== "string") return null;
-  const d = new Date(valor);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 export const POST = rutaAutenticada(
   { rol: "operador", exigirOrigen: true },
   // Solo el operador registra ingresos. El dueño observa, no opera.
@@ -118,9 +112,9 @@ export const POST = rutaAutenticada(
       return NextResponse.json({ error: "Falta un id válido (uuid)." }, { status: 400 });
     }
 
-    const entrada = fechaValida(entradaAt);
-    const inicio = fechaValida(tecleoInicioAt);
-    const fin = fechaValida(tecleoFinAt);
+    const entrada = fechaDeFrontera(entradaAt);
+    const inicio = fechaDeFrontera(tecleoInicioAt);
+    const fin = fechaDeFrontera(tecleoFinAt);
 
     // AC-MEAS-1: sin ambos timestamps de tecleo la sesión no aporta evidencia
     // sobre H1, así que no se acepta. La medición es parte del producto (§6).
@@ -147,7 +141,7 @@ export const POST = rutaAutenticada(
      */
     const saneado = sanearIngreso(
       { entradaAt: entrada, tecleoInicioAt: inicio, tecleoFinAt: fin },
-      fechaValida(clienteAhora),
+      fechaDeFrontera(clienteAhora),
       new Date(),
     );
 

@@ -28,6 +28,8 @@
     "verificar:int12": "node scripts/verificar-int12.mjs",
     "verificar:ui": "node scripts/verificar-ui.mjs",
     "verificar:invariantes": "node --env-file=.env scripts/verificar-invariantes.mjs",
+    "verificar:tarifas": "node --env-file=.env scripts/verificar-tarifas.mjs",
+    "verificar:reportes": "node --env-file=.env scripts/verificar-reportes.mjs",
     "verificar:endurecimiento": "node --env-file=.env scripts/verificar-endurecimiento.mjs",
     "verificar:ac": "node scripts/verificar-ac.mjs",
     "verificar:alcance": "node scripts/verificar-alcance.mjs",

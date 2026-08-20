@@ -10,80 +10,20 @@
  */
 
 import { and, count, eq, gte, sql, sum } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { conBase, db, sesionVehiculo } from "@/db";
 import { sesionActual } from "@/lib/auth";
 import { destinoDe } from "@/lib/roles";
 import { obtenerEstacionamiento } from "@/lib/contexto";
+import { inicioDelDia } from "@/lib/zona";
 import Cabecera from "../cabecera";
 import CerrarSesion from "../cerrar-sesion";
 import Descuadre from "./descuadre";
 import IngresosPorHora from "./ingresos-por-hora";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Minutos que una zona horaria adelanta a UTC en un instante dado.
- *
- * Se deriva formateando el instante EN LA ZONA y restándolo del mismo instante
- * en UTC. No usa `getTimezoneOffset()`, que devuelve el offset **del proceso** —y
- * Vercel corre en UTC—, no el de la zona que se pide.
- */
-function offsetMinutos(zona: string, instante: Date): number {
-  const p = new Intl.DateTimeFormat("en-US", {
-    timeZone: zona,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-    .formatToParts(instante)
-    .reduce<Record<string, number>>((a, x) => {
-      if (x.type !== "literal") a[x.type] = Number(x.value);
-      return a;
-    }, {});
-  const comoUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
-  return Math.round((comoUTC - instante.getTime()) / 60_000);
-}
-
-/**
- * Medianoche de HOY en la zona del estacionamiento, como instante UTC.
- *
- * **El corte del día del dueño usa la zona del estacionamiento, no la del
- * servidor.** (Hallazgo crítico del experto de frontend del concilio.) La versión
- * anterior sacaba el offset de `new Date(...).getTimezoneOffset()`, que es el del
- * proceso: en Vercel —UTC— el «ingresos de hoy» de un estacionamiento en Santiago
- * se cortaba a las 20:00 hora local, no a medianoche. Medido: desfase de −4 h en
- * Santiago, −6 h en Pascua, +2 h en Madrid. `verificar:meas2` no lo veía porque
- * la máquina de desarrollo está en la misma zona que el fixture.
- *
- * Y con multicliente cada cliente elige su zona (ADR-005), así que el desfase
- * dejó de ser un borde y pasó a ser por cliente.
- */
-function inicioDelDia(zonaHoraria: string): Date {
-  const ahora = new Date();
-  const [anio, mes, dia] = new Intl.DateTimeFormat("en-CA", {
-    timeZone: zonaHoraria,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(ahora)
-    .split("-")
-    .map(Number);
-
-  // La medianoche local, tratada primero como si fuera UTC, y después corrida por
-  // el offset real de la zona en ese instante. Se recalcula el offset sobre la
-  // medianoche candidata para clavar el borde correcto aun cerca de un cambio de
-  // hora de verano.
-  const ingenua = Date.UTC(anio, mes - 1, dia, 0, 0, 0);
-  const off = offsetMinutos(zonaHoraria, new Date(ingenua));
-  return new Date(ingenua - off * 60_000);
-}
 
 export default async function PanelDueno() {
   const usuario = await sesionActual();
@@ -185,6 +125,37 @@ export default async function PanelDueno() {
       <Descuadre ocupacionRegistrada={activas} />
 
       <IngresosPorHora porHora={porHora} />
+
+      {/* Maqueta `1g`: el panel muestra HOY; los reportes muestran el período. */}
+      <Link
+        href="/dueno/reportes"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-4 shadow-xs"
+      >
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-ink">Reportes</span>
+          <span className="text-xs text-subtle">Lo observado, período por período</span>
+        </span>
+        <span aria-hidden className="text-subtle">
+          →
+        </span>
+      </Link>
+
+      {/* Los tres valores con que se calcula cada monto son datos que carga el
+          dueño (spec.md §4), y hasta ahora no tenía por dónde. Maqueta `1e`. */}
+      <Link
+        href="/dueno/tarifas"
+        className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-4 shadow-xs"
+      >
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-ink">Tarifas</span>
+          <span className="text-xs text-subtle">
+            Los valores con que el sistema calcula cada cobro
+          </span>
+        </span>
+        <span aria-hidden className="text-subtle">
+          →
+        </span>
+      </Link>
 
       <p className="text-xs leading-relaxed text-subtle">
         Los ingresos son los <strong className="font-semibold text-muted">observados

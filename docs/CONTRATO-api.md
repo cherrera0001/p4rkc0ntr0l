@@ -36,8 +36,8 @@ si alguna ruta llama a `exigirRol` por fuera.
 | Rol | Puede | No puede |
 |---|---|---|
 | `operador` | registrar ingresos (offline incluido), listar las activas de **su** estacionamiento, cerrar salidas | ver el panel del dueño; tocar datos de otro cliente |
-| `dueño` | ver ocupación, ingresos observados y descuadre de **su** estacionamiento | listar patentes (`GET /api/sesiones` le responde 401); operar |
-| `plataforma` | dar de alta clientes | **acceder a una patente por cualquier ruta** (AC-ISO-2) |
+| `dueño` | ver ocupación, ingresos observados y descuadre de **su** estacionamiento; cargar una versión nueva de **su** tarifa | listar patentes (`GET /api/sesiones` le responde 401); operar |
+| `plataforma` | dar de alta clientes; ver el listado de clientes con su estado de alta —nombre, capacidad, zona horaria, fecha y **cantidad** de usuarios— en la pantalla `/plataforma`, que **no es un endpoint** | **acceder a una patente por cualquier ruta** (AC-ISO-2); ver ocupación, ingresos o usuarios nominados de un cliente (SPEC-005 §3.2) |
 
 La tabla vive en código en `src/lib/roles.ts` y es **descriptiva**. La
 autorización real la hace cada ruta; ocultar un enlace no es negar un permiso.
@@ -52,6 +52,14 @@ existe" y "no es tuyo" ya es información.
 
 Probado con **dos** clientes sembrados (`verificar:aislamiento`), y probado que
 el verificador falla si se borra una cláusula de aislamiento real.
+
+**AC-ISO-2 se comprueba por exclusión, no enumerando rutas.** Dice *«por ninguna
+ruta»*, y hasta el 2026-08-19 lo verificaban dos peticiones escritas a mano: una
+ruta nueva bajo la superficie de plataforma nacía sin control. Ahora la
+superficie se **descubre del árbol** —ningún archivo de plataforma toca
+`sesion_vehiculo`, y ninguna de sus URL devuelve una patente—. Reproducido: con
+una ruta que reparte patentes plantada, las dos comprobaciones enumeradas seguían
+en PASS y solo fallaron las nuevas.
 
 ### 1.4 · Origen (CSRF)
 
@@ -195,6 +203,30 @@ cliente puede traer una tarifa vieja tras estar sin red. **El cobro es en
 efectivo y fuera del sistema** (ADR-001): esto devuelve el monto, no registra
 ningún movimiento de dinero.
 
+### `POST /api/tarifas` — rol `dueño`
+
+Nueva versión de tarifa (maqueta `1e`). **Cuerpo:** `valorHora`,
+`fraccionMinutos`, `montoMinimo`.
+
+| Respuesta | Cuándo |
+|---|---|
+| `201 { tarifa: { id, valorHora, fraccionMinutos, montoMinimo, vigenteDesde } }` | versión creada, vigente desde ya |
+| `400 { error, campos: [...] }` | campos inválidos. **Se devuelven todos**, no el primero |
+| `400 { error }` | cuerpo JSON inválido |
+| `401` / `403` | sin rol `dueño` / origen ajeno |
+
+**Inserta, nunca actualiza.** Cambiar una tarifa crea una fila nueva con su
+`vigente_desde`; las anteriores quedan. Es lo que permite recalcular una salida
+vieja con la tarifa que regía entonces, y lo que hace cierta la promesa de la
+maqueta *«las sesiones ya cerradas conservan el valor con que se calcularon»*.
+
+**`vigente_desde` lo pone el servidor**, no el cuerpo. Aceptarlo del cliente
+permitiría antedatar una versión y cambiar retroactivamente el monto de salidas
+ya cobradas en efectivo, o postdatarla y dejar al estacionamiento sin tarifa
+vigente — lo único que impide cerrar una salida.
+
+El `estacionamiento_id` sale de la sesión, nunca del cuerpo (§1.3).
+
 ### `POST /api/plataforma/clientes` — rol `plataforma`
 
 Alta de cliente. **Cuerpo:** `nombre`, `zonaHoraria`, `capacidadTotal`,
@@ -213,8 +245,13 @@ operador—: un alta a medias dejaría un estacionamiento que no puede cobrar un
 salida. Es la única operación del sistema que necesita transacción, y por eso es
 la única que la usa.
 
-Los enteros se exigen **como número**, no como texto numérico. La zona horaria se
-valida contra `Intl`, no contra una lista propia.
+Los enteros se aceptan **como número o como texto exactamente entero** (`10` y
+`"10"`); se rechazan decimales, `NaN`, infinitos y texto arbitrario. *(Esta línea
+decía lo contrario —«se exigen como número, no como texto numérico»— y quedó
+vieja: un `<input type="number">` entrega su valor como cadena, y rechazarla
+producía un 400 «capacidad inválida» sobre un 10 válido. El código cambió y el
+contrato no.)* La zona horaria se valida contra `Intl`, no contra una lista
+propia.
 
 ---
 

@@ -114,12 +114,20 @@ export async function POST(request: Request) {
       estacionamientoId: fila.estacionamientoId,
     });
 
-    return NextResponse.json({
-      rol: fila.rol,
-      // Cada rol aterriza donde puede trabajar. El de plataforma no ve el
-      // producto: da de alta clientes y nada mas (REQ-ISO-3 de ADR-005).
-      destino: destinoDe(fila.rol),
-    });
+    // **Sin caché, igual que toda ruta autenticada.** Esta no pasa por
+    // `rutaAutenticada` —es pública, es la que *crea* la sesión—, así que la
+    // cabecera va explícita: la respuesta viaja con el `Set-Cookie` de sesión, y
+    // un intermediario que la guarde entrega la sesión de un turno al siguiente.
+    // El dispositivo compartido por turnos es el escenario de INT-8.
+    return NextResponse.json(
+      {
+        rol: fila.rol,
+        // Cada rol aterriza donde puede trabajar. El de plataforma no ve el
+        // producto: da de alta clientes y nada mas (REQ-ISO-3 de ADR-005).
+        destino: destinoDe(fila.rol),
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) {
     return respuestaDeFallo("POST /api/login", error);
   }

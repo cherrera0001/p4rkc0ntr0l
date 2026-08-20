@@ -38,7 +38,7 @@ import { NextResponse } from "next/server";
 
 import { conBase, db, estacionamiento, tarifa, usuario } from "@/db";
 import { ErrorBaseDatos } from "@/lib/errores";
-import { esTextoAlmacenable } from "@/lib/frontera";
+import { enteroDeFrontera, esTextoAlmacenable } from "@/lib/frontera";
 import { rutaAutenticada } from "@/lib/peticion";
 
 export const dynamic = "force-dynamic";
@@ -74,31 +74,11 @@ function email(v: unknown): string | null {
 }
 
 /**
- * Entero de frontera. Acepta el número **como número o como texto numérico**, y
- * rechaza lo que de verdad no es un entero: `NaN`, decimales, infinitos, texto.
- *
- * ## Por qué acepta el texto numérico, en contra de lo que decía antes
- *
- * La versión anterior rechazaba `"10"` a propósito, *«para que "10" y 10 no sean
- * la misma cosa en la frontera»*. Esa purez­a costó un fallo real: un
- * `<input type="number">` del navegador entrega su valor **como cadena**, y
- * cualquier camino que no convirtiera —un bundle viejo cacheado por el service
- * worker, un lector distinto— mandaba `"10"` y recibía un 400 que decía
- * *«capacidad inválida»* sobre un 10 perfectamente válido.
- *
- * Rechazar `"10"` **no tiene ningún valor de seguridad**: un entero es un entero
- * venga tipado como venga. Lo que sí importa —que no sea decimal, ni `NaN`, ni
- * texto arbitrario, ni esté fuera de rango— se sigue haciendo cumplir. Robustez
- * en la entrada, estrictez en lo que se guarda.
+ * El entero de frontera vive en `@/lib/frontera` desde que una segunda
+ * superficie —la nueva versión de tarifa— necesitó exactamente el mismo
+ * validador. Su historia y el porqué de aceptar texto numérico están ahí.
  */
-function entero(v: unknown, min: number, max: number): number | null {
-  // El texto se acepta solo si es EXACTAMENTE un entero: `Number("10")` es 10,
-  // pero `Number("10.5")`, `Number("1,000")` y `Number("")` no sobreviven la
-  // prueba de `Number.isInteger`, y `"  "` tampoco. No es coerción laxa.
-  const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
-  if (typeof n !== "number" || !Number.isInteger(n)) return null;
-  return n < min || n > max ? null : n;
-}
+const entero = enteroDeFrontera;
 
 /**
  * Una zona horaria que el runtime reconozca. No una lista blanca nuestra: se le
