@@ -44,7 +44,10 @@
     "verificar:seg2": "node --env-file=.env scripts/verificar-seg2.mjs",
     "verificar:secretos": "node scripts/verificar-secretos.mjs",
     "modelo": "node --env-file=.env scripts/extraer-modelo.mjs",
-    "base:descarte": "node --env-file=.env scripts/crear-base-descarte.mjs"
+    "base:descarte": "node --env-file=.env scripts/crear-base-descarte.mjs",
+    "railway:estado": "node --env-file=.env scripts/railway-estado.mjs",
+    "railway:gasto": "node --env-file=.env scripts/railway-gasto.mjs",
+    "railway:anomalia": "node --env-file=.env scripts/railway-anomalia.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

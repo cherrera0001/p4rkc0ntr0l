@@ -6318,3 +6318,81 @@ resuelto lo que la guía de origen le delega a Directus.
 
 Guards tras el trabajo: `verificar:ac` **9/9** · `verificar:verificadores`
 **59/59** · `verificar:secretos` **PASS** · `verificar:alcance` **11/11**.
+
+---
+
+## 2026-08-20 (noche, 6) — Railway: el gasto no viene del estacionamiento
+
+Token de Railway entregado. Primero hubo que clasificarlo, porque la API
+distingue tres clases por cabecera y no por formato:
+
+```
+cuenta   (Bearer + me)                    -> Not Authorized
+equipo   (Bearer + projects)              -> OK
+proyecto (Project-Access-Token)           -> Project Token not found
+```
+
+Es un **token de equipo**. Queda en `.env` (ignorado por git, confirmado con
+`git check-ignore`); `AC-SECRET-1` lo cazaría si se escapara al repo. **Conviene
+rotarlo**: llegó por chat y quedó en ese historial.
+
+### Control de tasa, que fue instrucción explícita
+
+`scripts/lib/railway.mjs` no confía en que quien lo use se acuerde:
+
+- **tope duro de 12 peticiones por corrida** — al superarlo lanza, así que no hay
+  bucle de sondeo posible;
+- **espaciado de 1,2 s** entre peticiones;
+- ante **429 se detiene** y reporta `Retry-After`. No reintenta: reintentar en
+  bucle es justamente lo que hay que evitar;
+- nunca imprime el token, y recorta los mensajes del servidor para que no
+  arrastren la credencial a un log.
+
+Las cuatro corridas del diagnóstico usaron **3, 2, 2 y 2** peticiones.
+
+### El hallazgo: `farmTag` es el 87 % de la memoria del equipo, y no tiene servicios
+
+```
+proyecto farmTag (0228a0b4…) creado 2025-12-24
+  servicios visibles: 0
+  volúmenes: 1 -> postgres-volume, creado 2026-02-20
+
+uso por servicio, includeDeleted:true
+  DISK_USAGE_GB    135657,59   fbeb5467… (BORRADO)
+  DISK_USAGE_GB    135657,59   00000000-0000-…  (SIN SERVICIO: el volumen huérfano)
+  MEMORY_USAGE_GB   78416,81   d3b1f9f8… (BORRADO)
+  DISK_USAGE_GB      9771,90   sin servicio
+  MEMORY_USAGE_GB    6210,21   fbeb5467…
+  CPU_USAGE            24,09   d3b1f9f8…
+```
+
+Participación sobre los 8 proyectos del equipo:
+
+| Medida | `farmTag` | `noble-comfort` (el estacionamiento) |
+|---|---|---|
+| Memoria | **87,3 %** | 0,4 % |
+| Disco | **58,7 %** | 3,6 % |
+| CPU | **37,1 %** | 1,8 % |
+
+**Los servicios se borraron; el volumen quedó.** Railway cobra el disco esté o no
+conectado. Por eso el proyecto factura sin tener nada corriendo — y por eso no se
+ve mirando la lista de servicios, donde sale vacío. *La lista de servicios no es
+la lista de lo que cobra.*
+
+Inventario del equipo: **8 proyectos, 12 servicios** siempre encendidos, cada uno
+con su Postgres.
+
+### Lo que NO se hizo, a propósito
+
+- **No se borró nada.** El volumen es un `postgres-volume` que puede tener datos
+  vigentes; borrarlo es irreversible y es decisión humana.
+- **No se desplegó Directus.** Agregar un servicio siempre encendido a una
+  factura que ya tiene una anomalía del 87 % es exactamente el nivel de
+  exposición que la instrucción pidió evitar. El proyecto del estacionamiento
+  pesa 0,4 % de la memoria: Directus ahí es de otro orden que el problema real,
+  pero el orden de las decisiones importa.
+
+Herramientas nuevas, todas de **solo lectura**: `scripts/railway-estado.mjs`
+(inventario), `scripts/railway-gasto.mjs` (uso por proyecto) y
+`scripts/railway-anomalia.mjs` (persigue un proyecto concreto con
+`includeDeleted`).
