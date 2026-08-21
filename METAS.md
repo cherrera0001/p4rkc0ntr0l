@@ -276,7 +276,7 @@ o debilitando la restriccion.
 
 ---
 
-### M-8 · SEG-2 · `X-Forwarded-For` sin salto de confianza
+### ~~M-8 · SEG-2 · `X-Forwarded-For` sin salto de confianza~~ · **CERRADA 2026-08-20** (`5b14917`)
 
 | | |
 |---|---|
@@ -308,7 +308,7 @@ numero, despues la conclusion.
 
 ---
 
-### M-10 · el limitador no corta por el camino directo · causa sin diagnosticar
+### ~~M-10 · el limitador no corta por el camino directo~~ · **CERRADA POR INALCANZABLE 2026-08-20** (`5b14917`) · la causa sigue sin diagnosticar
 
 | | |
 |---|---|

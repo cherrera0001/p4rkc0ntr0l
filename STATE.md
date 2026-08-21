@@ -115,6 +115,45 @@ Se resuelve de una de dos formas, y **es acto humano**: (a) tocarlo en el panel
 de Cloudflare, o (b) crear un API Token con `Zone Settings:Edit` + `DNS:Edit`
 acotado a `parkcontrol.cl`, ponerlo en `.env` y aplicarlo con un script.
 
+### M-8 y M-10 · CERRADAS (2026-08-20, `5b14917`)
+
+`estacionamiento-three.vercel.app` respondía en directo, sin pasar por Cloudflare.
+Por ahí el limitador no cortaba —30 intentos, 0 cortes— y cada petición era una
+invocación facturada sin techo. **Seguridad y costo eran el mismo agujero.**
+
+Corregido con `src/lib/host-canonico.ts` + `src/proxy.ts`: **308 al host canónico**
+—no 403, que dejaría la app inalcanzable si el dominio fallara—, y el `matcher`
+pasó a cubrir **también `/api`**, que era justo lo que quedaba afuera.
+
+```
+verificar:seg2 contra el camino que antes evadía
+  ANTES: 429=0   -> NUNCA CORTA     FAIL 0/2
+  AHORA: 429=20  -> corta en el 6   PASS 2/2     (maxIntentos = 5)
+```
+
+**M-10 se cierra por INALCANZABLE, no por diagnóstico.** La causa de que el
+limitador no acumulara por el camino directo sigue sin entenderse; lo que se hizo
+fue rodearla. La propiedad queda protegida y la pregunta abierta.
+
+`URL_PRODUCCION` pasó a `https://www.parkcontrol.cl`.
+
+### Costo de Railway · el gasto NO es de parkcontrol
+
+Ciclo 1–21 de agosto: **farmTag = 89,7 % de la memoria** del equipo, con **cero
+servicios visibles** — servicios borrados y un `postgres-volume` huérfano que se
+cobra igual. *Pausar detiene el cómputo, no el disco.* parkcontrol no aparece
+entre los 12 primeros de memoria y es 1,0 % de la CPU.
+
+Herramientas de solo lectura, con tope de 12 peticiones por corrida, espaciado de
+1,2 s y **detención ante un 429** en vez de reintento:
+`railway:estado` · `railway:gasto` · `railway:anomalia` · `railway:ciclo`.
+
+**La medida de fondo para bajar el piso:** la app es serverless (Vercel, cobra por
+uso) pero la base está encendida 24/7 (Railway, cobra por existir). ADR-003 movió
+la base a Railway *«porque ya existía una instancia provisionada»* y dejó escrito
+el costo asumido. Esa razón era de conveniencia y **no sobrevive a un
+presupuesto**: Neon escala a cero. Reabrirlo va por ADR.
+
 ### Directus · NO instalado. Bloqueo medido, no supuesto
 
 Sondeada la base viva: **ninguna tabla `directus_*`**. Esquemas `drizzle` y

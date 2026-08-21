@@ -6396,3 +6396,73 @@ Herramientas nuevas, todas de **solo lectura**: `scripts/railway-estado.mjs`
 (inventario), `scripts/railway-gasto.mjs` (uso por proyecto) y
 `scripts/railway-anomalia.mjs` (persigue un proyecto concreto con
 `includeDeleted`).
+
+---
+
+## 2026-08-20 (noche, 7) — un solo host sirve producción · M-8 y M-10 cerrados
+
+### El hallazgo, dicho en una línea
+
+`estacionamiento-three.vercel.app` respondía en directo, **sin pasar por
+Cloudflare**. Por ahí el limitador no cortaba —30 intentos, 0 cortes— y cada
+petición era una invocación facturada que nadie podía limitar. **Seguridad y
+costo eran el mismo agujero.**
+
+### La corrección: redirigir, no bloquear
+
+`src/lib/host-canonico.ts` + `src/proxy.ts`. Un 403 dejaría la app inalcanzable
+si el dominio propio fallara; un **308** sigue resolviendo y conserva método y
+cuerpo, así que un `POST` de la cola offline llega al host canónico en vez de
+convertirse en `GET` y perderse.
+
+Quien ataque puede ignorar la redirección, pero entonces **no obtiene
+procesamiento**: la petición no llega a la ruta.
+
+**El `matcher` pasó a cubrir todo, incluida `/api`.** Antes la excluía porque el
+único trabajo del middleware era la CSP — y eso dejaba fuera justo el camino que
+importa. La CSP se sigue aplicando solo a documentos, pero ahora eso se decide
+adentro y no dejando rutas fuera del middleware.
+
+`HOSTS_CANONICOS` permite mudar de dominio, **con valor por defecto a propósito**:
+un control que depende de que alguien se acuerde de poner una variable
+desaparece en silencio el día que falte.
+
+### Medido contra la URL viva, después de desplegar
+
+```
+documento por el camino directo   308  -> https://www.parkcontrol.cl/login
+API por el camino directo         308  -> .../api/sesiones?desde=1   (ruta y query intactas)
+POST /api/login por el directo    308  -> .../api/login              (método conservado)
+host canónico                     200
+```
+
+Y la prueba que decide, `verificar:seg2` contra el camino que antes evadía:
+
+```
+ANTES:  sin cabecera forjada   429=0    -> NUNCA CORTA          FAIL 0/2
+AHORA:  sin cabecera forjada   429=20   -> corta en el 6        PASS 2/2
+        x-forwarded-for rotando 429=30  -> corta en el 1
+```
+
+El 6.º es exactamente `OPCIONES_LOGIN.maxIntentos = 5`.
+
+### Qué se cierra y qué NO — la distinción importa
+
+- **M-8 · CERRADA.** Su condición era *medición contra la URL viva*: hoy da PASS
+  por los dos caminos, no sólo por Cloudflare.
+- **M-10 · CERRADA por inalcanzable, NO por diagnóstico.** La causa de que el
+  limitador no acumulara por el camino directo **sigue sin diagnosticarse**. Lo
+  que se hizo fue **rodearla**: ese camino ya no procesa peticiones. La propiedad
+  queda protegida y la pregunta queda abierta, y así se declara — cerrar por
+  rodeo no es lo mismo que entender.
+
+### Lo que esto le hace al costo
+
+El techo de invocaciones deja de ser infinito por un camino sin control. Todo el
+tráfico de producción pasa por Cloudflare, que es donde se puede limitar de
+verdad — y donde los cuatro ajustes pendientes (`ssl: full→strict`,
+`min_tls_version: 1.0→1.2`, `always_use_https`, `browser_cache_ttl`) siguen sin
+poder aplicarse porque **el token de Cloudflare es de solo lectura**.
+
+Regresión: `npm test` **148/148** (eran 138) · `tsc --noEmit` sin errores ·
+`lint` 0 errores · `build` OK.
