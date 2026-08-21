@@ -1281,3 +1281,44 @@ sobre algo que no es.
 es comparar contra menos, o contra otra cosa. Acá se siguió comparando con
 igualdad exacta contra `entrada_at` — y se probó plantando `+7 min` en el
 producto, que hizo caer seis comprobaciones.
+
+---
+
+## 2026-08-20 (noche) — una prueba puede fijar el defecto como contrato
+
+`identificarCliente` tenía dos pruebas y las dos pasaban. Una se llamaba **«toma
+la primera IP de `x-forwarded-for`»**, y eso era exactamente la vulnerabilidad:
+un proxy *agrega al final*, así que ese primer elemento lo escribe quien pide.
+
+La prueba no falló al descubrirse el hallazgo. **No podía**: describía fielmente
+lo que el código hacía. Cobertura verde sobre una decisión equivocada. Es la
+misma familia que el `true` escrito a mano de AC-OP-1 y que los `grep` con el
+pipe escapado, pero peor de detectar, porque acá no hay nada sintácticamente
+sospechoso: hay una prueba honesta de una regla mala.
+
+**La pregunta que las hubiera cazado no es «¿pasa?» sino «¿quién escribe este
+valor?».** Para toda entrada que venga de la red: si la puede escribir el
+cliente, ninguna prueba de que se lee bien significa nada.
+
+## Encender infraestructura no crea defectos: los activa
+
+SEG-2 estaba anotado como pendiente desde antes, con la corrección ya redactada.
+Lo que cambió el 2026-08-20 no fue el código sino que la nube naranja puso un
+proxy delante, y con eso un hallazgo *teórico* pasó a explotable en producción
+sin que nadie tocara un archivo.
+
+**El inventario de pendientes tiene fecha de vencimiento variable.** Un cambio de
+despliegue puede reordenar la prioridad de la lista entera sin aparecer en ningún
+diff. Al encender algo, hay que releer los pendientes preguntando cuál acaba de
+cambiar de estado — no seguir el orden previo.
+
+## Un MCP conectado no es un MCP que puede
+
+`cloudflare-api` figura **✔ Connected** y contesta lecturas sin error. Escribir
+da `9109` en zona, `10000` en DNS, y `/user/tokens/verify` da `1000: Invalid API
+Token`. El grant OAuth alcanza para leer y no para escribir.
+
+Es la misma distinción que INT-12: *declarado* ≠ *verificado*, ahora aplicada a
+las herramientas. **La capacidad se mide intentando la operación**, no leyendo el
+estado de conexión. Y conviene medirla con una sonda barata y reversible —acá,
+crear un TXT `_prueba-permiso` y borrarlo— antes de planificar sobre ella.

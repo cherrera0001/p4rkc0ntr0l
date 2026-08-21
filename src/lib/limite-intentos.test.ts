@@ -103,13 +103,50 @@ describe("LimitadorIntentos", () => {
 });
 
 describe("identificarCliente", () => {
-  it("toma la primera IP de x-forwarded-for", () => {
-    const h = new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1, 10.0.0.2" });
+  // Éste es el caso del hallazgo. Las dos pruebas anteriores afirmaban que se
+  // tomaba el primer elemento de `x-forwarded-for`: describían el defecto y lo
+  // dejaban fijado como si fuera el contrato.
+  it("NO usa x-forwarded-for: su primer elemento lo escribe quien pide", () => {
+    const falsificada = new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.1" });
+    assert.equal(identificarCliente(falsificada), "sin-ip");
+  });
+
+  it("rotar x-forwarded-for ya no fabrica contadores nuevos", () => {
+    const claves = new Set(
+      ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"].map((falsa) =>
+        identificarCliente(new Headers({ "x-forwarded-for": falsa })),
+      ),
+    );
+    // Antes daba 4 claves distintas, o sea 4 cupos de intentos por atacante.
+    assert.equal(claves.size, 1);
+  });
+
+  it("prefiere cf-connecting-ip, que la escribe el borde de Cloudflare", () => {
+    const h = new Headers({
+      "cf-connecting-ip": "203.0.113.7",
+      "x-vercel-forwarded-for": "172.71.0.9",
+      "x-forwarded-for": "666.inventada",
+    });
     assert.equal(identificarCliente(h), "203.0.113.7");
   });
 
-  it("sin la cabecera cae a una clave fija, que igual frena la ráfaga", () => {
+  it("sin Cloudflare cae a la cabecera del borde de Vercel", () => {
+    const h = new Headers({
+      "x-vercel-forwarded-for": "198.51.100.4",
+      "x-forwarded-for": "666.inventada",
+    });
+    assert.equal(identificarCliente(h), "198.51.100.4");
+  });
+
+  it("x-real-ip queda de respaldo", () => {
+    assert.equal(
+      identificarCliente(new Headers({ "x-real-ip": "198.51.100.9" })),
+      "198.51.100.9",
+    );
+  });
+
+  it("sin cabecera de confianza cae a una clave fija, que igual frena la ráfaga", () => {
     assert.equal(identificarCliente(new Headers()), "sin-ip");
-    assert.equal(identificarCliente(new Headers({ "x-forwarded-for": "  " })), "sin-ip");
+    assert.equal(identificarCliente(new Headers({ "cf-connecting-ip": "  " })), "sin-ip");
   });
 });

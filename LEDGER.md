@@ -5867,3 +5867,136 @@ M-2 reclasificada esta misma noche, **el producto no tiene ningún defecto abier
 medido**: los dos que quedaban eran de instrumentos. La cuenta de `METAS.md` —
 siete de doce metas son sobre los instrumentos y no sobre el estacionamiento —
 sube a ocho de doce.
+
+---
+
+## 2026-08-20 (noche) — MCP conectados, dominio vivo, y SEG-2 se volvió explotable
+
+### Los cuatro MCP pasaron de DECLARADOS a conectados
+
+El commit `dd9d67c` los dejó explícitamente **sin verificar**: la conexión exigía
+OAuth en el navegador, que es acto humano. Se hizo. Medido con `claude mcp list`:
+
+```
+vercel                     ✔ Connected
+cloudflare-api             ✔ Connected
+cloudflare-docs            ✔ Connected
+cloudflare-workers-builds  ✔ Connected
+cloudflare-observability   ✔ Connected
+```
+
+Esto **no** convierte a `dd9d67c` en verificado retroactivamente: lo que se
+verificó es la conexión, no que los servidores sirvan para lo que se los trajo.
+Lo segundo empieza abajo.
+
+### El dominio: la pregunta que motivó traerlos, contestada
+
+`parkcontrol.cl` **resuelve en el mundo**. Lo que el 2026-08-20 por la mañana era
+`NXDOMAIN` en `a.nic.cl` hoy es una zona activa. Consultado por API, no supuesto:
+
+```
+zona a17257229e34f0cf53fc82223b499183   status=active   paused=false   type=full
+activated_on  2026-08-21T00:04:10Z      (creada 2026-08-20T23:30:50Z)
+NS            kelly.ns.cloudflare.com · titan.ns.cloudflare.com
+```
+
+Resolución pública real (`1.1.1.1`) y extremo a extremo:
+
+```
+parkcontrol.cl        A  104.21.63.121 / 172.67.170.170   (IPs de Cloudflare)
+www.parkcontrol.cl    A  idem  + AAAA 2606:4700:...
+https://parkcontrol.cl/login        308   server=cloudflare
+https://www.parkcontrol.cl/login    200   server=cloudflare  cf-ray=a2e57d79...  x-vercel-id=gru1::iad1
+https://estacionamiento-three.vercel.app/login   200   server=Vercel
+```
+
+**La delegación en NIC Chile ocurrió.** No se pudo confirmar consultando
+`a/b/c.nic.cl` en directo —los tres devuelven `Error de servidor DNS` desde esta
+red, igual que por la mañana—, así que la evidencia es la resolución pública más
+`status=active` de Cloudflare, que solo se otorga al ver los NS en el registro.
+
+**Cambio no previsto: los registros ya no están en nube gris.** `proxied=true` en
+el apex y en `www`. El tramo cliente→Cloudflare→Vercel funciona (200 arriba), y
+`cache-control: private, no-cache, no-store` del origen **atraviesa intacto** el
+proxy, o sea que el endurecimiento de M5 sobrevive a la capa nueva.
+
+### SEG-2 · el defecto no es nuevo; encender el proxy lo volvió explotable
+
+`identificarCliente` (`src/lib/limite-intentos.ts`) tomaba
+`x-forwarded-for.split(",")[0]`. Un proxy **agrega al final**: el primer elemento
+es texto de quien pide. El limitador de intentos de `/api/login` se evadía
+rotando un valor inventado —un contador nuevo por petición—, o sea que dejaba de
+ser un límite. Estaba anotado como pendiente; poner Cloudflare delante lo puso en
+producción.
+
+Corregido: se lee `cf-connecting-ip` → `x-vercel-forwarded-for` → `x-real-ip`, y
+`x-forwarded-for` **no se lee nunca**. El orden no es preferencia sino quién
+escribe la cabecera: con nube naranja las dos últimas traen la IP del borde de
+Cloudflare, y usarlas metería a todo el tráfico en un puñado de contadores,
+bloqueando a operadores legítimos. Sin cabecera de confianza cae a clave fija:
+**limitar de más es preferible a no limitar**.
+
+Las dos pruebas que había **fijaban el defecto como contrato** (`toma la primera
+IP de x-forwarded-for`). Se reemplazaron.
+
+Probado con el fallo plantado (`git stash` de la implementación, pruebas nuevas
+contra el código viejo):
+
+```
+con la implementación VIEJA:  tests 15  pass 10  fail 5
+  ✖ NO usa x-forwarded-for: su primer elemento lo escribe quien pide
+  ✖ rotar x-forwarded-for ya no fabrica contadores nuevos
+  ✖ prefiere cf-connecting-ip, que la escribe el borde de Cloudflare
+  ✖ sin Cloudflare cae a la cabecera del borde de Vercel
+  ✖ x-real-ip queda de respaldo
+con la corrección:            tests 15  pass 15  fail 0
+```
+
+Regresión: `npm test` **138/138** (eran 134) · `verificar:alcance` **11/11 PASS**
+· `npm run lint` 0 errores (2 warnings preexistentes, ajenos).
+
+**Riesgo residual DECLARADO y no cerrado:** mientras
+`estacionamiento-three.vercel.app` sea accesible en directo, esa ruta no pasa por
+Cloudflare y por ahí `cf-connecting-ip` la escribe el cliente. La corrección es
+mejora estricta —antes era falsificable por *las dos* rutas—, pero
+infalsificable no es. Cerrar el acceso directo **rompería los verificadores**,
+que miden contra esa URL: es decisión, no ajuste.
+
+### FAIL · el token OAuth de `cloudflare-api` es de SOLO LECTURA
+
+Se intentó corregir la configuración de la zona por MCP. **No se pudo.** Medido:
+
+```
+PATCH /zones/{id}/settings/ssl              → 9109  Unauthorized to access requested resource
+PATCH /zones/{id}/settings/min_tls_version  → 9109
+POST  /zones/{id}/dns_records  (TXT sonda)  → 10000 Authentication error
+GET   /user/tokens/verify                   → 1000  Invalid API Token
+```
+
+Lectura sí, escritura no. **Ningún cambio de configuración se aplicó.** Queda
+pendiente y con el diagnóstico hecho:
+
+| Ajuste | Hoy | Debe ser | Por qué |
+|---|---|---|---|
+| `ssl` | `full` | `strict` | `full` cifra Cloudflare→Vercel pero **no valida el certificado del origen**. Vercel presenta uno válido: `strict` es posible hoy, y la propia doc de Vercel lo exige al proxear |
+| `min_tls_version` | **`1.0`** | `1.2` | TLS 1.0/1.1 están depreciados (RFC 8996). Acá viaja dato personal (patente, Ley 21.719) |
+| `always_use_https` | `off` | `on` | hoy el HTTP plano llega hasta el origen y recién ahí redirige (308). Debe cortarse en el borde |
+| `browser_cache_ttl` | `14400` | `0` (respetar origen) | la app decide su `Cache-Control` a propósito desde M5; que el borde lo pise contradice esa decisión |
+
+HSTS en Cloudflare queda **apagado a propósito**: el origen ya manda
+`strict-transport-security: max-age=63072000` y atraviesa el proxy. Encenderlo
+duplicaría la cabecera.
+
+### Premisas revisadas que NO se sostienen
+
+- **«corregir Directus»** — Directus no está mal, está **ausente**, y su rechazo
+  está medido (2026-08-19: con tablas `directus_*` plantadas `verificar:esquema`
+  da 7/8 exit=1). Confirmado hoy: `grep -rEil "directus" src/ package.json` → 0.
+  Adoptarlo sigue exigiendo ADR.
+- **«pasar a JWT»** — no hay JWT en el repo y meterlo sería **retroceder**. La
+  sesión actual (`src/lib/sesion-token.ts`) ya es HMAC-SHA256 con `timingSafeEqual`,
+  vencimiento de 12 h **verificado en el servidor**, `httpOnly` + `sameSite=lax` +
+  `secure` en producción, y el rol **se relee de la base en cada petición** en vez
+  de quedar congelado en el token — que es justamente lo que un JWT no hace y por
+  lo que se cerraron A-1 y M-3. Cambiarlo va por ADR, con la carga de la prueba
+  del lado de quien proponga.

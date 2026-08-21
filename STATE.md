@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-20
+**Actualizado:** 2026-08-20 (noche)
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -44,69 +44,68 @@
 | **Contrato de API** | `docs/CONTRATO-api.md`, derivado del código, con su sección de lo que NO cubre |
 | **Placeholders** | ninguno se rellenó. `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}` bloquean el **encendido**, no la construcción: se opera con `OPERACION_REAL_HABILITADA=false` |
 
-## 2026-08-20 (cierre) — REANUDACIÓN TRAS REINICIO: leé esto primero
+## 2026-08-20 (noche) — MCP CONECTADOS · dominio vivo · SEG-2 corregido
 
-**La sesión se reinicia a propósito, para cargar los servidores MCP.** Nada quedó
-a medias en el código: el árbol está limpio y todo está en `origin/main`.
+### Los cinco MCP están conectados
 
-### Lo primero al volver: autorizar MCP
+`claude mcp list` → `vercel`, `cloudflare-api`, `cloudflare-docs`,
+`cloudflare-workers-builds`, `cloudflare-observability` **todos ✔ Connected**.
+La autorización OAuth ya está hecha; **no hay que repetirla**.
 
-```
-/mcp        → autorizar por OAuth: vercel · cloudflare-api ·
-              cloudflare-workers-builds · cloudflare-observability
-```
+### `parkcontrol.cl` ESTÁ VIVO
 
-Estado medido antes del reinicio (`claude mcp list`):
-
-| Servidor | Estado |
-|---|---|
-| `cloudflare-docs` | **✔ Conectado** (no exige credenciales) |
-| `vercel` · `cloudflare-api` · `cloudflare-workers-builds` · `cloudflare-observability` | **! Falta autenticación** |
-
-La aprobación ya está resuelta —`enabledMcpjsonServers` en
-`.claude/settings.local.json`—; lo que falta es el consentimiento OAuth, que es
-acto humano. Las URL de los cinco están **verificadas contra la documentación del
-proveedor**, no escritas de memoria (`.mcp.json`).
-
-### Para qué se autoriza: la pregunta pendiente
-
-**`parkcontrol.cl` no resuelve en el mundo.** Medido contra servidores
-autoritativos, no supuesto:
+Lo que por la mañana era `NXDOMAIN` hoy resuelve. La delegación en NIC Chile
+ocurrió: la zona está `active` (`activated_on 2026-08-21T00:04:10Z`) y la
+resolución pública contra `1.1.1.1` devuelve IPs de Cloudflare.
 
 ```
-titan.ns.cloudflare.com → SOA parkcontrol.cl          ✔ la zona existe en Cloudflare
-titan.ns.cloudflare.com → www CNAME f4ea80ad1787d4f6.vercel-dns-016.com   ✔ correcto
-titan.ns.cloudflare.com → apex A 216.150.1.1          ✔ rango nuevo de Vercel
-a.nic.cl                → NXDOMAIN                     ✘ el .cl NO delega
+https://www.parkcontrol.cl/login   200  server=cloudflare  x-vercel-id=gru1::iad1
+https://parkcontrol.cl/login       308  → www
 ```
 
-Los registros están **en nube gris**, que es lo correcto hasta que Vercel
-verifique. **Lo que falta es la delegación en NIC Chile**, y eso no lo ve ningún
-MCP: vive en el registrador. Con el MCP de Cloudflare se podrá confirmar si la
-zona pasó de `pending` a `active`, y con el de Vercel el estado del dominio.
+**Los registros pasaron a nube NARANJA** (`proxied=true`), que no era lo previsto.
+Funciona, y el `Cache-Control` del origen atraviesa el proxy intacto.
+
+### SEG-2 · CORREGIDO (era lo urgente, y el proxy lo activó)
+
+`identificarCliente` ya **no lee `x-forwarded-for`**: usa `cf-connecting-ip` →
+`x-vercel-forwarded-for` → `x-real-ip` → clave fija. Probado con el fallo
+plantado: con el código viejo, 10/15 y fallan las 5 nuevas. `npm test` **138/138**.
+
+**Riesgo residual declarado:** `estacionamiento-three.vercel.app` sigue accesible
+en directo y por ahí `cf-connecting-ip` es forjable. Cerrarlo **rompe los
+verificadores**, que miden contra esa URL. Es decisión, no ajuste.
+
+### PENDIENTE · Cloudflare, bloqueado por permisos del token
+
+El token OAuth del MCP **lee pero no escribe** (`9109` en zona, `10000` en DNS,
+`1000` en `/user/tokens/verify`). **Nada se aplicó.** Los cuatro ajustes, con su
+razón, están en `LEDGER.md` (2026-08-20 noche). El resumen:
+
+| Ajuste | Hoy | Debe ser |
+|---|---|---|
+| `ssl` | `full` | `strict` |
+| `min_tls_version` | **`1.0`** | `1.2` |
+| `always_use_https` | `off` | `on` |
+| `browser_cache_ttl` | `14400` | `0` |
+
+Se resuelve de una de dos formas, y **es acto humano**: (a) tocarlo en el panel
+de Cloudflare, o (b) crear un API Token con `Zone Settings:Edit` + `DNS:Edit`
+acotado a `parkcontrol.cl`, ponerlo en `.env` y aplicarlo con un script.
+
+### Premisas descartadas con evidencia (no volver a abrirlas sin ADR)
+
+- **Directus**: ausente, no roto. Rechazado con medición el 2026-08-19.
+- **JWT**: metería un retroceso. La sesión ya es HMAC-SHA256 con vencimiento
+  verificado en servidor y **rol releído de la base en cada petición** — lo que un
+  JWT justamente no hace. Cerró A-1 y M-3.
 
 ### Trabajo pendiente que NO depende del dominio
 
-- **SEG-2 · el más urgente si se expone la app.** `identificarCliente`
-  (`src/lib/limite-intentos.ts:153`) toma `X-Forwarded-For[0]` sin validar. Con un
-  proxy adelante ese primer elemento **lo controla quien ataca** —Cloudflare
-  agrega la IP real al final de la cadena—, así que el limitador de intentos se
-  evade rotando el valor. Hay que preferir `cf-connecting-ip`, luego
-  `x-vercel-forwarded-for`, y **cerrar el acceso directo a `*.vercel.app`**: sin
-  eso, cualquier cabecera es forjable y el WAF es esquivable.
 - **M-6** · que la sonda de frontera confirme un fallo **aislado** antes de
   reportarlo. Es el mismo patrón que cerró TMP-1 y reclasificó M-2.
 - **M-5, M-7, M-9** y `1l` (M-4, necesita el lienzo por `DesignSync` desde el
   agente principal).
-
-### Lo que cambió hoy, y cambia la prioridad del proyecto
-
-**Los dos «defectos de producto» que quedaban abiertos resultaron ser de las
-sondas**: el 503 de `verificar:frontera` no reproduce en ningún modo, y el
-`0 min` del temporizador era una lectura en vuelo. **El producto no tiene hoy
-ningún defecto abierto medido.** Lo que queda es instrumentos, decisiones humanas
-y `1l`.
-
 ## 2026-08-20 (noche) — M-1 (MET-1) CERRADO · el FAIL de H1 volvió a ser el suyo
 
 **Esto reemplaza a los puntos 1 y 2 del bloque de la tarde.** MET-1 está

@@ -145,13 +145,45 @@ export class LimitadorIntentos {
 /**
  * Identifica al cliente para contarle los intentos.
  *
- * Detrás de Vercel el primer valor de `x-forwarded-for` es la IP del cliente.
- * Sin esa cabecera —desarrollo local, o un cliente que no la manda— se usa una
- * clave fija: es peor que nada para distinguir clientes, pero sigue frenando la
- * ráfaga, que es lo que el hallazgo pide.
+ * **`x-forwarded-for` no se lee, y esa es la corrección (SEG-2).** Antes se
+ * tomaba su primer elemento. Esa cabecera la puede escribir quien pide: los
+ * proxies *agregan* al final, así que el primer elemento es texto del cliente.
+ * Con eso, el limitador se evadía rotando un valor inventado —un contador nuevo
+ * por petición— y dejaba de existir como límite. Encender la nube naranja el
+ * 2026-08-20 puso un proxy delante y volvió el defecto explotable en vivo.
+ *
+ * El orden es por quién escribe la cabecera, no por preferencia:
+ *
+ *  1. `cf-connecting-ip` — la pone Cloudflare y **pisa** lo que mandara el
+ *     cliente. Va primera porque con la nube naranja las otras dos traen la IP
+ *     del borde de Cloudflare, no la del conductor: usarlas metería a todo el
+ *     tráfico en un puñado de contadores y bloquearía a operadores legítimos.
+ *  2. `x-vercel-forwarded-for` — la pone el borde de Vercel, también pisando al
+ *     cliente. Es la buena cuando se entra por `*.vercel.app`, sin Cloudflare.
+ *  3. `x-real-ip` — misma familia, respaldo.
+ *  4. Clave fija. Sin ninguna cabecera de confianza —desarrollo local— es peor
+ *     para distinguir clientes, pero frena la ráfaga. Preferirla a un valor que
+ *     el cliente controla es deliberado: un contador compartido limita de más;
+ *     uno falsificable no limita nada.
+ *
+ * **Riesgo residual, declarado y no cerrado:** mientras
+ * `estacionamiento-three.vercel.app` siga accesible en directo, esa ruta no pasa
+ * por Cloudflare y por ahí `cf-connecting-ip` la escribe el cliente. Cerrar el
+ * acceso directo es lo que la vuelve infalsificable, y es decisión pendiente
+ * porque hoy los verificadores miden contra esa URL.
  */
+const CABECERAS_DE_CONFIANZA = [
+  "cf-connecting-ip",
+  "x-vercel-forwarded-for",
+  "x-real-ip",
+] as const;
+
 export function identificarCliente(cabeceras: Headers): string {
-  const reenviada = cabeceras.get("x-forwarded-for");
-  const ip = reenviada?.split(",")[0]?.trim();
-  return ip && ip.length > 0 ? ip : "sin-ip";
+  for (const nombre of CABECERAS_DE_CONFIANZA) {
+    // Se toma el primer elemento sólo dentro de una cabecera que el borde
+    // escribe él mismo; ahí la lista no lleva texto del cliente.
+    const ip = cabeceras.get(nombre)?.split(",")[0]?.trim();
+    if (ip && ip.length > 0) return ip;
+  }
+  return "sin-ip";
 }

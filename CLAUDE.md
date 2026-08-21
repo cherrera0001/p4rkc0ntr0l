@@ -111,14 +111,20 @@ un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 
 **Estado al 2026-08-20: M0–M5 cerrados y DESPLEGADOS. M7 y M8 PASS. M6 en curso.**
 
-> **2026-08-20, tarde — ÁRBOL EN ROJO Y SIN COMMITEAR. Leé `STATE.md` antes de
-> tocar nada.** La regresión corrida hoy sobre el árbol de trabajo da **dos FAIL
-> que el ledger no registra**: `verificar:metrica` **3/4** (MET-1: la resta
-> `salida_at - entrada_at` de `verificar-reportes.mjs`, sin commitear, se lee como
-> métrica de H1 divergente — y **tapa** el FAIL por banco vacío de
-> `verificar:h1`) y `verificar:frontera` **4/5** (503 en
-> `POST /api/sesiones/[id]/salida`, **sin diagnosticar**: a mano, como `operador`,
-> da 400). **No commitees sobre rojo.** Orden: MET-1 → el 503 → commit → `1l`.
+> **2026-08-20, noche — árbol limpio y en verde. El dominio está VIVO.** Los dos
+> FAIL de la tarde están cerrados (MET-1, y el 503 de `verificar:frontera`, que
+> era de la sonda). `parkcontrol.cl` resuelve: la zona pasó a `active`, NIC Chile
+> delegó, y `https://www.parkcontrol.cl/login` responde **200 a través de
+> Cloudflare** — con los registros en **nube naranja**, que no era lo previsto.
+>
+> Eso volvió explotable a SEG-2, que ya está **corregido**: `identificarCliente`
+> dejó de leer `x-forwarded-for` —su primer elemento lo escribe quien pide— y usa
+> `cf-connecting-ip` → `x-vercel-forwarded-for` → `x-real-ip`. `npm test` 138/138.
+>
+> **Pendiente que no es código:** cuatro ajustes de Cloudflare (`ssl: full→strict`,
+> `min_tls_version: 1.0→1.2`, `always_use_https: off→on`, `browser_cache_ttl→0`).
+> El token OAuth del MCP **lee pero no escribe**: se intentó y dio `9109`/`10000`.
+> Detalle en `STATE.md`.
 >
 > Y una regla de operación que costó una corrida entera: **los verificadores de
 > navegador exigen `npm run build` + `npm start`.** Con `next dev`,
