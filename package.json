@@ -40,7 +40,8 @@
     "verificar:verificadores": "node scripts/verificar-verificadores.mjs",
     "evidencia": "node scripts/evidencia.mjs",
     "evidencia:prueba": "node scripts/evidencia.prueba.mjs",
-    "limpiar:fixtures": "node --env-file=.env scripts/limpiar-fixtures.mjs"
+    "limpiar:fixtures": "node --env-file=.env scripts/limpiar-fixtures.mjs",
+    "verificar:seg2": "node --env-file=.env scripts/verificar-seg2.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

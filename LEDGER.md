@@ -6000,3 +6000,133 @@ duplicaría la cabecera.
   de quedar congelado en el token — que es justamente lo que un JWT no hace y por
   lo que se cerraron A-1 y M-3. Cambiarlo va por ADR, con la carga de la prueba
   del lado de quien proponga.
+
+---
+
+## 2026-08-20 (noche, 2) — M-8 medido contra producción: NO se cierra, y aparece algo peor
+
+Se desplegó `92a9a2d` (deploy `dpl_5a7nxVHzroLkhBP6NV8WQuLjCb7z`, READY, aliasado
+a `www.parkcontrol.cl`) y se corrió la condición de término que pide M-8:
+**medición contra la URL viva**, no contra local.
+
+El aislamiento importa: el limitador usa **dos** claves, `ip:` y `email:`. Cada
+intento fue con **email distinto**, así que un 429 sólo puede venir de la clave
+de IP. Repetir el email habría dado un PASS falso.
+
+### Las tres corridas
+
+```
+CONTROL · código VIEJO (a0f792e), directo a Vercel
+  X-Forwarded-For rotando : 401 x10          -> NUNCA CORTA        FAIL
+CORREGIDO (92a9a2d), directo a Vercel
+  X-Forwarded-For rotando : 401 x10          -> NUNCA CORTA        FAIL
+CORREGIDO (92a9a2d), a través de Cloudflare
+  X-Forwarded-For rotando : 401 x5, 429 x5   -> corta en el 6.º    PASS
+```
+
+El corte en el 6.º es exactamente `OPCIONES_LOGIN.maxIntentos = 5`.
+
+### El camino directo no falla por la cabecera
+
+Primera hipótesis: que Vercel derivara `x-vercel-forwarded-for` del
+`x-forwarded-for` del cliente, envenenando la cabecera de confianza. **Refutada
+midiendo**, sobre el mismo deploy corregido:
+
+```
+(a) SIN x-forwarded-for      401 x8  -> NUNCA CORTA
+(b) x-forwarded-for FIJO     401 x8  -> NUNCA CORTA
+(c) x-forwarded-for ROTANDO  401 x8  -> NUNCA CORTA
+```
+
+Si la cabecera fuera la causa, (a) y (b) tendrían que cortar. No cortan. La
+causa es otra, y la sonda decisiva la nombra:
+
+```
+30 intentos directos, email distinto, SIN x-forwarded-for:
+  401 x30      429 vistos: 0
+  instancias distintas (sufijo de x-vercel-id): 16
+```
+
+**16 instancias para 30 peticiones.** El limitador es **en memoria por
+instancia**: ninguna llega a acumular 5 fallos porque el tráfico se reparte. En
+el camino directo **no limita nada**, y un atacante no necesita falsificar
+ninguna cabecera para lograrlo — le basta con pedir.
+
+Por Cloudflare corta porque el proxy reutiliza una conexión al origen y las 10
+peticiones cayeron en **una** instancia. Eso valida que la clave es estable con
+`cf-connecting-ip` —que es lo que M-8 preguntaba— pero **no** prueba que el
+limitador limite: con concurrencia, Cloudflare también abre varias conexiones.
+
+### Veredicto
+
+| | |
+|---|---|
+| **La corrección de cabecera** | **correcta y verificada.** El control muestra el defecto vivo en producción con el código viejo, y por Cloudflare la clave quedó estable y cortó en el número exacto |
+| **M-8 · condición de término** | **NO CUMPLIDA.** «No se puede falsificar desde el cliente en producción» es cierto por Cloudflare y falso por `*.vercel.app`, que también es producción y está viva |
+| **Corrección a lo que afirmó `92a9a2d`** | su mensaje dice que el riesgo residual del camino directo es que `cf-connecting-ip` sea forjable ahí. **Es peor:** por ese camino el limitador no limita aunque nadie forje nada |
+
+**M-8 queda ABIERTA.** No por falta de trabajo: por medición.
+
+### Hallazgo nuevo · M-10 · el limitador no limita en serverless
+
+`METAS.md` M-8 declara fuera de alcance «rediseñar el limitador: hoy es en
+memoria por instancia y esa limitación ya está declarada en el contrato». La
+limitación estaba **declarada**; su consecuencia **no estaba medida**. Medida es:
+16 instancias, 0 cortes, 30 intentos.
+
+Es la misma familia que INT-12 y que los `grep` con el pipe escapado: **un
+control que nunca se vio actuar no es un control.** Y toca a H-4 (SEG-1, el DoS
+de cuenta), porque el trade-off que H-4 discute supone un limitador que funciona.
+
+---
+
+## 2026-08-20 (noche, 3) — CORRECCIÓN: M-10 estaba mal diagnosticada, por la sonda
+
+La entrada anterior atribuyó el fallo del camino directo a que **el limitador es
+en memoria por instancia** y que Vercel repartía entre **16 instancias**. Esa
+cifra salía de contar sufijos de `x-vercel-id`.
+
+**`x-vercel-id` no identifica la instancia: lleva un identificador de petición.**
+Lo delató correr el verificador nuevo contra la URL viva:
+
+```
+www.parkcontrol.cl   sin cabecera forjada    429=25  "instancias"=26  -> corta en el 6
+```
+
+**26 «instancias» y cortó igual.** Si la métrica midiera instancias, eso sería
+imposible con estado en memoria por instancia. La métrica es la que está mal, no
+el limitador.
+
+Es exactamente el modo de falla que este repo ya cerró dos veces —M-2 y TMP-1—:
+**el defecto estaba en el instrumento.** Van tres. Y esta vez lo cometí después
+de haber escrito la lección.
+
+### Lo que SÍ está medido, y sigue en pie
+
+```
+www.parkcontrol.cl                   (código corregido, por Cloudflare)  corta en el 6   PASS 2/2
+estacionamiento-qm0gp9tav…vercel.app (código VIEJO, directo)             NUNCA CORTA     FAIL 0/2
+estacionamiento-g030z2n5h…vercel.app (código corregido, directo)         NUNCA CORTA
+```
+
+- Por Cloudflare el limitador **corta en el número exacto** (`maxIntentos = 5`) y
+  rotar `x-forwarded-for` no fabrica cupos. La corrección de cabecera sirve.
+- Por el camino directo `*.vercel.app` **no corta nunca**, con código viejo y con
+  código nuevo, con cabecera forjada y sin ella.
+- El verificador `verificar:seg2` **está probado fallando**: 0/2 contra el deploy
+  inmutable de `a0f792e`, 2/2 contra la URL viva.
+
+### Lo que NO está medido: por qué
+
+**La causa del camino directo queda SIN DIAGNOSTICAR, y así se declara.** Las
+hipótesis vivas, ninguna comprobada:
+
+1. estado en memoria por instancia + reparto distinto en ese camino (plausible,
+   pero **la sonda que la sostenía no sirve**: hace falta una señal real de
+   instancia, p. ej. un identificador de proceso puesto por la app);
+2. que por ese camino no llegue ninguna cabecera de confianza y la clave fija se
+   comporte distinto de lo esperado;
+3. que las URL de deployment se sirvan por una ruta distinta de la del alias.
+
+**No se elige entre las tres razonando.** M-10 queda enunciada como el hecho
+—*no corta por el camino directo*— y no como su causa.

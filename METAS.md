@@ -282,9 +282,9 @@ o debilitando la restriccion.
 |---|---|
 | **Enunciado** | El identificador de cliente del limitador de intentos **no se puede falsificar desde el cliente en producción** |
 | **Condición de término** | **medición contra la URL viva**, no contra local: dos peticiones con `X-Forwarded-For` distinto deben compartir cupo si vienen de la misma IP real |
-| **Estado leído** | *confirmado en local; **no medido contra producción — declarado como duda***. Sigue siendo duda |
+| **Estado leído** | **medido contra producción el 2026-08-20 y NO CERRADA.** La corrección de cabecera está verificada (control: el código viejo evade 10/10 en producción; por Cloudflare la clave quedó estable y cortó en el 6.º, exacto). Pero por el camino directo `*.vercel.app` **no corta nunca**, y no por la cabecera: por **M-10**. Evidencia en `LEDGER.md` (2026-08-20 noche 2) |
 | **Quién la cierra** | concilio mide; si el resultado obliga a elegir entre severidad y disponibilidad, pasa a **H-4** |
-| **Precedencia** | independiente. Se puede correr en cualquier momento |
+| **Precedencia** | **la bloquea M-10**: un identificador no falsificable no significa nada si el control que lo usa no actúa nunca |
 | **No incluye** | rediseñar el limitador: hoy es **en memoria por instancia** y esa limitación ya está declarada en el contrato |
 
 ```
@@ -305,6 +305,32 @@ numero, despues la conclusion.
 | **Quién la cierra** | concilio |
 | **Precedencia** | **no abrir hasta que M-1..M-4 estén cerradas.** Es la única meta cuya urgencia es cero |
 | **No incluye** | ninguna otra optimización "de paso" |
+
+---
+
+### M-10 · el limitador no corta por el camino directo · causa sin diagnosticar
+
+| | |
+|---|---|
+| **Enunciado** | El limitador de `/api/login` **corta de verdad en producción**, y no sólo cuando el tráfico cae por casualidad en una misma instancia |
+| **Condición de término** | contra la URL viva y **por el camino directo**: 30 intentos con email distinto y sin cabeceras forjadas deben producir al menos un 429 |
+| **Estado leído** | **FAIL medido (2026-08-20)**: 30 intentos por el camino directo → **0 cortes**, con código viejo y con código nuevo. **La causa NO está diagnosticada.** La primera explicación —«16 instancias», contadas sobre `x-vercel-id`— **se retractó**: esa cabecera identifica la petición, no la instancia, y por Cloudflare cortó igual con 26 valores distintos. Ver `LEDGER.md` (2026-08-20 noche 3) |
+| **Quién la cierra** | concilio, pero **la decisión de con qué se sustituye es humana**: un almacén compartido es infraestructura nueva |
+| **Precedencia** | independiente. **Bloquea a M-8**: no se puede afirmar que un identificador no es falsificable si el control que lo usa no actúa nunca |
+| **No incluye** | volver a tocar `identificarCliente`: esa corrección está verificada y no es la causa. **Tampoco incluye elegir la causa razonando:** primero una señal de instancia real puesta por la app, después la conclusión |
+
+**Por qué no es un ajuste.** `METAS.md` ya declaraba «en memoria por instancia»
+como limitación conocida. Lo que faltaba era medir su consecuencia, y la
+consecuencia es que el control no existe por el camino directo. Sustituirlo pide
+elegir dónde vive el estado —la base ya está, y Postgres alcanza para un contador
+con ventana— contra el costo de una consulta en el camino del login, que es
+exactamente lo que el diseño actual evitaba.
+
+```
+/loop M-10 de METAS.md: el limitador es en memoria por instancia y con 16 instancias
+no acumula. Medir primero contra la URL viva por el camino directo, despues proponer
+donde vive el estado. No tocar identificarCliente: esa correccion esta verificada.
+```
 
 ---
 

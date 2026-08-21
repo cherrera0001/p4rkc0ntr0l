@@ -66,15 +66,37 @@ https://parkcontrol.cl/login       308  → www
 **Los registros pasaron a nube NARANJA** (`proxied=true`), que no era lo previsto.
 Funciona, y el `Cache-Control` del origen atraviesa el proxy intacto.
 
-### SEG-2 · CORREGIDO (era lo urgente, y el proxy lo activó)
+### SEG-2 / M-8 · corregido en código, **NO cerrado como meta**
 
 `identificarCliente` ya **no lee `x-forwarded-for`**: usa `cf-connecting-ip` →
-`x-vercel-forwarded-for` → `x-real-ip` → clave fija. Probado con el fallo
-plantado: con el código viejo, 10/15 y fallan las 5 nuevas. `npm test` **138/138**.
+`x-vercel-forwarded-for` → `x-real-ip` → clave fija. Unitarias 138/138, probado
+con el fallo plantado (código viejo: 10/15).
 
-**Riesgo residual declarado:** `estacionamiento-three.vercel.app` sigue accesible
-en directo y por ahí `cf-connecting-ip` es forjable. Cerrarlo **rompe los
-verificadores**, que miden contra esa URL. Es decisión, no ajuste.
+**Desplegado y medido contra producción**, que es lo que M-8 exige:
+
+```
+www.parkcontrol.cl        (corregido, por Cloudflare)  corta en el 6.º   PASS 2/2
+qm0gp9tav…vercel.app      (código VIEJO, directo)      NUNCA CORTA       FAIL 0/2
+g030z2n5h…vercel.app      (corregido, directo)         NUNCA CORTA
+```
+
+Verificador nuevo: **`npm run verificar:seg2`**, probado fallando contra el deploy
+inmutable del código viejo.
+
+**M-8 sigue ABIERTA.** Por Cloudflare corta en el número exacto; por el camino
+directo `*.vercel.app` no corta nunca — y **no es por la cabecera**: pasa igual
+con código viejo, con código nuevo, y sin forjar nada. Eso es **M-10**.
+
+### M-10 · nueva · el limitador no corta por el camino directo
+
+**Causa SIN DIAGNOSTICAR, y así queda declarado.** La primera explicación que
+escribí —«16 instancias», contadas sobre `x-vercel-id`— **la retracté yo mismo**:
+esa cabecera identifica la petición, no la instancia, y por Cloudflare cortó
+igual con 26 valores distintos. Tercera vez en este repo que el defecto está en
+el instrumento (van M-2, TMP-1 y ésta). Detalle en `LEDGER.md` (noche 3).
+
+Lo que hace falta antes de concluir: **una señal de instancia real puesta por la
+app**, no una cabecera de la plataforma reinterpretada.
 
 ### PENDIENTE · Cloudflare, bloqueado por permisos del token
 

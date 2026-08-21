@@ -1322,3 +1322,27 @@ Es la misma distinción que INT-12: *declarado* ≠ *verificado*, ahora aplicada
 las herramientas. **La capacidad se mide intentando la operación**, no leyendo el
 estado de conexión. Y conviene medirla con una sonda barata y reversible —acá,
 crear un TXT `_prueba-permiso` y borrarlo— antes de planificar sobre ella.
+
+## 2026-08-20 (noche) — la tercera vez que el defecto estaba en el instrumento
+
+Medí el camino directo, conté **16 «instancias»** sobre `x-vercel-id`, concluí
+que el limitador no acumula porque el estado vive por instancia, y **lo escribí
+en el ledger y en METAS.md como hallazgo**. Después corrí el mismo verificador
+contra la URL viva: **26 «instancias», y cortó igual**. Si la métrica midiera lo
+que yo decía, eso era imposible.
+
+`x-vercel-id` lleva un identificador de **petición**. Nunca fue una métrica de
+instancias; yo la leí como si lo fuera porque encajaba con la hipótesis que ya
+tenía —y que además estaba escrita en `METAS.md` como limitación conocida, lo que
+la hacía sonar confirmada antes de medirla.
+
+**La regla que sale, y es más específica que «desconfiá del instrumento»:** una
+cabecera de la plataforma no es una métrica del programa. Si necesito saber algo
+del proceso que atendió —qué instancia, qué versión, qué memoria— **la señal la
+tiene que emitir la app**, no yo reinterpretando un identificador opaco del
+proveedor. Un valor opaco confirma cualquier hipótesis que uno le lleve.
+
+Y el corolario incómodo: esto pasó **después** de escribir dos veces la lección
+de M-2 y TMP-1. Saber el modo de falla no protege de cometerlo. Lo único que lo
+cazó fue **correr el mismo instrumento contra un caso donde el resultado esperado
+era distinto** — que es barato, y no lo hice hasta que fue casi tarde.
