@@ -47,7 +47,7 @@ function crear(): BaseDatos {
     new URL(connectionString);
   } catch {
     throw new ErrorConfiguracion(
-      "DATABASE_URL no es una URL válida. Revisá que empiece por postgresql:// y " +
+      "DATABASE_URL no es una URL válida. Revisa que empiece por postgresql:// y " +
         "que no haya quedado con caracteres invisibles al copiarla. El valor no se " +
         "escribe en este mensaje a propósito.",
     );

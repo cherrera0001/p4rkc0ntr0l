@@ -39,7 +39,7 @@ const limitador = new LimitadorIntentos(OPCIONES_LOGIN);
 function demasiadosIntentos(esperaSegundos: number) {
   return NextResponse.json(
     {
-      error: "Demasiados intentos. Esperá unos segundos antes de volver a probar.",
+      error: "Demasiados intentos. Espera unos segundos antes de volver a probar.",
       esperaSegundos,
     },
     { status: 429, headers: { "Retry-After": String(esperaSegundos) } },

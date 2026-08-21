@@ -187,7 +187,7 @@ export function describirParaLog(contexto: string, error: unknown): string {
     return `${contexto}: fallo de base de datos [${error.codigo}] ${error.message}`;
   }
   if (error instanceof ErrorConfiguracion) {
-    return `${contexto}: configuración inválida — ${error.message}`;
+    return `${contexto}: configuración inválida: ${error.message}`;
   }
   const mensaje = error instanceof Error ? error.message : String(error);
   return `${contexto}: ${redactarSecretos(mensaje)}`;

@@ -17,8 +17,8 @@ export default function Login() {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
       <div className="flex flex-col gap-2">
-        <span className="eyebrow">Piloto</span>
-        <h1>Estacionamiento</h1>
+        <span className="eyebrow">Acceso</span>
+        <h1>ParkControl</h1>
         <p className="text-sm text-subtle">
           Registro de entradas y salidas, y visibilidad de ocupación e ingresos.
         </p>

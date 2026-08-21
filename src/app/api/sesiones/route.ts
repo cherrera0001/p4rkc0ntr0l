@@ -95,7 +95,7 @@ export const POST = rutaAutenticada(
       return NextResponse.json(
         {
           error:
-            "El piloto solo acepta patentes de prueba. Operar con patentes reales " +
+            "Por ahora solo se aceptan patentes de prueba. Operar con patentes reales " +
             "exige definir antes la base de licitud y el plazo de retención " +
             "(Ley 21.719). Ver spec.md §4 y §12.",
           modo: "piloto",

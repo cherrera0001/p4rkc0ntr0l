@@ -1346,3 +1346,49 @@ Y el corolario incómodo: esto pasó **después** de escribir dos veces la lecci
 de M-2 y TMP-1. Saber el modo de falla no protege de cometerlo. Lo único que lo
 cazó fue **correr el mismo instrumento contra un caso donde el resultado esperado
 era distinto** — que es barato, y no lo hice hasta que fue casi tarde.
+
+## 2026-08-21 — `\b` no cierra frontera después de una vocal acentuada
+
+Escribí el patrón del voseo como `/\b(reintent|prob|defin|…)[áéí]\b/i` y lo di por
+bueno porque se lee bien. En JavaScript, `\b` se define contra `[A-Za-z0-9_]`:
+**«á» no es carácter de palabra**, así que después de la vocal acentuada no hay
+frontera que cerrar y el patrón **no matchea nunca**. TONO-4 iba a dar PASS sobre
+diecisiete infracciones reales, con el criterio escrito, corriendo y en verde.
+
+Es exactamente la familia del `"next\|react"` de PowerShell que obligó a
+reescribir el gate de alcance en agosto: *un criterio que siempre pasa es peor que
+no tener criterio*, y la forma de la falla es la misma —la expresión regular es
+sintácticamente válida, semánticamente vacía, y el verde es indistinguible del
+verde legítimo—.
+
+**Lo que lo cazó no fue leer el patrón: fue una sonda.** El verificador se prueba a
+sí mismo con tres frases conocidas —una con em dash, una con voseo, una con la
+marca vieja— y exige reconocerlas. Ese PASS/FAIL es el que salió rojo.
+
+**Regla generalizable, y es de construcción, no de revisión:** todo verificador
+que decida por coincidencia de patrón lleva adentro **una muestra positiva por
+cada patrón**. No como prueba unitaria aparte, sino en la misma corrida: si el
+analizador se rompe o el patrón se vacía, el criterio tiene que caerse con él en
+vez de pasar sobre el conjunto vacío. Vale doble cuando el texto es español: los
+acentos y la eñe caen fuera de `\w` en casi todos los motores.
+
+## 2026-08-21 — un servidor viejo miente igual que uno equivocado
+
+`verificar:ingreso` dio **0/2** con *«Waiting for selector nuevo-ingreso failed»*
+y el código estaba bien: en el puerto 3000 había un `next start` **de tres horas
+antes**, sirviendo el build anterior. La app respondía 200, el login por API
+devolvía 200, y `npm start` había fallado con `EADDRINUSE` en un log que no miré.
+
+`CLAUDE.md` ya advierte que los verificadores de navegador exigen `build` +
+`start` y no `dev`. Le faltaba la otra mitad: **también exigen que el proceso que
+está sirviendo sea el de este build.** Un servidor viejo pasa las dos
+comprobaciones que uno hace por reflejo —responde, y responde bien— y falla
+justo en lo que cambió.
+
+**Antes de creerle a un FAIL de navegador: mirar la edad del proceso que sirve el
+puerto**, no solo que el puerto conteste.
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen |
+  ForEach-Object { Get-Process -Id $_.OwningProcess | Select-Object Id, StartTime }
+```

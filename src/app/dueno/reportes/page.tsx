@@ -162,7 +162,7 @@ export default async function Reportes() {
   const permanencia = agregado?.permanenciaMin === null ? null : Number(agregado?.permanenciaMin);
   const maximo = Math.max(1, ...dias.map((d) => d.n));
 
-  const rango = `${new Intl.DateTimeFormat("es-CL", { timeZone: est.zonaHoraria, day: "numeric", month: "short" }).format(desde)} – ${new Intl.DateTimeFormat("es-CL", { timeZone: est.zonaHoraria, day: "numeric", month: "short" }).format(new Date())}`;
+  const rango = `${new Intl.DateTimeFormat("es-CL", { timeZone: est.zonaHoraria, day: "numeric", month: "short" }).format(desde)} a ${new Intl.DateTimeFormat("es-CL", { timeZone: est.zonaHoraria, day: "numeric", month: "short" }).format(new Date())}`;
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">

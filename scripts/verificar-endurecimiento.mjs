@@ -300,6 +300,28 @@ try {
   comprobar("INT-2 · la app hidrata bajo la CSP con nonce", hidrato);
   comprobar("INT-2 · sin violaciones de CSP en consola", violaciones.length === 0, violaciones.slice(0, 3).join(" | "));
 
+  // La captura de patente ocupa la pantalla entera desde la maqueta `1l`
+  // (2026-08-21), así que el clic de arriba dejó abierto un modo donde no hay
+  // cabecera, y con ella no hay botón de cerrar sesión.
+  //
+  // **La sonda se cierra, el criterio no se afloja.** INT-8 afirma que la
+  // pantalla del operador ofrece cierre de sesión, no que lo ofrezca en medio de
+  // una captura; medirlo con el modo abierto era medir otra cosa. Lo que sí se
+  // agrega, porque es la parte que el modo nuevo podría romper de verdad, es que
+  // salir de la captura sea gratis: si «Cancelar» no devolviera a una pantalla
+  // con cierre de sesión, el operador quedaría encerrado en un dispositivo
+  // compartido, que es justo el riesgo del que nacen INT-8 y M-4.
+  const enCaptura = (await page.$('[data-testid="ingreso-pantalla-completa"]')) !== null;
+  if (enCaptura) {
+    await page.click('[data-testid="ingreso-pantalla-completa"] button[type="button"]');
+    await page.waitForSelector('[data-testid="nuevo-ingreso"]', { timeout: 5000 });
+  }
+
+  comprobar(
+    "INT-8 · salir de la captura devuelve a la pantalla del operador",
+    !enCaptura || (await page.$('[data-testid="ingreso-pantalla-completa"]')) === null,
+  );
+
   comprobar(
     "INT-8 · la pantalla del operador tiene cierre de sesión",
     (await page.$('[data-testid="cerrar-sesion"]')) !== null,

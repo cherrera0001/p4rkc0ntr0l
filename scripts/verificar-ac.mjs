@@ -298,6 +298,14 @@ const SOLTADOS = new Map([
     "verificar:temporizador",
     "docs/data/matriz-trazabilidad.md:96 (2026-08-14): AC-OP-3 no se escribe hasta que el comando sostenga lo que el criterio afirmaría; el verificador está VETADO",
   ],
+  [
+    "verificar:ingreso",
+    "spec.md §9, misma nota de FASE C que verificar:ui: el ingreso a pantalla completa nace de la maqueta 1l (docs/diseno-2026-08-12-traduccion.md:52), posterior a la spec. §5 enuncia el registro del operador y AC-OP-1 lo verifica, pero §1–§8 nunca enunció esta forma de la pantalla: subir un AC nuevo sería autorar requisitos, y eso va por ADR",
+  ],
+  [
+    "verificar:tono",
+    "LEDGER 2026-08-21: la voz del producto (marca ParkControl, sin em dash, sin «piloto», tuteo chileno) la fijó el decisor, no spec.md §1–§8. Es una decisión de marca y de registro, exigible por comando pero ajena al contrato de la v1: subirla a §9 sería autorar requisitos",
+  ],
 ]);
 
 const verificadores = Object.keys(scripts)

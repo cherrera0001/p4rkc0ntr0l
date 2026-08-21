@@ -123,7 +123,7 @@ export default async function Tarifas() {
             </p>
             <p className="text-xs leading-relaxed text-muted">
               Sin ella el operador no puede cerrar una salida: el monto se calcula en el
-              servidor con la tarifa vigente. Cargá una abajo.
+              servidor con la tarifa vigente. Carga una abajo.
             </p>
           </section>
         ) : (

@@ -6466,3 +6466,141 @@ poder aplicarse porque **el token de Cloudflare es de solo lectura**.
 
 Regresión: `npm test` **148/148** (eran 138) · `tsc --noEmit` sin errores ·
 `lint` 0 errores · `build` OK.
+
+---
+
+## 2026-08-21 — la voz del producto se volvió comando · `1l` construida · M6 sin pantallas pendientes
+
+### 1. Lo que el decisor pidió, y por qué había que mecanizarlo
+
+Tres reglas, pedidas **más de una vez**: la marca es **ParkControl**, y del texto
+visible salen el **em dash**, la palabra **«piloto»** y el **voseo**. La cuarta
+—español de Chile con tuteo— ya estaba pedida antes y había vuelto a aparecer.
+
+Una convención de escritura que depende de que alguien se acuerde no es una
+convención, es una intención. Por eso no se corrigieron los textos y ya:
+`npm run verificar:tono` los hace exigibles.
+
+**Cómo mide, y por qué no es un `grep`.** Un `grep` marcaría comentarios (que
+describen el defecto, no lo cometen), identificadores como
+`obtenerEstacionamiento` y clases de Tailwind. El script recorre el fuente
+carácter a carácter separando código, comentarios y cadenas, y evalúa **solo dos
+cosas**: literales de cadena y nodos de texto JSX. Un literal que parece técnico
+—todo en minúscula y sin acentos, como `aviso-piloto`— se descarta.
+
+Primera corrida, con las reglas puestas y antes de tocar la copia:
+
+```
+FAIL · TONO-1 · el producto no se llama «Estacionamiento» ·  7 lugares
+FAIL · TONO-2 · ningún em dash ni en dash en el texto visible ·  3 lugares
+FAIL · TONO-3 · la palabra «piloto» no aparece ·  4 lugares
+FAIL · TONO-4 · ninguna forma de voseo ·  17 lugares
+FAIL · sonda · el analizador reconoce texto con voseo
+```
+
+**La sonda en rojo fue el hallazgo de la corrida.** El patrón del voseo terminaba
+en `[áéí]\b`, y para JavaScript «á» **no es carácter de palabra**: `\b` nunca
+cierra frontera ahí, así que el patrón no matcheaba nunca. Sin las tres sondas,
+TONO-4 habría dado PASS sobre 17 infracciones. Es la misma familia del `"next\|react"`
+de PowerShell que ya obligó a reescribir el gate de alcance: *un criterio que
+siempre pasa es peor que no tener criterio.* Corregido con lookarounds que
+incluyen vocales acentuadas y eñe.
+
+Tras corregir la copia: **11/11 PASS**, 395 piezas de texto visible en 45 archivos.
+
+**Excepción declarada, no olvidada:** el campo de respuesta `modo: "piloto"` de
+`POST /api/sesiones` **se conserva**. Está en el contrato (`docs/CONTRATO-api.md`)
+y es dato de máquina, no texto de pantalla; renombrarlo es cambiar el contrato por
+motivos de tono, con riesgo y sin beneficio para nadie que lo lea.
+
+### 2. `1l` — el ingreso a pantalla completa
+
+Era la última pantalla construible del diseño, y la traducción la llama *«la mejor
+expresión de H1 del set»*.
+
+**Decisión de forma: es un modo de la pantalla del operador, no una ruta nueva.**
+Una ruta propia obligaría a navegar para entrar y para salir, y esa navegación
+caería **dentro** de la ventana que `tecleo_inicio_at` / `tecleo_fin_at` miden: H1
+pasaría a incluir el costo del router, que no es lo que la hipótesis compara
+contra el cuaderno. Sin señal, además, dependería de que el service worker
+tuviera esa ruta en caché. Como modo comparte cola local, barrera A-3 e
+instrumentación: no hay una segunda copia de nada.
+
+`npm run verificar:ingreso`, **20/20 en la primera corrida real**:
+
+```
+PASS · la captura ocupa el alto del viewport · 844px de 844px
+PASS · y entra sin scroll: no hay nada debajo del pliegue
+PASS · mientras se teclea no hay lista, ni ocupación, ni cabecera compitiendo
+PASS · el campo llega con el foco puesto: un toque menos por vehículo
+PASS · el campo de patente es un objetivo táctil grande · 100px
+PASS · el botón Confirmar es un objetivo táctil grande · 76px
+PASS · AC-UX-1 · la caída de señal se ve sin salir de la captura · sin conexión
+PASS · AC-UX-1 · el modo dice cuántos registros esperan red · 1 esperando red
+PASS · la ventana de tecleo empieza al abrir la captura, no al arrancar la app
+PASS · al volver la señal, el ingreso de la captura llega al servidor · 1 fila(s)
+```
+
+**Lo que el verificador NO afirma, dicho en su propio encabezado:** los 625 ms que
+midió los tecleó un programa con `delay` fijo. Eso es interacción con la interfaz,
+no operación real, y confundirlos sería el `6,2 s` inventado otra vez.
+
+**Decisión abierta, no resuelta por cuenta propia:** encadenar ingresos sin salir
+del modo aceleraría una fila de autos, pero cambia el flujo que AC-OP-1 y A-3
+miden hoy. Queda anotado para el decisor.
+
+### 3. La regresión encontró un FAIL, y era mío
+
+```
+FAIL · INT-8 · la pantalla del operador tiene cierre de sesión
+32/33 · verificar:endurecimiento
+```
+
+Causa: la sonda clickea «Nuevo ingreso» para probar que la app hidrata bajo la
+CSP, y **se quedaba adentro de la captura**, donde no hay cabecera ni botón de
+cerrar sesión. Medía otra cosa desde que la pantalla cambió.
+
+**Se cerró la sonda, no se aflojó el criterio.** INT-8 afirma que la pantalla del
+operador ofrece cierre de sesión, no que lo ofrezca en medio de una captura. Y se
+agregó la comprobación que el modo nuevo sí podía romper de verdad: **que salir de
+la captura sea gratis**. Si «Cancelar» no devolviera a una pantalla con cierre de
+sesión, el operador quedaría encerrado en un dispositivo compartido, que es el
+riesgo del que nacen INT-8 y M-4. Ahora **34/34 PASS**.
+
+### 4. Regresión completa, medida contra `npm run build && npm start`
+
+```
+test 148/148 · tsc sin errores · lint 0 errores · build exit=0
+op1 14/14 · a3 11/11 · m4 29/29 · salida 11/11 · meas2 10/10 · temporizador 15/15
+pwa 13/13 · ui 21/21 · endurecimiento 34/34 · tarifas 11/11 · reportes 10/10
+ingreso 20/20 (nuevo) · tono 11/11 (nuevo)
+esquema 8/8 · invariantes 8/8 · meas1 PASS · aislamiento 12/12 · concurrencia 7/7
+frontera 5/5 · metrica 5/5
+ac 9/9 · citas 122/122 · verificadores 63/63 · alcance 11/11 · alcance:prueba 15/15
+secretos PASS · agentes 40/40
+h1 FAIL · CAUSA: banco-vacio  ← el FAIL esperado, y sigue siendo la medición
+```
+
+`verificar:h1` confirmó además que el verificador nuevo no invade el banco:
+*«ningún verificador usa una patente FIXTB…»*. `verificar:ingreso` usa `FIXT70` y
+`FIXT71`.
+
+**Los dos verificadores nuevos quedan declarados como huérfanos con su motivo** en
+`scripts/verificar-ac.mjs`: hacen exigibles una maqueta y una decisión de marca,
+no afirmaciones de `spec.md` §1–§8. Subirlos a §9 sería autorar requisitos.
+
+### 5. Un tropiezo de operación que costó una corrida
+
+La primera corrida de `verificar:ingreso` dio **0/2** con *«Waiting for selector
+nuevo-ingreso failed»*, y el código estaba bien: había un `next start` **de las
+19:53 sirviendo el build anterior** ocupando el puerto 3000. La app respondía 200
+y el login por API funcionaba, así que nada gritaba. Regla que ya estaba escrita
+para `next dev` y que hay que extender: **un servidor viejo miente igual que un
+servidor equivocado.** Antes de creerle a un FAIL de navegador, comprobar la edad
+del proceso que sirve.
+
+### 6. Lo que M6 tiene abierto, y no es pantalla
+
+`sesion_vehiculo.tarifa_id` y `usuario.estado`: los dos rompen `AC-DATA-1` (27
+campos, ni de más ni de menos). No entran sin enmendar `spec.md` §4, y esa
+enmienda es del decisor.

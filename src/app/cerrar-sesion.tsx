@@ -35,15 +35,15 @@ export default function CerrarSesion() {
       const sinSubir = await pendientes();
       if (sinSubir.length > 0) {
         setError(
-          `Quedan ${sinSubir.length} ingreso(s) sin sincronizar. Si cerrás sesión ` +
-            "ahora se pierden: recuperá la señal y esperá a que suban.",
+          `Quedan ${sinSubir.length} ingreso(s) sin sincronizar. Si cierras sesión ` +
+            "ahora se pierden: recupera la señal y espera a que suban.",
         );
         return;
       }
 
       const r = await fetch("/api/login", { method: "DELETE" });
       if (!r.ok) {
-        setError("No se pudo cerrar la sesión. Reintentá.");
+        setError("No se pudo cerrar la sesión. Reinténtalo.");
         return;
       }
 

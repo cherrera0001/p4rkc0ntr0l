@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gestión de Estacionamiento",
+  title: "ParkControl",
   description:
     "Registro de entradas y salidas de vehículos, y visibilidad de ocupación e ingresos.",
   appleWebApp: {
     capable: true,
-    title: "Estacionamiento",
+    title: "ParkControl",
     statusBarStyle: "default",
   },
 };

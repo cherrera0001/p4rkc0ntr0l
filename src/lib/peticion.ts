@@ -77,7 +77,7 @@ export function respuestaDeFallo(contexto: string, error: unknown): NextResponse
       {
         error:
           "El servidor está mal configurado y no puede atender esta petición. " +
-          "Revisá las variables de entorno del despliegue.",
+          "Revisa las variables de entorno del despliegue.",
         tipo: "configuracion",
       },
       { status: 503 },
@@ -86,7 +86,7 @@ export function respuestaDeFallo(contexto: string, error: unknown): NextResponse
 
   return NextResponse.json(
     {
-      error: "El servicio de datos no está disponible. Reintentá en un momento.",
+      error: "El servicio de datos no está disponible. Reinténtalo en un momento.",
       tipo: "base-datos",
     },
     { status: 503, headers: { "Retry-After": "5" } },

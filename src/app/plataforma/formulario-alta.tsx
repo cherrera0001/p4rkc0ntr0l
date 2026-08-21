@@ -38,7 +38,7 @@ type Campo = {
 
 const PASOS: { titulo: string; campos: Campo[] }[] = [
   {
-    titulo: "Estacionamiento",
+    titulo: "Recinto",
     campos: [
       { id: "nombre", etiqueta: "Nombre", tipo: "text", modo: "text" },
       { id: "zonaHoraria", etiqueta: "Zona horaria", tipo: "text", modo: "text", valor: "America/Santiago" },
@@ -98,7 +98,7 @@ export default function FormularioAlta() {
     // Piso mínimo del paso: ningún campo vacío. El servidor valida el resto.
     const vacio = PASOS[paso].campos.find((c) => valores[c.id].trim() === "");
     if (vacio) {
-      setEstado({ tipo: "error", mensaje: "Completá los campos de este paso.", campos: [vacio.id] });
+      setEstado({ tipo: "error", mensaje: "Completa los campos de este paso.", campos: [vacio.id] });
       enfocar(vacio.id);
       return;
     }
@@ -252,7 +252,7 @@ export default function FormularioAlta() {
         {estado.tipo === "error" && (
           <span id={errorId} role="alert" className="text-critical">
             {estado.mensaje}
-            {estado.campos.length > 0 && ` Revisá: ${estado.campos.join(", ")}.`}
+            {estado.campos.length > 0 && ` Revisa: ${estado.campos.join(", ")}.`}
           </span>
         )}
       </p>

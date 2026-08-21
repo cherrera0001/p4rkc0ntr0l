@@ -31,8 +31,8 @@ export default function Error({
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-4 p-6">
       <h1 className="text-lg font-semibold">No se pudo cargar la pantalla</h1>
       <p className="text-sm text-slate-600">
-        Puede ser una caída momentánea del servicio de datos. Reintentá; si
-        sigue igual, avisá con el código de abajo.
+        Puede ser una caída momentánea del servicio de datos. Reinténtalo; si
+        sigue igual, avisa con el código de abajo.
       </p>
       <button
         type="button"

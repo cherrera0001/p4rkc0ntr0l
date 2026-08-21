@@ -109,7 +109,9 @@ amplía a `docs/revision-seguridad-2026-08-09.md`.
 Tras **cada** corrección se corre la regresión completa. Si una corrección rompe
 un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 
-**Estado al 2026-08-20: M0–M5 cerrados y DESPLEGADOS. M7 y M8 PASS. M6 en curso.**
+**Estado al 2026-08-21: M0–M5 cerrados y DESPLEGADOS. M7 y M8 PASS. M6 con sus
+seis pantallas construidas y verificadas; lo que le queda abierto no es pantalla,
+son los dos campos de esquema de §4 de la traducción de diseño.**
 
 > **2026-08-20, noche — árbol limpio y en verde. El dominio está VIVO.** Los dos
 > FAIL de la tarde están cerrados (MET-1, y el 503 de `verificar:frontera`, que
@@ -131,12 +133,31 @@ un AC previo es FAIL: se arregla o se revierte, no se cierra igual.
 > `verificar:ui` da 12/21 y el fallo es del servidor, no del código.
 
 De las pantallas construibles del diseño (`docs/diseno-2026-08-12-traduccion.md`
-§1) quedan **una**: `1l`, el ingreso del operador a pantalla completa. `1e`
-(tarifas) y `1g` (reportes) se construyeron el 2026-08-19/20, cada una con su
-verificador —`verificar:tarifas` y `verificar:reportes`—, los dos **declarados
-como huérfanos con su motivo** en `scripts/verificar-ac.mjs`: hacen exigible una
-maqueta, no una afirmación de `spec.md` §1–§8, y subirlos a §9 sería autorar
-requisitos.
+§1) **no queda ninguna**. `1e` (tarifas) y `1g` (reportes) se construyeron el
+2026-08-19/20 y `1l` (ingreso a pantalla completa) el 2026-08-21, cada una con su
+verificador —`verificar:tarifas`, `verificar:reportes`, `verificar:ingreso`—, los
+tres **declarados como huérfanos con su motivo** en `scripts/verificar-ac.mjs`:
+hacen exigible una maqueta, no una afirmación de `spec.md` §1–§8, y subirlos a §9
+sería autorar requisitos.
+
+Lo que a M6 le queda abierto **no es pantalla**: son los dos campos de esquema
+que la traducción justificaba (§4), `sesion_vehiculo.tarifa_id` y
+`usuario.estado`. Los dos rompen `AC-DATA-1`, que compara los 27 campos *ni de
+más ni de menos*, así que no entran sin enmendar `spec.md` §4. **No se
+implementan por cuenta propia.**
+
+### Voz del producto (2026-08-21) — exigible, no convención
+
+La marca es **ParkControl**. En el texto que el usuario ve: sin em dash, sin la
+palabra «piloto», y español de Chile con tuteo, nunca voseo.
+
+```
+npm run verificar:tono          # TONO-1/2/3/4 sobre el texto visible de src/
+```
+
+Mira literales de cadena y nodos de texto JSX, nunca comentarios ni clases de
+Tailwind, y trae sus propias sondas: si el analizador dejara de ver el texto, el
+criterio pasaría sobre el conjunto vacío en vez de fallar.
 
 **Dos hallazgos del concilio quedan ABIERTOS y bloqueados por decisión humana**,
 no por falta de trabajo: el 404 de `POST /api/sesiones` mal clasificado por la

@@ -43,7 +43,7 @@ export async function obtenerEstacionamiento(estacionamientoId: string) {
     // estacionamiento que no está. Reintentar no lo arregla (INT-20).
     throw new ErrorConfiguracion(
       "El usuario autenticado apunta a un estacionamiento que no existe. " +
-        "Corré `npm run sembrar` o revisá los datos.",
+        "Corre `npm run sembrar` o revisa los datos.",
     );
   }
   return fila;
@@ -68,7 +68,7 @@ export async function obtenerTarifaVigente(estacionamientoId: string, momento: D
 
   if (!fila) {
     throw new ErrorConfiguracion(
-      "No hay tarifa vigente para este estacionamiento. Cargá una antes de operar.",
+      "No hay tarifa vigente para este estacionamiento. Carga una antes de operar.",
     );
   }
   return fila;

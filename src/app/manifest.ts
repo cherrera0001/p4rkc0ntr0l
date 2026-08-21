@@ -10,8 +10,8 @@ import { COLOR_CANVAS } from "@/lib/marca";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Gestión de Estacionamiento",
-    short_name: "Estacionamiento",
+    name: "ParkControl",
+    short_name: "ParkControl",
     description:
       "Registro de entradas y salidas de vehículos, y visibilidad de ocupación e ingresos.",
     start_url: "/",

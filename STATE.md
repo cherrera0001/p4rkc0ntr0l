@@ -4,7 +4,7 @@
 > releer `LEDGER.md` entero. El ledger es append-only y la verdad histórica:
 > ante discrepancia, manda el ledger.
 
-**Actualizado:** 2026-08-20 (noche)
+**Actualizado:** 2026-08-21
 
 **URL viva: https://estacionamiento-three.vercel.app** — responde 200.
 
@@ -738,16 +738,25 @@ no se aplicaba, con AC-UI-1/2/3/4 en verde** — tres miran el fuente y el cuart
 mira la CSP. Por eso `verificar-ui.mjs` mide el **estilo computado**.
 
 Pantallas con el sistema aplicado: `login`, operador, panel del dueño, descuadre,
-cerrar sesión, plataforma (alta + listado), **`1e` tarifas** y **`1g` reportes**.
+cerrar sesión, plataforma (alta + listado), **`1e` tarifas**, **`1g` reportes** y
+**`1l` ingreso a pantalla completa**.
 
-**Queda UNA construible: `1l`** (operador · ingreso a pantalla completa), que la
-traducción llama *«la mejor expresión de H1 del set»*.
+**No queda ninguna construible.** `1l` se construyó el 2026-08-21 como **modo** de
+la pantalla del operador, no como ruta nueva: una ruta metería la navegación
+adentro de la ventana que mide el tecleo, y H1 pasaría a incluir el costo del
+router. `npm run verificar:ingreso` da 20/20.
+
+**La voz del producto es exigible desde el 2026-08-21**: marca ParkControl, sin em
+dash, sin la palabra «piloto» y con tuteo chileno en todo el texto visible.
+`npm run verificar:tono` lo hace cumplir, y trae sondas propias porque su primera
+versión pasaba sobre 17 infracciones (`\b` no cierra frontera después de una
+vocal acentuada).
 
 ## Estado de hitos
 
 - M0–M4 — **cerrados**. v1 desplegada y verificada punta a punta.
 - M5 Endurecimiento — **cerrado en código y desplegado**. INT-12 como riesgo aceptado.
-- M6 Presentación — **en curso**. SPEC-004 entregado; `1e` y `1g` construidas y verificadas (2026-08-19/20). **Falta `1l`.**
+- M6 Presentación — **sin pantallas pendientes**. SPEC-004 entregado; `1e` y `1g` (2026-08-19/20) y `1l` (2026-08-21) construidas y verificadas, cada una con su verificador. Lo que queda abierto no es pantalla: `sesion_vehiculo.tarifa_id` y `usuario.estado`, que rompen AC-DATA-1 y exigen enmendar `spec.md` §4.
 - M7 Plataforma — **bloqueado** por las precondiciones de ADR-004.
 
 ## ADR-004 — decidido (2026-08-13)
@@ -804,6 +813,7 @@ npm run sembrar
 npm run verificar:alcance             # AC-SCOPE-1/2/3 (por exclusión)
 npm run verificar:alcance:prueba      # el gate, con el fallo plantado
 npm run verificar:ac                  # todo AC de §9 cita un comando que existe
+npm run verificar:tono                # voz del producto: marca, em dash, «piloto», voseo
 
 # Datos
 npm run verificar:esquema             # AC-DATA-1 (compara los 27 campos)
@@ -813,6 +823,7 @@ npm run verificar:meas1               # AC-MEAS-1
 # Con la app levantada
 npm run verificar:salida [url]        # ciclo ingreso/salida + control de acceso
 npm run verificar:op1  [url]          # AC-OP-1 (offline real por CDP)
+npm run verificar:ingreso [url]       # maqueta 1l: la captura a pantalla completa
 npm run verificar:meas2 [url]         # AC-MEAS-2 e2e
 npm run verificar:pwa  [url]          # AC-PWA-1
 npm run verificar:a3   [url]          # A-3: la patente real no toca el dispositivo

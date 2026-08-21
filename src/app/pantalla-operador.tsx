@@ -336,7 +336,7 @@ export default function PantallaOperador({
       // tratarlo mal.
       if (!operacionReal && !esPatenteFixture(validacion.patente)) {
         setError(
-          "El piloto solo acepta patentes de prueba. Esta patente no se registró " +
+          "Por ahora solo se aceptan patentes de prueba. Esta patente no se registró " +
             "ni se guardó en el dispositivo.",
         );
         // Se limpia el campo: si era una patente real, tampoco tiene por qué
@@ -394,7 +394,7 @@ export default function PantallaOperador({
     try {
       const r = await fetch(`/api/sesiones/${vehiculo.id}/salida`, { method: "POST" });
       if (!r.ok) {
-        setError("No se pudo registrar la salida. Reintentá.");
+        setError("No se pudo registrar la salida. Reinténtalo.");
         return;
       }
       const { sesion: cerrada } = await r.json();
@@ -458,9 +458,123 @@ export default function PantallaOperador({
   );
   const sinSincronizar = locales.filter((s) => s.syncEstado === "local").length;
 
+  // --- Maqueta `1l` · el ingreso se queda con la pantalla entera --------------
+  //
+  // La traducción de diseño la llama «la mejor expresión de H1 del set»
+  // (docs/diseno-2026-08-12-traduccion.md:52). El motivo es concreto: mientras
+  // se teclea una patente, la ocupación, el banner de pendientes y la lista de
+  // vehículos compiten por la atención y por el pulgar, y ninguno de los tres
+  // sirve para lo único que se está haciendo. Acá la captura se queda con el
+  // viewport: campo, estado de red y dos botones.
+  //
+  // **Por qué es un modo de esta pantalla y no una ruta nueva.** Una ruta propia
+  // obligaría a navegar para entrar y para salir, y esa navegación caería DENTRO
+  // de la ventana que `tecleo_inicio_at` / `tecleo_fin_at` miden: H1 pasaría a
+  // incluir el costo del router, que no es lo que la hipótesis compara contra el
+  // cuaderno. Sin señal, además, dependería de que el service worker tuviera esa
+  // ruta en caché. Como modo, comparte cola local, barrera A-3 e instrumentación
+  // con el resto del archivo: no hay una segunda copia de nada.
+  //
+  // El botón «Confirmar» vuelve a la lista, que es el comportamiento que AC-OP-1
+  // y AC-A3 ya verifican. Encadenar ingresos sin salir del modo aceleraría una
+  // fila de autos, pero cambia el flujo que esos criterios miden: queda anotado
+  // como decisión abierta en LEDGER.md, no resuelto acá por cuenta propia.
+  if (tecleando) {
+    return (
+      <div
+        data-testid="ingreso-pantalla-completa"
+        className="flex min-h-dvh flex-col bg-canvas"
+      >
+        <form
+          onSubmit={confirmar}
+          className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 p-4 pb-8"
+        >
+          {/* AC-UX-1 también acá dentro. Si la señal se cae mientras el operador
+              teclea, tiene que verlo sin salir del modo: el estado de red no se
+              queda en la pantalla de la que vino. */}
+          <div className="flex items-center justify-between gap-3">
+            <span
+              data-testid="estado-conexion"
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                enLinea ? "bg-success-soft text-success" : "bg-warning-soft text-warning"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`size-1.5 rounded-full ${enLinea ? "bg-success" : "bg-warning"}`}
+              />
+              {enLinea ? "en línea" : "sin conexión"}
+            </span>
+            {sinSincronizar > 0 && (
+              <span data-testid="pendientes" className="text-xs font-medium text-warning">
+                {sinSincronizar} esperando red
+              </span>
+            )}
+          </div>
+
+          <label htmlFor="patente" className="eyebrow">
+            Patente
+          </label>
+          <input
+            id="patente"
+            ref={campo}
+            data-testid="campo-patente"
+            value={patente}
+            onChange={(e) => setPatente(e.target.value.toUpperCase())}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            inputMode="text"
+            maxLength={10}
+            aria-invalid={Boolean(error) || undefined}
+            aria-describedby={error ? "error-operador" : "ayuda-patente"}
+            className="patente w-full rounded-2xl border-2 border-line-strong bg-card px-4 py-7 text-center text-4xl text-ink caret-accent focus:border-accent focus:outline-none aria-[invalid]:border-critical"
+          />
+          {/* AC-UX-4: la normalización existe desde M2 y nunca se dijo en
+              pantalla. Un operador que no lo sabe teclea el guion. */}
+          <p id="ayuda-patente" className="text-center text-xs text-faint">
+            Se normaliza sola. Sin guiones ni espacios.
+          </p>
+
+          {error && (
+            <p
+              id="error-operador"
+              data-testid="error"
+              role="alert"
+              className="rounded-xl border border-critical/20 bg-critical-soft p-3 text-sm font-medium text-critical"
+            >
+              {error}
+            </p>
+          )}
+
+          {/* `mt-auto` empuja los botones al borde inferior: es donde llega el
+              pulgar de quien sostiene el teléfono con una mano, que es la
+              postura real del operador en el patio (spec.md §5). */}
+          <div className="mt-auto flex flex-col gap-2 pt-6">
+            <button
+              type="submit"
+              data-testid="confirmar-ingreso"
+              disabled={guardandoIngreso}
+              className="rounded-2xl bg-accent px-4 py-6 text-xl font-semibold text-white shadow-glow transition-colors duration-200 active:bg-accent-strong disabled:opacity-60"
+            >
+              {guardandoIngreso ? "Guardando…" : "Confirmar"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelar}
+              className="rounded-2xl border border-line-strong bg-card px-5 py-4 font-medium text-muted transition-colors duration-200 active:bg-canvas-2"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
-      <Cabecera contexto="Operación · terreno" titulo="Estacionamiento" accion={<CerrarSesion />} />
+      <Cabecera contexto="Operación · terreno" titulo="ParkControl" accion={<CerrarSesion />} />
 
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4 pb-10">
       {/* AC-UX-1 — el estado de red es contenido de primer nivel, no un ícono.
@@ -516,67 +630,21 @@ export default function PantallaOperador({
               {sinSincronizar} {sinSincronizar === 1 ? "registro espera" : "registros esperan"} red
             </p>
             <p className="text-xs leading-relaxed text-muted">
-              Se guardaron en este equipo. Suben solos al reconectar; podés seguir
+              Se guardaron en este equipo. Suben solos al reconectar; puedes seguir
               registrando.
             </p>
           </div>
         </section>
       )}
 
-      {!tecleando ? (
-        <button
-          type="button"
-          onClick={nuevoIngreso}
-          data-testid="nuevo-ingreso"
-          className="rounded-2xl bg-accent px-4 py-6 text-lg font-semibold text-white shadow-glow transition-colors duration-200 active:bg-accent-strong"
-        >
-          Nuevo ingreso
-        </button>
-      ) : (
-        <form onSubmit={confirmar} className="flex flex-col gap-3">
-          <label
-            htmlFor="patente"
-            className="text-[0.6875rem] font-semibold tracking-[0.16em] text-muted uppercase"
-          >
-            Patente
-          </label>
-          <input
-            id="patente"
-            ref={campo}
-            data-testid="campo-patente"
-            value={patente}
-            onChange={(e) => setPatente(e.target.value.toUpperCase())}
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            inputMode="text"
-            maxLength={10}
-            aria-invalid={Boolean(error) || undefined}
-            aria-describedby={error ? "error-operador" : "ayuda-patente"}
-            className="patente rounded-2xl border-2 border-line-strong bg-card px-4 py-5 text-center text-3xl text-ink caret-accent focus:border-accent focus:outline-none aria-[invalid]:border-critical"
-          />
-          {/* AC-UX-4 — la normalización existe desde M2 y nunca se dijo en
-              pantalla. Un operador que no lo sabe teclea el guion. */}
-          <p id="ayuda-patente" className="text-xs text-faint">Se normaliza sola. Sin guiones ni espacios.</p>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              data-testid="confirmar-ingreso"
-              disabled={guardandoIngreso}
-              className="flex-1 rounded-2xl bg-accent px-4 py-4 text-lg font-semibold text-white transition-colors duration-200 active:bg-accent-strong disabled:opacity-60"
-            >
-              {guardandoIngreso ? "Guardando…" : "Confirmar"}
-            </button>
-            <button
-              type="button"
-              onClick={cancelar}
-              className="rounded-2xl border border-line-strong bg-card px-5 py-4 font-medium text-muted transition-colors duration-200 active:bg-canvas-2"
-            >
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
+      <button
+        type="button"
+        onClick={nuevoIngreso}
+        data-testid="nuevo-ingreso"
+        className="rounded-2xl bg-accent px-4 py-6 text-lg font-semibold text-white shadow-glow transition-colors duration-200 active:bg-accent-strong"
+      >
+        Nuevo ingreso
+      </button>
 
       {error && (
         <p
@@ -594,7 +662,7 @@ export default function PantallaOperador({
           data-testid="aviso-piloto"
           className="rounded-xl border border-warning/20 bg-warning-soft p-3 text-xs leading-relaxed text-warning"
         >
-          <strong className="font-semibold">Piloto con datos de prueba.</strong>{" "}
+          <strong className="font-semibold">Datos de prueba.</strong>{" "}
           Solo se aceptan patentes de prueba, y una patente real ni siquiera se
           guarda en este dispositivo. Para registrar vehículos reales hay que
           definir antes la base de licitud y el plazo de retención (Ley 21.719).
@@ -614,8 +682,8 @@ export default function PantallaOperador({
             className="rounded-xl bg-canvas-2 p-3 text-xs leading-relaxed text-subtle"
           >
             Sin conexión con el servidor: se muestra lo que hay guardado en este
-            dispositivo —las sesiones activas y los ingresos que todavía no
-            subieron—. Al reconectar se completa.
+            dispositivo: las sesiones activas y los ingresos que todavía no
+            subieron. Al reconectar se completa.
           </p>
         )}
         <ul data-testid="lista-activas" className="flex flex-col gap-2">

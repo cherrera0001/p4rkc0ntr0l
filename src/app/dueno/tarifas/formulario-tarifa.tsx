@@ -53,7 +53,7 @@ export default function FormularioTarifa() {
 
     const vacios = CAMPOS.filter((c) => valores[c.id].trim() === "").map((c) => c.id);
     if (vacios.length > 0) {
-      setEstado({ tipo: "error", mensaje: "Completá los tres valores.", campos: vacios });
+      setEstado({ tipo: "error", mensaje: "Completa los tres valores.", campos: vacios });
       refs.current[vacios[0]]?.focus();
       return;
     }
@@ -90,7 +90,7 @@ export default function FormularioTarifa() {
       // cambiaría el monto que se cobra en efectivo sin que nadie lo sepa.
       setEstado({
         tipo: "error",
-        mensaje: "Sin conexión. La tarifa no se guardó; probá de nuevo al reconectar.",
+        mensaje: "Sin conexión. La tarifa no se guardó; prueba de nuevo al reconectar.",
         campos: [],
       });
     }
@@ -141,7 +141,7 @@ export default function FormularioTarifa() {
         {estado.tipo === "error" && (
           <span id={errorId} role="alert" className="text-critical">
             {estado.mensaje}
-            {estado.campos.length > 0 && ` Revisá: ${estado.campos.join(", ")}.`}
+            {estado.campos.length > 0 && ` Revisa: ${estado.campos.join(", ")}.`}
           </span>
         )}
       </p>
