@@ -18,7 +18,46 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { destinoCanonico } from "./lib/host-canonico.ts";
+
+/**
+ * Rutas que no llevan CSP: la API responde JSON —donde una CSP no aporta— y el
+ * service worker trae la suya desde `next.config.ts`.
+ *
+ * Antes esta lista vivía en el `matcher`, y por eso **el middleware no corría
+ * para `/api`**. Ahora el matcher cubre todo, porque el corte por host tiene que
+ * alcanzar a la API: ahí es donde está la fuerza bruta y donde cada petición se
+ * factura. La CSP se sigue aplicando solo a documentos, pero eso ya se decide
+ * acá adentro y no dejando rutas fuera del middleware.
+ */
+function llevaCSP(ruta: string): boolean {
+  return !(
+    ruta.startsWith("/api") ||
+    ruta.startsWith("/_next/") ||
+    ruta === "/favicon.ico" ||
+    ruta === "/sw.js" ||
+    ruta === "/manifest.webmanifest"
+  );
+}
+
 export function proxy(request: NextRequest) {
+  // Primero el host, antes de cualquier trabajo: una petición que va a ser
+  // redirigida no debe costar ni un ciclo más del necesario. Es la mitad del
+  // motivo por el que esto existe.
+  const destino = destinoCanonico(
+    request.headers.get("host"),
+    request.nextUrl.pathname + request.nextUrl.search,
+    process.env.VERCEL_ENV,
+    process.env.HOSTS_CANONICOS,
+  );
+  if (destino) {
+    // 308 y no 302: conserva el método y el cuerpo, así que un POST de la cola
+    // offline llega al host canónico en vez de convertirse en GET y perderse.
+    return NextResponse.redirect(destino, 308);
+  }
+
+  if (!llevaCSP(request.nextUrl.pathname)) return NextResponse.next();
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const enDesarrollo = process.env.NODE_ENV === "development";
 
@@ -67,12 +106,16 @@ export const config = {
   matcher: [
     {
       /**
-       * Documentos, no recursos. Se excluyen las rutas de API (responden JSON,
-       * donde una CSP no aporta), los estáticos del build, el manifiesto y el
-       * service worker —que lleva su propia CSP desde `next.config.ts`—.
+       * **Todo**, incluida la API. Antes se excluía `/api` porque el único
+       * trabajo de este middleware era la CSP; hoy también corta por host, y
+       * dejar la API afuera dejaba abierto justo el camino que importa: el de
+       * `/api/login`, donde la fuerza bruta no encontraba freno y cada intento
+       * se facturaba.
+       *
+       * Se siguen excluyendo los estáticos del build: los sirve el CDN, no
+       * ejecutan nada y hacerlos pasar por acá es gasto sin contrapartida.
        */
-      source:
-        "/((?!api|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest).*)",
+      source: "/((?!_next/static|_next/image).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
