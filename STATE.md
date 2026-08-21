@@ -115,9 +115,40 @@ Se resuelve de una de dos formas, y **es acto humano**: (a) tocarlo en el panel
 de Cloudflare, o (b) crear un API Token con `Zone Settings:Edit` + `DNS:Edit`
 acotado a `parkcontrol.cl`, ponerlo en `.env` y aplicarlo con un script.
 
+### Guía externa (Directus + Qdrant) · traducida, adjudicada, NO ejecutada
+
+Decisión humana del 2026-08-20: *«qdrant y directus mantener, pero Vercel se
+queda acá»*. Traducción completa en **`docs/guia-2026-08-20-traduccion.md`**.
+
+**Fuera por gate, y no por criterio propio:** `parking_transactions` (ADR-001,
+entidad `Transaccion`) y la jerarquía `parking_lots` (AC-SCOPE-4, multisitio).
+`verificar:alcance` sigue **11/11**.
+
+**Lo central:** Directus y Qdrant **no corren en Vercel** —son servicios de larga
+vida con estado en disco—. Con Vercel conservado, la topología es *Next.js en
+Vercel · Directus y Qdrant en Railway*. Cuesta pasar de un servicio desplegado a
+tres. Y **no hay `docker` ni `pnpm` en este entorno** (medido): todo el flujo
+`pnpm dev` / puertos `18701`–`18708` / worktrees con `--offset` no traduce.
+
+| | |
+|---|---|
+| **ADR-006** | **ADJUDICADO** a la alternativa 1 (Directus en esquema propio). **VIABLE-SIN-VERIFICAR**: falta la medición de su §2.3 → **M-11**, bloqueada por entorno |
+| **ADR-007** *(nuevo)* | Qdrant adjudicado y **bloqueado por H-6**: qué se indexa. No pueden ser sesiones (patente = dato personal, INT-7). Hoy **no hay corpus** |
+| **AC-SECRET-1** | **PASS.** Nuevo en `spec.md` §9. `npm run verificar:secretos` |
+
+### AC-SECRET-1 · encontró cinco cosas en la primera corrida
+
+Ninguna era fuga: dos rutas de máquina en `LEDGER.md` —**redactadas**, sin tocar
+el texto de las entradas— y tres fixtures que se ven como fixtures, dentro de las
+pruebas de `redactarSecretos`, que **por su función tienen que contener cadenas
+de conexión**. El criterio se afiló con `CLAUDE.md` §3 como discriminante en vez
+de silenciarlas: una credencial real no vive en `.invalid` ni se llama
+`CLAVE_DE_PRUEBA`. Probado con **4 fallos plantados a la vez**, incluida una
+cadena realista sin marcas de fixture.
+
 ### Premisas descartadas con evidencia (no volver a abrirlas sin ADR)
 
-- **Directus**: ausente, no roto. Rechazado con medición el 2026-08-19.
+- **Directus**: ~~rechazado~~ **ADJUDICADO el 2026-08-20** por decisión humana (ADR-006 alt. 1). La medición del 2026-08-19 sigue siendo válida para la instalación en `public`, y sólo para ésa.
 - **JWT**: metería un retroceso. La sesión ya es HMAC-SHA256 con vencimiento
   verificado en servidor y **rol releído de la base en cada petición** — lo que un
   JWT justamente no hace. Cerró A-1 y M-3.

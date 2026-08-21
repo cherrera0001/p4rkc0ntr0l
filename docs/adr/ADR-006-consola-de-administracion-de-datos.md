@@ -1,6 +1,32 @@
 # ADR-006 — Consola de administración de datos (Directus u otra)
 
-**Estado:** **PROPUESTO — pendiente de adjudicación.**
+**Estado:** **ADJUDICADO por decisión humana el 2026-08-20 — alternativa 1
+(Directus con sus tablas en un esquema propio), CONDICIONADA y no ejecutable
+todavía.**
+
+La decisión fue explícita: *«qdrant y directus mantener, pero Vercel se queda
+acá»*. Eso elige la alternativa 1 y descarta las otras cuatro. **No convierte a
+este ADR en cerrado**, y la diferencia es la de siempre en este repo: adjudicar
+es decidir el rumbo; cerrar exige la medición.
+
+Lo que sigue faltando, y está en §2.3 de este mismo documento: levantar Directus
+contra un esquema propio de **una base de descarte** y comprobar que no crea nada
+en `public`. **No se pudo correr el 2026-08-20**: `docker` y `pnpm` no están
+instalados en el entorno, y correrla contra la base de Railway es exactamente lo
+que este ADR evitó al pedir una base de descarte — si Directus ignorara el
+ajuste, el daño cae en producción, que es el caso que se busca descartar.
+
+**Por lo tanto la alternativa 1 queda VIABLE-SIN-VERIFICAR.** No es rechazo y no
+es aprobación. La condición que la acompaña —§2.3— no es negociable: `AC-DATA-1`
+pasa a mirar **todos** los esquemas y el de la consola queda declarado con su
+motivo. *Nadie está obligado a tener solo las cuatro tablas; todos están
+obligados a declarar qué agregan.*
+
+La traducción de la guía que motivó la decisión, con la topología resultante
+—Next.js en Vercel, Directus y Qdrant en Railway— y con lo que queda **fuera** por
+ADR-001 (`parking_transactions`) y por AC-SCOPE-4 (jerarquía `parking_lots`), vive
+en `docs/guia-2026-08-20-traduccion.md`. **Qdrant no lo cubre este ADR:** su
+pregunta es distinta y está en `ADR-007`.
 **Fecha del borrador:** 2026-08-20
 **Decisor:** Cristóbal Herrera
 **Enmienda propuesta a:** ADR-002 (criterio rector: un proveedor, lo más simple de

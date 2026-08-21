@@ -334,6 +334,23 @@ donde vive el estado. No tocar identificarCliente: esa correccion esta verificad
 
 ---
 
+### M-11 · la medición que zanja ADR-006 (Directus fuera de `public`)
+
+| | |
+|---|---|
+| **Enunciado** | Directus levantado contra un esquema propio **no crea nada en `public`**, y `verificar:esquema` sigue dando 8/8 |
+| **Condición de término** | contra una **base de descarte**, no contra Railway: levantar Directus apuntando a un esquema propio, correr `npm run verificar:esquema`, y listar `public` antes y después |
+| **Estado leído** | **BLOQUEADA POR ENTORNO (2026-08-20).** Medido: `docker` y `pnpm` **no están instalados**. Y correrla contra Railway es lo que ADR-006 evitó al pedir base de descarte: si Directus ignorara el ajuste, el daño cae en producción — que es el caso que se busca descartar |
+| **Quién la cierra** | concilio, **una vez que exista dónde correrla**. Instalar Docker o proveer una base descartable es acto humano |
+| **Precedencia** | bloquea la ejecución de ADR-006 y, con ella, `AC-DATA-1` ampliado |
+| **No incluye** | adoptar Directus. Esto sólo mueve la alternativa 1 de *viable-sin-verificar* a *viable* o *descartada con medición* |
+
+**Y va acompañada o no va** (ADR-006 §2.3): `AC-DATA-1` hoy sólo mira `public`
+(`verificar-esquema.mjs:25`). Que no viera a Directus sería un **punto ciego**, no
+una propiedad conservada. Usarlo a propósito es el patrón que este repo persigue
+desde AC-SCOPE-1.
+
+---
 ## 4. Metas humanas — ningún fix las resuelve
 
 `/loop` ARRANQUE punto 3 es explícito: si un bloqueo es acción humana,
@@ -385,6 +402,19 @@ decisor.
 
 ---
 
+### H-6 · Qué indexa Qdrant · **decide si ADR-007 se ejecuta o se revierte**
+
+Qdrant está adjudicado (ADR-007) y **no puede indexar el corpus natural**: las
+sesiones llevan patente, y replicarla en un segundo almacén con
+`{{PLAZO_RETENCION_PATENTE}}` sin resolver es INT-7 otra vez, ahora por duplicado.
+*Un embedding no es anonimización.*
+
+La pregunta: **si no son sesiones, ¿qué?** Los candidatos lícitos —ayuda del
+operador, texto de políticas de tarifa— **no existen todavía**: hay que
+escribirlos. Ningún fix resuelve esto; es decidir qué contenido tiene el producto.
+
+**Mientras no se responda, ADR-007 no se ejecuta**, y su §6 dice cómo revertirlo
+sin costo: la secuencia impide escribir código antes del corpus.
 ## 5. Congeladas — reabrirlas es decisión, no trabajo
 
 No son pendientes: son **BoundedLoop agotados**. Abrir una sin decidirlo es

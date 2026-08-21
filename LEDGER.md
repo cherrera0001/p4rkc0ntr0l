@@ -30,7 +30,7 @@ Nota: AC-SCOPE-1 y AC-SCOPE-2 NO son ejecutables en M0 — no existen
 
 ### 2026-08-08 · PASO 0 · advertencia OneDrive · registrada
 
-El directorio de trabajo `C:\Users\herre\OneDrive\Documentos\Code\Estacionamiento`
+El directorio de trabajo `<PERFIL>\OneDrive\Documentos\Code\Estacionamiento`
 está bajo OneDrive. `node_modules` y `.next` en carpeta sincronizada pueden causar
 builds lentos y bloqueos de archivo en Windows. Advertencia registrada una vez.
 Por instrucción explícita, el repo NO se mueve. Se continúa.
@@ -1073,7 +1073,7 @@ No se modificó código.
 
 Nota: el skill `security-review` no pudo ejecutarse — asume commits y un remoto
 `origin` que este repo no tiene. Se agregó un shim de `git` en
-`C:\Users\herre\.local\bin\git.cmd` para destrabar el PATH de la sesión, pero el
+`<PERFIL>\.local\bin\git.cmd` para destrabar el PATH de la sesión, pero el
 bloqueo era el otro.
 
 ---
@@ -6130,3 +6130,97 @@ hipótesis vivas, ninguna comprobada:
 
 **No se elige entre las tres razonando.** M-10 queda enunciada como el hecho
 —*no corta por el camino directo*— y no como su causa.
+
+---
+
+## 2026-08-20 (noche, 4) — la guía externa, traducida · ADR-006 adjudicado · AC-SECRET-1
+
+Decisión humana explícita: *«qdrant y directus mantener, pero Vercel se queda
+acá»*. Se tradujo la guía a este repo en `docs/guia-2026-08-20-traduccion.md`,
+con el mismo formato que la traducción del diseño de 2026-08-12.
+
+### Lo que queda FUERA, y no por criterio propio
+
+| De la guía | Gate | Veredicto |
+|---|---|---|
+| `parking_transactions` | ADR-001 prohíbe `Transaccion`; `AC-SCOPE-2` lo hace cumplir | **FUERA** |
+| jerarquía `parking_lots` sobre el recinto | `AC-SCOPE-4` | **FUERA** — es multisitio |
+| journal/blog, `/map`, `/reports`, `/layouts` | — | demo del starter, no producto |
+
+`verificar:alcance` sigue **11/11 PASS**. Nada de lo decidido hoy lo mueve.
+
+### El problema central que la guía no tiene y este repo sí
+
+**Directus no puede correr en Vercel.** Es un servidor Node de larga vida con
+estado en disco; las funciones de Vercel son efímeras. Qdrant, igual. Con Vercel
+conservado por decisión, la topología queda: **Next.js en Vercel · Directus y
+Qdrant en Railway**, donde ya vive la base por ADR-003. Cuesta pasar de **un
+servicio desplegado a tres**. La guía no paga ese costo porque su Docker Compose
+local no es un despliegue.
+
+Medido: **`docker` y `pnpm` NO están instalados** en este entorno. Todo el flujo
+`pnpm dev` / puertos `18701`–`18708` / worktrees con `--offset` **no traduce**.
+
+### ADR-006 · ADJUDICADO, no cerrado
+
+Pasa a alternativa 1 (Directus en esquema propio) por la decisión humana. **No se
+declara verificado.** La medición que §2.3 nombra —Directus contra un esquema
+propio de una **base de descarte**— sigue sin correr, y no por pereza: sin Docker
+no hay dónde, y hacerlo contra Railway es justo lo que ese ADR evitó, porque si
+Directus ignorara el ajuste el daño cae en producción. Queda
+**VIABLE-SIN-VERIFICAR**.
+
+### ADR-007 · nuevo · Qdrant
+
+Adjudicado y **bloqueado en su ejecución por una pregunta abierta**: qué se
+indexa. La guía indexa posts publicados; este producto no tiene contenido
+editorial, y el corpus natural —sesiones— **no puede indexarse**: replicaría dato
+personal en un segundo almacén con `{{PLAZO_RETENCION_PATENTE}}` sin resolver
+(INT-7). *Un embedding no es anonimización.* Adoptar Qdrant hoy sería desplegar
+infraestructura con el corpus vacío.
+
+### AC-SECRET-1 · PASS, y encontró cinco cosas en la primera corrida
+
+Único criterio de la guía que agrega una propiedad que esta suite **no
+verificaba**. Pesa por dos hechos: el repositorio es **público**
+(`githubRepoVisibility: public`, del MCP de Vercel) y trata dato personal.
+
+Primera corrida, **5 hallazgos**:
+
+```
+FAIL · LEDGER.md:33   · ruta absoluta de Windows con perfil de usuario
+FAIL · LEDGER.md:1076 · ruta absoluta de Windows con perfil de usuario
+FAIL · docs/revision-integral-2026-08-09.md:91 · cadena de conexión con contraseña
+FAIL · src/lib/errores.test.ts:24 · cadena de conexión con contraseña
+FAIL · src/lib/errores.test.ts:40 · cadena de conexión con contraseña
+```
+
+**Ninguno era una fuga.** Tres son fixtures que se ven como fixtures —`.invalid`,
+`CLAVE-DE-FIXTURE-NO-REAL`, `127.0.0.1`—, que es exactamente lo que `CLAUDE.md`
+§3 exige, y encima viven en las pruebas de `redactarSecretos`, que **por su
+función tienen que contener cadenas de conexión**.
+
+Ahí estaba el riesgo real del criterio: si gritaba sobre ellas, alguien lo
+apagaba en una semana. Se afiló usando esa misma regla como **discriminante**:
+una credencial real no vive en un host `.invalid`, no se llama `CLAVE_DE_PRUEBA`
+y no es una interpolación. No es lista blanca por comodidad — es §3 cobrada.
+
+Las **dos rutas de máquina del ledger sí se corrigieron**: se redactó
+`C:\Users\<usuario>\` a `<PERFIL>\` en las líneas 33 y 1076. **El texto de las
+entradas no cambió**; el append-only se respeta, lo que se sacó es un detalle de
+máquina de un repo público.
+
+Probado con el fallo plantado, cuatro a la vez, **incluida una cadena de conexión
+realista sin marcas de fixture** —que es lo que verifica que el discriminante no
+tape de más—:
+
+```
+FAIL · PLANTADO.md:2 · token de GitHub
+FAIL · PLANTADO.md:3 · clave de API estilo OpenAI
+FAIL · PLANTADO.md:4 · ruta absoluta POSIX de una máquina
+FAIL · PLANTADO.md:5 · cadena de conexión con contraseña
+4 hallazgo(s) · AC-SECRET-1: FAIL
+```
+
+Retirado el plantado: **172 archivos versionados, PASS**. `AC-SECRET-1` entra a
+`spec.md` §9 como criterio **universal**.
