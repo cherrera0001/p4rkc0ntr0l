@@ -44,6 +44,69 @@
 | **Contrato de API** | `docs/CONTRATO-api.md`, derivado del código, con su sección de lo que NO cubre |
 | **Placeholders** | ninguno se rellenó. `{{BASE_LICITUD}}` y `{{PLAZO_RETENCION_PATENTE}}` bloquean el **encendido**, no la construcción: se opera con `OPERACION_REAL_HABILITADA=false` |
 
+## 2026-08-20 (cierre) — REANUDACIÓN TRAS REINICIO: leé esto primero
+
+**La sesión se reinicia a propósito, para cargar los servidores MCP.** Nada quedó
+a medias en el código: el árbol está limpio y todo está en `origin/main`.
+
+### Lo primero al volver: autorizar MCP
+
+```
+/mcp        → autorizar por OAuth: vercel · cloudflare-api ·
+              cloudflare-workers-builds · cloudflare-observability
+```
+
+Estado medido antes del reinicio (`claude mcp list`):
+
+| Servidor | Estado |
+|---|---|
+| `cloudflare-docs` | **✔ Conectado** (no exige credenciales) |
+| `vercel` · `cloudflare-api` · `cloudflare-workers-builds` · `cloudflare-observability` | **! Falta autenticación** |
+
+La aprobación ya está resuelta —`enabledMcpjsonServers` en
+`.claude/settings.local.json`—; lo que falta es el consentimiento OAuth, que es
+acto humano. Las URL de los cinco están **verificadas contra la documentación del
+proveedor**, no escritas de memoria (`.mcp.json`).
+
+### Para qué se autoriza: la pregunta pendiente
+
+**`parkcontrol.cl` no resuelve en el mundo.** Medido contra servidores
+autoritativos, no supuesto:
+
+```
+titan.ns.cloudflare.com → SOA parkcontrol.cl          ✔ la zona existe en Cloudflare
+titan.ns.cloudflare.com → www CNAME f4ea80ad1787d4f6.vercel-dns-016.com   ✔ correcto
+titan.ns.cloudflare.com → apex A 216.150.1.1          ✔ rango nuevo de Vercel
+a.nic.cl                → NXDOMAIN                     ✘ el .cl NO delega
+```
+
+Los registros están **en nube gris**, que es lo correcto hasta que Vercel
+verifique. **Lo que falta es la delegación en NIC Chile**, y eso no lo ve ningún
+MCP: vive en el registrador. Con el MCP de Cloudflare se podrá confirmar si la
+zona pasó de `pending` a `active`, y con el de Vercel el estado del dominio.
+
+### Trabajo pendiente que NO depende del dominio
+
+- **SEG-2 · el más urgente si se expone la app.** `identificarCliente`
+  (`src/lib/limite-intentos.ts:153`) toma `X-Forwarded-For[0]` sin validar. Con un
+  proxy adelante ese primer elemento **lo controla quien ataca** —Cloudflare
+  agrega la IP real al final de la cadena—, así que el limitador de intentos se
+  evade rotando el valor. Hay que preferir `cf-connecting-ip`, luego
+  `x-vercel-forwarded-for`, y **cerrar el acceso directo a `*.vercel.app`**: sin
+  eso, cualquier cabecera es forjable y el WAF es esquivable.
+- **M-6** · que la sonda de frontera confirme un fallo **aislado** antes de
+  reportarlo. Es el mismo patrón que cerró TMP-1 y reclasificó M-2.
+- **M-5, M-7, M-9** y `1l` (M-4, necesita el lienzo por `DesignSync` desde el
+  agente principal).
+
+### Lo que cambió hoy, y cambia la prioridad del proyecto
+
+**Los dos «defectos de producto» que quedaban abiertos resultaron ser de las
+sondas**: el 503 de `verificar:frontera` no reproduce en ningún modo, y el
+`0 min` del temporizador era una lectura en vuelo. **El producto no tiene hoy
+ningún defecto abierto medido.** Lo que queda es instrumentos, decisiones humanas
+y `1l`.
+
 ## 2026-08-20 (noche) — M-1 (MET-1) CERRADO · el FAIL de H1 volvió a ser el suyo
 
 **Esto reemplaza a los puntos 1 y 2 del bloque de la tarde.** MET-1 está
