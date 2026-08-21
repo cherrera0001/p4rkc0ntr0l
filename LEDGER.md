@@ -6224,3 +6224,97 @@ FAIL · PLANTADO.md:5 · cadena de conexión con contraseña
 
 Retirado el plantado: **172 archivos versionados, PASS**. `AC-SECRET-1` entra a
 `spec.md` §9 como criterio **universal**.
+
+---
+
+## 2026-08-20 (noche, 5) — Directus NO se pudo instalar · el modelo, extraído del motor
+
+### La pregunta que abrió esto
+
+*«¿Ya está Directus? ¿Qué datos están registrados?»* — sondeada la base viva, no
+supuesta:
+
+```
+esquemas: drizzle, public
+tablas:   public.estacionamiento · public.sesion_vehiculo · public.tarifa · public.usuario
+          drizzle.__drizzle_migrations
+tablas directus_*: NINGUNA
+
+filas:    estacionamiento 3 · usuario 7 · tarifa 3 · sesion_vehiculo 2
+```
+
+**Directus no estaba y no está.** Lo del 2026-08-20 fue traducción y ADR: cero
+infraestructura. Lo que sí funciona es Next.js en Vercel. Los datos registrados
+son los fixtures del piloto.
+
+### FAIL · Directus 12.3.0 no se puede instalar en esta máquina
+
+Se intentó, **fuera del repo** para no ensuciar `package.json`, y **contra una
+base de descarte**, nunca contra la de producción — que es la condición que
+ADR-006 §2.3 puso y el motivo por el que no se improvisó.
+
+```
+npm install directus@latest
+  gyp ERR! find Python  Could not find any Python installation to use
+  gyp ERR! cwd          node_modules\isolated-vm
+  gyp ERR! not ok       $npm_package_name isolated-vm 5.0.3
+```
+
+`isolated-vm` es un **módulo nativo**: exige node-gyp, o sea Python real y el
+compilador de C++ de Visual Studio. Medido:
+
+```
+python  -> C:\...\WindowsApps\python.exe   (es el STUB de la Store, no un Python)
+python3 -> idem
+py      -> NO
+cl      -> NO
+```
+
+`--omit=optional` **no ayuda**: `isolated-vm` es dependencia dura, no opcional.
+
+**No se instalaron las herramientas de compilación.** Son varios GB de toolchain
+en la máquina de alguien, y esa no es una decisión que tome un agente solo.
+
+### Lo que SÍ quedó hecho, y es reutilizable
+
+La base de descarte **existe y está vacía**, creada con `npm run base:descarte`:
+
+```
+base directus_descarte · esquemas: consola, public · tablas antes de Directus: 0
+```
+
+Queda a propósito, documentada acá para que no sea un artefacto misterioso: el
+día que haya cómo correr Directus, M-11 arranca sin preparación.
+
+### El modelo entidad-relación, extraído DEL MOTOR
+
+`npm run modelo` → **`docs/MODELO-datos.md`**, generado desde `pg_catalog` de la
+base viva, **no** desde `src/db/schema.ts` ni desde el DDL. Es la misma regla que
+`verificar:esquema` ya aplica: *el DDL dice lo que alguien quiso; el motor dice lo
+que hay.* Si una migración hubiera fallado a medias, sólo el motor lo sabría.
+
+```
+4 entidades · 27 campos · 41 restricciones · 8 índices
+```
+
+Lleva diagrama Mermaid, y por entidad: campos con tipo/obligatoriedad/defecto,
+**las restricciones declaradas en la base** —que son las que AC-DATA-2 exige— y
+los índices. **No incluye datos**: los conteos son estadísticas del motor, así
+que ninguna patente sale de la base por ahí.
+
+### La consecuencia de arquitectura, que es lo importante
+
+> *«Data-driven es la base»* — de acuerdo, y por eso: **Directus tiene que ser
+> database-first, no schema-authoring.**
+
+El modelo ya existe y es autoritativo: cuatro entidades pinneadas por `AC-DATA-1`
+y con sus invariantes en la base por `AC-DATA-2`. Si Directus **autorara** el
+esquema, habría **dos dueños del modelo** y el criterio que hoy da 8/8 pasaría a
+depender de cuál de los dos escribió último. Directus entra a **reflejar** lo que
+ya hay, no a definirlo.
+
+Eso no es una restricción que le pongo a Directus: es que este proyecto ya tiene
+resuelto lo que la guía de origen le delega a Directus.
+
+Guards tras el trabajo: `verificar:ac` **9/9** · `verificar:verificadores`
+**59/59** · `verificar:secretos` **PASS** · `verificar:alcance` **11/11**.

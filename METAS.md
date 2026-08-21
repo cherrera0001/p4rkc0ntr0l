@@ -340,8 +340,8 @@ donde vive el estado. No tocar identificarCliente: esa correccion esta verificad
 |---|---|
 | **Enunciado** | Directus levantado contra un esquema propio **no crea nada en `public`**, y `verificar:esquema` sigue dando 8/8 |
 | **Condición de término** | contra una **base de descarte**, no contra Railway: levantar Directus apuntando a un esquema propio, correr `npm run verificar:esquema`, y listar `public` antes y después |
-| **Estado leído** | **BLOQUEADA POR ENTORNO (2026-08-20).** Medido: `docker` y `pnpm` **no están instalados**. Y correrla contra Railway es lo que ADR-006 evitó al pedir base de descarte: si Directus ignorara el ajuste, el daño cae en producción — que es el caso que se busca descartar |
-| **Quién la cierra** | concilio, **una vez que exista dónde correrla**. Instalar Docker o proveer una base descartable es acto humano |
+| **Estado leído** | **BLOQUEADA POR ENTORNO (2026-08-20), y ahora se sabe exactamente por qué.** La base de descarte **ya existe y está vacía** (`npm run base:descarte` → `directus_descarte`, esquema `consola`, 0 tablas): esa parte dejó de ser el bloqueo. Lo que falta es **poder correr Directus**: `npm install directus@latest` falla compilando `isolated-vm` —módulo nativo— porque no hay Python real (el `python.exe` del PATH es el stub de la Store) ni compilador de C++. `--omit=optional` no sirve: es dependencia dura. Sin Docker tampoco hay salida |
+| **Quién la cierra** | concilio, **una vez que exista dónde correrla**. Es acto humano y hay tres caminos: (a) Docker Desktop; (b) Python real + Build Tools de Visual Studio —varios GB de toolchain, no lo instala un agente solo—; (c) **desplegar Directus en Railway desde su imagen oficial**, que además es donde tiene que vivir según la traducción §2.1, y exige un token de la API de Railway que hoy no está en `.env` |
 | **Precedencia** | bloquea la ejecución de ADR-006 y, con ella, `AC-DATA-1` ampliado |
 | **No incluye** | adoptar Directus. Esto sólo mueve la alternativa 1 de *viable-sin-verificar* a *viable* o *descartada con medición* |
 

@@ -115,6 +115,43 @@ Se resuelve de una de dos formas, y **es acto humano**: (a) tocarlo en el panel
 de Cloudflare, o (b) crear un API Token con `Zone Settings:Edit` + `DNS:Edit`
 acotado a `parkcontrol.cl`, ponerlo en `.env` y aplicarlo con un script.
 
+### Directus · NO instalado. Bloqueo medido, no supuesto
+
+Sondeada la base viva: **ninguna tabla `directus_*`**. Esquemas `drizzle` y
+`public`, las cuatro entidades de siempre, y los fixtures del piloto
+(estacionamiento 3 · usuario 7 · tarifa 3 · sesion_vehiculo 2).
+
+**`npm install directus@latest` FALLA** compilando `isolated-vm` (módulo nativo):
+no hay Python real —el `python.exe` del PATH es el **stub de la Store**— ni
+compilador de C++. `--omit=optional` no sirve: es dependencia dura. Sin Docker
+tampoco hay salida. **No se instalaron las Build Tools**: son varios GB en la
+máquina de alguien y no es decisión de un agente.
+
+**La base de descarte ya está lista** y se queda a propósito, para que M-11
+arranque sin preparación:
+
+```
+npm run base:descarte   ->  directus_descarte · esquema consola · 0 tablas
+```
+
+Tres caminos para destrabar M-11, todos actos humanos: (a) Docker Desktop;
+(b) Python + Build Tools; (c) **Directus en Railway desde su imagen oficial** —que
+es donde tiene que vivir de todos modos (traducción §2.1)— y necesita un token de
+la API de Railway que hoy no está en `.env`.
+
+### El modelo, extraído del motor — `docs/MODELO-datos.md`
+
+`npm run modelo` lo genera desde `pg_catalog` de la base viva, **no** desde
+`src/db/schema.ts`: *el DDL dice lo que alguien quiso, el motor dice lo que hay.*
+**4 entidades · 27 campos · 41 restricciones · 8 índices**, con diagrama Mermaid.
+No incluye datos: los conteos son estadísticas del motor.
+
+**Consecuencia de arquitectura, y es lo que importa:** *data-driven es la base*
+implica que **Directus entra database-first, no schema-authoring**. El modelo ya
+existe y es autoritativo —`AC-DATA-1` lo pinnea, `AC-DATA-2` pone sus invariantes
+en la base—. Si Directus autorara el esquema habría **dos dueños del modelo**, y
+un criterio que hoy da 8/8 pasaría a depender de cuál escribió último.
+
 ### Guía externa (Directus + Qdrant) · traducida, adjudicada, NO ejecutada
 
 Decisión humana del 2026-08-20: *«qdrant y directus mantener, pero Vercel se
